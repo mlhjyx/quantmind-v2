@@ -149,11 +149,12 @@ def main():
 
     print("\n[Backtest] 跑 12 年全样本 in-sample...")
     t0 = time.time()
-    # LIVE_PT: 不 override start/end + 不 cache (InMem get_by_hash 恒 None 双重真跑)
-    platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    # AD_HOC: 不 override start/end + 不 cache (InMem get_by_hash 恒 None 双重 fresh re-run)
+    # iter 27 PR migration LIVE_PT→AD_HOC (PR #456 P2-1 follow-up; AD_HOC = first-class analyst mode)
+    platform_result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
     if platform_result.engine_artifacts is None:
         raise RuntimeError(
-            "engine_artifacts=None — LIVE_PT 应强制真跑, 产出 {engine_result, price_data}"
+            "engine_artifacts=None — AD_HOC 应强制 fresh re-run, 产出 {engine_result, price_data}"
         )
     result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0

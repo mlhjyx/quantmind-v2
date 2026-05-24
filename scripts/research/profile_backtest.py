@@ -116,14 +116,14 @@ def main():
 
     t1 = time.time()
     profiler.enable()
-    # TODO(mvp-2.3-sub3): BacktestMode.AD_HOC 目前未实现, 借 LIVE_PT 语义 (不 override +
-    # 不 cache) 匹配 profile 场景 (每次真跑). Sub3 评估新 AD_HOC mode 替代借用.
-    result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    # iter 27 PR migration LIVE_PT→AD_HOC (PR #456 P2-1 closure; TODO mvp-2.3-sub3 resolved).
+    # AD_HOC = first-class analyst mode (不 override + 不 cache) matching profile scenario.
+    result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
     t_bt = time.time() - t1
 
-    # PR C2 契约: LIVE_PT always re-run → engine_artifacts 必塞
+    # PR C2 契约: AD_HOC always re-run → engine_artifacts 必塞
     if result.engine_artifacts is None:
-        raise RuntimeError("engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run)")
+        raise RuntimeError("engine_artifacts=None — 违反 PR C2 契约 (AD_HOC always re-run)")
     engine_result = result.engine_artifacts["engine_result"]
     price_data_from_artifacts = result.engine_artifacts["price_data"]
 

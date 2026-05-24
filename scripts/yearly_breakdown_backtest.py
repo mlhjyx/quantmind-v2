@@ -157,9 +157,10 @@ def run_year(year: int, engine_cfg: EngineBacktestConfig) -> dict | None:
     )
 
     t0 = time.time()
-    platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    # iter 27 PR migration LIVE_PT→AD_HOC (PR #456 P2-1 closure; yearly slice = analyst exploration)
+    platform_result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
     if platform_result.engine_artifacts is None:
-        raise RuntimeError(f"engine_artifacts=None (year={year}) — LIVE_PT 应强制真跑")
+        raise RuntimeError(f"engine_artifacts=None (year={year}) — AD_HOC 应强制 fresh re-run")
     result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
 

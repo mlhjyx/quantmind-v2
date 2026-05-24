@@ -72,7 +72,8 @@ def run_backtest(years: int = 5):
 
     MVP 2.3 Sub1 PR C4 迁 Platform SDK (原直调 run_hybrid_backtest):
       - `PlatformBacktestRunner` + `InMemoryBacktestRegistry` (恒 cache miss 强制真跑)
-      - `BacktestMode.LIVE_PT` 借 ad-hoc 语义 (不 override start/end + 不 cache)
+      - `BacktestMode.AD_HOC` first-class analyst mode (iter 27 PR migration from
+        borrowed LIVE_PT; same behavior — 不 override start/end + 不 cache)
       - `direction_provider=lambda pool: CORE5_DIRECTIONS` 固定 direction (CI 锚点)
       - `engine_config_builder` 注入完整 Engine BacktestConfig (SlippageConfig/PMS/historical 税)
       - `signal_config_builder` 注入 SN=0 (CORE5 基线无 SN modifier)
@@ -152,14 +153,14 @@ def run_backtest(years: int = 5):
         signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),
     )
 
-    # LIVE_PT mode: 不 override start/end + 不 cache, 配 InMem get_by_hash 恒 None 双重真跑
-    # (TODO mvp-2.3-sub3: 评估 AD_HOC mode 替代 LIVE_PT 借用)
-    result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    # AD_HOC mode: 不 override start/end + 不 cache, 配 InMem get_by_hash 恒 None 双重 fresh re-run
+    # iter 27 PR migration LIVE_PT→AD_HOC (PR #456 P2-1 closure; TODO mvp-2.3-sub3 resolved)
+    result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
 
-    # PR C2 契约: cache-miss 真跑 → engine_artifacts 必塞 {engine_result, price_data}
+    # PR C2 契约: cache-miss fresh re-run → engine_artifacts 必塞 {engine_result, price_data}
     if result.engine_artifacts is None:
         raise RuntimeError(
-            "engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run), "
+            "engine_artifacts=None — 违反 PR C2 契约 (AD_HOC always re-run), "
             "regression_test 依赖 daily_nav 做 max_diff=0 比对"
         )
     engine_result = result.engine_artifacts["engine_result"]
