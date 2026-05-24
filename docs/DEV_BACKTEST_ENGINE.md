@@ -165,7 +165,7 @@ python scripts/run_backtest.py --config configs/pt_live.yaml
 > **⚠️ §一~§十 HISTORICAL — 2026-03-19 原始设计，部分内容已过时。实际代码结构请以 §0 和 Blueprint §6 为准。**
 >
 > **已过时的关键点 (2026-05-20 sediment)**:
-> - **Rust 引擎**: 从未实现, 纯 Python. `.env.example` 中 `RUST_ENGINE_PATH=./rust_engine/target/release/quant-backtest` 是 dead config (rust_engine/ 目录不存在).
+> - **Rust 引擎**: 从未实现, 纯 Python. `rust_engine/` 目录不存在; `backend/.env.example` 2026-05-24 iter 45 fresh verify 已 0 `RUST_ENGINE_PATH` 引用 (dead config 历史曾在但已先期清理, 本 line 是 stale doc-rot 修正).
 > - **真实回测引擎**: `backend/engines/backtest/` (8 模块) + `scripts/run_backtest.py`. Hybrid 架构 = Python CC; Qlib ML 信号层 + RD-Agent 均 NO-GO per Step 6-H.
 > - VectorizedBacktester → Archived / §五实现计划 → 全部完成 / §九待办 → 全部完成
 > - 历史章节保留作设计参考, 不执行.
