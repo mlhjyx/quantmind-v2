@@ -1149,13 +1149,81 @@ async def run_sensitivity_analysis(
     """
     await _get_run_or_404(session, run_id)
 
-    # TODO: Phase 0 占位 — 触发 Celery task 对每个 param_value 跑子回测
+    # ────────────────────────────────────────────────────────────────────────
+    # DEFER sediment (iter 34 — anti-assumption SOP verify FAILED Phase 0 scope)
+    # ────────────────────────────────────────────────────────────────────────
+    # Original Phase 0 plan: "触发 Celery task 对每个 param_value 跑子回测".
+    # Iter 32 RESUME POINT candidate (b) verified precondition (2026-05-24):
+    #
+    #   (i) backend/engines/backtest/config.py BacktestConfig signature LACKS
+    #       cost_multiplier override field — current config flows from stored
+    #       backtest_run.config_json only, no dispatch-time override path.
+    #       (Reviewer iter 32 grep-verified across engine layer: 0 cost_multiplier
+    #        attribute, despite SensitivityRow:73-80 schema implying intent.)
+    #
+    #   (ii) backend/app/tasks/backtest_tasks.py run_backtest signature is
+    #        run_backtest(self, run_id: str) — reads config entirely from
+    #        the stored backtest_run row (asyncpg fetch at line ~84). NO
+    #        dispatch-arg-based override pathway exists.
+    #
+    #   (iii) Each sub-backtest has soft_time_limit=3600 (1h) / time_limit=3900
+    #         (~65min). N sub-backtests for sensitivity analysis = N × 30-60min
+    #         total runtime. Naive impl re-loads price_df + factor_df + bench
+    #         per child = massive compute waste vs shared parent data load.
+    #
+    #   (iv) Aggregation + shared-data-load + WebSocket-pushback are
+    #        Architecture-level decisions (§6 trigger 8 self-protection) —
+    #        affects mining queue cohabitation, BacktestConfig schema, and
+    #        backtest_run row lineage (parent_run_id link or sensitivity_runs
+    #        table). NOT a Feature-level 1-iter implement.
+    #
+    # Existing partial-coverage path: SensitivityRow:73-80 fields suggest the
+    # original intent was cost-multiplier sensitivity specifically (not
+    # arbitrary-param). The existing /cost-sensitivity endpoint elsewhere
+    # does *linear extrapolation* on a single run's NAV — fundamentally
+    # different from running N sub-backtests with different cost_multiplier.
+    #
+    # Pre-IMPLEMENT product questions (require user input):
+    #   Q1: What params can be varied? (whitelist — cost_multiplier only? or
+    #       slippage_bps, PT_TOP_N, PT_INDUSTRY_CAP, factor weights all?)
+    #   Q2: Storage strategy? (sensitivity_runs new table with parent_run_id
+    #       FK / reuse backtest_run with parent link / filesystem JSON like
+    #       iter 30 /reports system?)
+    #   Q3: Aggregation metrics? (sharpe + MDD + return only? or full
+    #       MetricsReport per sub-run?)
+    #   Q4: Result delivery? (WebSocket push / polling endpoint / async-result
+    #       backend-Celery + GET status?)
+    #   Q5: Shared-data-load? (parent loads data once + spawns N sub-engine
+    #       calls in-process / or N independent sub-tasks each re-loading?)
+    #
+    # Verdict (paired with iter 32 /list IMPLEMENT per §5 same-commit-ship +
+    # iter 34 ADR-091/092/093 retroactive sediment per ironlaw 22):
+    #   DEFER to Phase B post-PT-restart Architecture-level design pass.
+    #   Sensitivity analysis is a research/UI feature; PT-paused state
+    #   (cash ¥993,520.66, 0 持仓 since 4-29) means this is not on the PT
+    #   restart critical path. ADR-DRAFT row 18 sediments the DEFER verdict.
+    #
+    # Reviewer iter 32 CONCUR with this DEFER (verified BacktestConfig
+    # cost_multiplier absence + existing /cost-sensitivity linear-extrapolation
+    # distinction).
+    #
+    # Endpoint contract preserved: still returns 200 with metadata. Message
+    # updated to honest DEFER text + cites ADR-DRAFT row 18 for product input.
+    # ────────────────────────────────────────────────────────────────────────
     return {
         "run_id": str(run_id),
         "param_name": req.param_name,
         "param_values": req.param_values,
-        "status": "pending",
-        "message": "参数敏感性分析任务已排队，完成后通过 WebSocket 推送结果",
+        "status": "deferred",
+        "message": (
+            "参数敏感性分析 DEFERRED to Phase B post-PT-restart — "
+            "Architecture-level scope (cost_multiplier override + sub-backtest "
+            "shared-data-load + aggregation strategy + result delivery). "
+            "See docs/adr/ADR-DRAFT.md row 18 + ADR-091/092/093 retroactive "
+            "sediment (iter 34, paired per §5 same-commit-ship)."
+        ),
+        "deferred_to": "phase_b_post_pt_restart",
+        "tracking_ref": "docs/adr/ADR-DRAFT.md#row-18",
     }
 
 
