@@ -497,3 +497,45 @@ async def get_env_state() -> dict[str, Any]:
         "l4_auto_enabled": l4_auto_enabled,
         "last_updated": datetime.now(UTC).isoformat(),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Iter 39: paper_strategy_id exposure (closes iter 35 DEFAULT_STRATEGY_ID
+# frontend placeholder gap). Returns settings.PAPER_STRATEGY_ID + sentinel
+# fields so frontend can distinguish "configured" vs "default unconfigured".
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/settings/paper-strategy-id")
+async def get_paper_strategy_id() -> dict[str, Any]:
+    """Returns the configured Paper Trading strategy_id (settings.PAPER_STRATEGY_ID).
+
+    Closes iter 35 DEFAULT_STRATEGY_ID frontend placeholder gap: ReportCenter.tsx
+    previously hardcoded "default-strategy" sentinel which would 200-empty-list
+    on /api/reports/{sid}/list and never surface real strategy artifacts. This
+    endpoint exposes the backend-configured value so the frontend can fetch +
+    cache it via react-query on mount.
+
+    Args:
+        None (read-only endpoint, no DB access — pure settings cite).
+
+    Returns:
+        dict with:
+          - paper_strategy_id: str (settings.PAPER_STRATEGY_ID; empty if not configured)
+          - configured: bool (True if non-empty, False if "" default)
+          - source: "settings.PAPER_STRATEGY_ID" (provenance for debugging)
+
+    Notes:
+        - settings.PAPER_STRATEGY_ID default is "" per backend/app/config.py:163
+        - Frontend consumer (ReportCenter.tsx) should handle configured=False
+          by either prompting user to set OR falling back to placeholder display
+        - 0 §6 STOP trigger (read-only settings exposure, not Architecture)
+    """
+    from app.config import settings
+
+    sid = settings.PAPER_STRATEGY_ID or ""
+    return {
+        "paper_strategy_id": sid,
+        "configured": bool(sid),
+        "source": "settings.PAPER_STRATEGY_ID",
+    }

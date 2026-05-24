@@ -131,3 +131,27 @@ export async function fetchCalendarInfo(): Promise<CalendarInfo> {
   return data;
 }
 
+// ── Iter 39: paper_strategy_id exposure (closes iter 35 DEFAULT_STRATEGY_ID gap) ──
+
+/** Response from GET /api/system/settings/paper-strategy-id (iter 39). */
+export interface PaperStrategyIdResponse {
+  paper_strategy_id: string;
+  configured: boolean;
+  source: "settings.PAPER_STRATEGY_ID";
+}
+
+/**
+ * Fetch the backend-configured Paper Trading strategy_id.
+ *
+ * Closes iter 35 frontend DEFAULT_STRATEGY_ID="default-strategy" placeholder
+ * gap: ReportCenter.tsx now fetches the real value on mount via this wrapper +
+ * react-query cache. If configured=false, caller should handle the "no
+ * default configured" case (e.g. show prompt or fall back to placeholder).
+ */
+export async function getPaperStrategyId(): Promise<PaperStrategyIdResponse> {
+  const { data } = await apiClient.get<PaperStrategyIdResponse>(
+    "/system/settings/paper-strategy-id",
+  );
+  return data;
+}
+
