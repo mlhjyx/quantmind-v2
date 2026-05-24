@@ -303,11 +303,12 @@ def run_with_yaml(config_path: str):
         result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
         t_engine_done = time.time()  # PR C3 review M2 fix: 精准测 engine 耗时, 排除 report
 
-        # PR C2 契约: cache-miss 真跑 → engine_artifacts 必塞; LIVE_PT 强制 always re-run
+        # PR C2 契约: cache-miss fresh re-run → engine_artifacts 必塞; AD_HOC 强制 always re-run
         # 配 InMemory get_by_hash 恒 None, artifacts 永不为 None.
+        # iter 27 PR #458 P3 fix: LIVE_PT→AD_HOC stale string cleanup.
         if result.engine_artifacts is None:
             raise RuntimeError(
-                "engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run), "
+                "engine_artifacts=None — 违反 PR C2 契约 (AD_HOC always re-run), "
                 "Runner 可能未走 cache-miss 路径. 检查 PlatformBacktestRunner.run() 实现."
             )
         engine_result = result.engine_artifacts["engine_result"]
