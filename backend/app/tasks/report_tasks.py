@@ -422,8 +422,11 @@ def cleanup_old_reports(
 
     # Total artifacts found = deletes + (per-tuple kept), inferred by re-walking.
     # For return-dict transparency, scanned = #artifacts (deletes + remaining).
+    # P2-2 reviewer fix: hoist `set(skipped)` out of the generator so it's not
+    # rebuilt per iteration (~10k×100 = 1M ops avoided at upper-bound scale).
+    _skipped_set = set(skipped)
     total_artifacts = sum(
-        1 for p in REPORTS_DIR.iterdir() if p.is_file() and p not in set(skipped)
+        1 for p in REPORTS_DIR.iterdir() if p.is_file() and p not in _skipped_set
     )
 
     if not deletes:

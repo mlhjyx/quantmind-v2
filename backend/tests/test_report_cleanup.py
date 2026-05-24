@@ -287,16 +287,27 @@ def test_beat_schedule_registers_reports_cleanup_weekly():
 
 
 def test_beat_schedule_sunday_0430_crontab():
-    """Verify the schedule is Sunday 04:30 SH (low-traffic window)."""
+    """Verify the schedule is Sunday 04:30 SH (low-traffic window).
+
+    Reviewer P3-3 fix: test crontab attributes directly, NOT substring match
+    against repr (which would pass for any schedule containing "30"/"4"/"0").
+    """
     from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE
 
     schedule = CELERY_BEAT_SCHEDULE["reports-cleanup-weekly"]["schedule"]
-    # Celery crontab __repr__ format: "<crontab: 30 4 * * 0 (m/h/dM/MY/d)>"
-    repr_str = repr(schedule)
-    assert "30" in repr_str
-    assert "4" in repr_str
-    # day_of_week=0 = Sunday
-    assert "0" in repr_str
+    # Celery crontab _orig_* preserves the constructor arg types verbatim
+    # (int when passed as int, str when passed as str). Our entry passes
+    # hour=4 minute=30 as int, day_of_week="0" as str — assertions match.
+    assert schedule._orig_minute == 30
+    assert schedule._orig_hour == 4
+    assert schedule._orig_day_of_week == "0"  # 0 = Sunday in Celery crontab convention
+    # Sanity check: day_of_month + month_of_year unrestricted
+    assert schedule._orig_day_of_month == "*"
+    assert schedule._orig_month_of_year == "*"
+    # Parsed sets match the original spec
+    assert schedule.minute == {30}
+    assert schedule.hour == {4}
+    assert schedule.day_of_week == {0}
 
 
 def test_celery_imports_list_includes_report_tasks():
