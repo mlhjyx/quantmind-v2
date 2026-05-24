@@ -246,6 +246,57 @@ def test_latest_report_path_filters_by_sid(isolated_reports_dir):
     assert "sid-B" not in result.name
 
 
+def test_latest_report_path_regression_no_substring_prefix_leak(isolated_reports_dir):
+    """Iter 36 reviewer P2-2 regression guard: sid="abc" must NOT match abc-extended_*.json.
+
+    Pre-iter-36 impl used `glob(f"{prefix}*{suffix}")` which would falsely match
+    when one sid is a substring prefix of another (e.g. caller asks for "abc"
+    but artifact for "abc-extended" exists — glob would return both, mtime-max
+    could leak the wrong-sid artifact). iter 32 `list_reports_for` already had
+    anchored-regex defense; iter 36 closes the same gap on `latest_report_path`.
+    """
+    from app.tasks.report_tasks import latest_report_path
+
+    # sid="abc" requester; "abc-extended" is a substring-prefix sibling that
+    # MUST NOT bleed into the "abc" result.
+    abc_artifact = isolated_reports_dir / "abc_2026-04-28_paper.json"
+    leaky_artifact = isolated_reports_dir / "abc-extended_2026-04-30_paper.json"
+    abc_artifact.write_text('{"sid": "abc"}')
+    leaky_artifact.write_text('{"sid": "abc-extended"}')
+    # Ensure leaky_artifact has newer mtime (worst case — without anchored regex
+    # fix, mtime-max would return the leaky sid by date+mtime ordering).
+    import os
+    import time
+    os.utime(abc_artifact, (time.time() - 1000, time.time() - 1000))
+
+    result = latest_report_path("abc", "paper")
+    assert result is not None
+    assert result == abc_artifact, (
+        f"prefix-leak regression: latest_report_path('abc') returned {result.name!r} "
+        f"— expected {abc_artifact.name!r} (anchored regex must reject 'abc-extended_*')"
+    )
+    # Confirm reverse direction also clean
+    result_ext = latest_report_path("abc-extended", "paper")
+    assert result_ext == leaky_artifact
+
+
+def test_latest_report_path_regression_substring_suffix_safe(isolated_reports_dir):
+    """Iter 36 regression guard: anchored regex must also reject suffix-similar sids.
+
+    e.g. caller "xy" must NOT match "wxy_*" (which doesn't have safe_sid_ prefix
+    anchored at filename start). Pre-iter-36 glob would correctly reject this
+    via prefix match, but verify the anchored regex is at-least-as-strict.
+    """
+    from app.tasks.report_tasks import latest_report_path
+
+    (isolated_reports_dir / "xy_2026-04-28_paper.json").write_text('{"sid": "xy"}')
+    (isolated_reports_dir / "wxy_2026-04-29_paper.json").write_text('{"sid": "wxy"}')
+
+    result = latest_report_path("xy", "paper")
+    assert result is not None
+    assert result.name == "xy_2026-04-28_paper.json"
+
+
 # ── _atomic_write_json ──────────────────────────────────────────────────────
 
 

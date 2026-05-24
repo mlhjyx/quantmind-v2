@@ -437,15 +437,28 @@ def latest_report_path(strategy_id: str, execution_mode: str = "paper") -> Path 
     matching artifact exists (caller should 404).
 
     Resolves by mtime; date in filename is informational. Files for OTHER
-    (sid, mode) tuples are filtered out by prefix match.
+    (sid, mode) tuples are filtered out by **anchored regex** (NOT just prefix
+    + suffix glob — iter 36 reviewer-flagged P2-2 fix per iter 32 reviewer note).
+
+    Reviewer P2-2 fix (iter 32 deferred → iter 36 closed): prior impl used
+    `glob(f"{prefix}*{suffix}")` which would match `abc-extended_*.json` when
+    sid="abc" — false-positive leak across sids that are substring prefixes
+    of other sids. iter 32 `list_reports_for` already used anchored regex
+    (same module); `latest_report_path` lacked the defense. This fix mirrors
+    the iter 32 pattern.
     """
     if not REPORTS_DIR.exists():
         return None
     safe_sid = strategy_id.replace("/", "_").replace("\\", "_")
-    prefix = f"{safe_sid}_"
-    suffix = f"_{execution_mode}.json"
+    # Anchored regex: matches ONLY {safe_sid}_{YYYY-MM-DD}_{paper|live}.json
+    # (filename equality after sid prefix, NOT substring prefix).
+    mode_re = re.compile(
+        rf"^{re.escape(safe_sid)}_\d{{4}}-\d{{2}}-\d{{2}}_{re.escape(execution_mode)}\.json$"
+    )
     candidates = [
-        p for p in REPORTS_DIR.glob(f"{prefix}*{suffix}") if p.is_file()
+        p
+        for p in REPORTS_DIR.glob(f"{safe_sid}_*_{execution_mode}.json")
+        if p.is_file() and mode_re.match(p.name)
     ]
     if not candidates:
         return None

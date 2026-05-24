@@ -310,7 +310,44 @@ class PaperTradingService:
 
         # ── 跟踪误差: 实际日收益 vs 目标日收益 ──
         # 需要performance_series + 重建目标收益（暂用actual_return近似，TE约0）
-        # TODO(Phase 1): 存储target_return到performance_series后精确计算
+        #
+        # ─────────────────────────────────────────────────────────────────────
+        # DEFER sediment (iter 36 — PT-coupled premature; paired with iter 36
+        # IMPLEMENT latest_report_path prefix-leak fix per §5 same-commit-ship)
+        # ─────────────────────────────────────────────────────────────────────
+        # Original Phase 1 plan: "存储target_return到performance_series后精确计算".
+        # iter 36 anti-assumption SOP verify:
+        #
+        #   (i) performance_series schema (DDL canonical docs/QUANTMIND_V2_DDL_FINAL.sql)
+        #       has 0 target_return column. ALTER ADD COLUMN required + DDL drift
+        #       sync + migration script + backfill strategy.
+        #
+        #   (ii) target_return source: requires signals table OR backtest replay
+        #        of the historical period. Per iter 32 sensitivity analysis DEFER
+        #        precedent — backtest replay path has Architecture-level cost
+        #        (sub-backtest dispatch + shared-data-load not designed).
+        #
+        #   (iii) PT-paused state (cash ¥993,520.66 / 0 持仓 since 2026-04-29 per
+        #         red lines 5/5 sustained). Adding target_return write path to
+        #         production performance_series during PT-paused window risks
+        #         polluting the trade_log/performance_series snapshot used by
+        #         Phase B-2 cutover (5-27 Wed live flip per ADR-085). Writing
+        #         a NEW column with rolling-mean approximation values would
+        #         create data lineage confusion post-PT-restart.
+        #
+        #   (iv) Approximation already correct-direction (rolling 5d mean of
+        #        actual_returns is the documented Phase 1 stand-in). TE ≈ 0 is
+        #        the honest output until target_return data source exists.
+        #
+        # Verdict: DEFER to Phase B-2 post-PT-restart. Once trade_log + signals
+        # table have post-cutover data, ADR-XXX can design either:
+        #   - signals-table-based target_return derivation (lookup signal_price
+        #     at signal_date for each trade, compute portfolio-weighted target)
+        #   - backtest-replay path (sub-backtest dispatch, sensitivity-style;
+        #     gated on iter 32 sensitivity DEFER ADR-DRAFT row 18 design)
+        #
+        # Approximation kept inline (rolling mean) — honest about precision gap.
+        # ─────────────────────────────────────────────────────────────────────
         full_series = await self.perf_repo.get_nav_series(strategy_id, execution_mode="paper")
         if len(full_series) >= 3:
             actual_rets = pd.Series([s["daily_return"] for s in full_series]).dropna()
