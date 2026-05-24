@@ -576,9 +576,17 @@ class FactorCache:
                 else:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             except OSError:
+                # silent_ok: fcntl/msvcrt unlock failure on file-close path is
+                # best-effort cleanup (file handle 即将 close, OS 自动释放 lock).
+                # fail-safe per 铁律 33 (不抛 raises 防 finally block 短路调用方).
                 pass
             f.close()
-            # 锁文件保留 (避免竞态), 偶尔手工清理即可
+            # DEFER: 锁文件保留 (避免 cross-process 竞态 — 删 lockfile 时其他
+            # process 可能正在 acquire). 当前 "偶尔手工清理即可" — 未来 iter 可
+            # 增 scripts/cleanup_stale_lockfiles.py + Beat schedule (Sunday 04:00
+            # 沿用 iter 31 reports-cleanup-weekly 体例); 触发条件 = lockfile
+            # mtime > N days OR 0 active reader holders (fcntl.LOCK_SH probe).
+            # 0 §6 触发 (FS-only ops + N>0 days TTL). PT-decoupled — 可独立 ship.
 
 
 __all__ = ["FactorCache", "FactorCacheError", "VALID_COLUMNS"]
