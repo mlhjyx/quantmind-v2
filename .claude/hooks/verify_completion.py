@@ -175,12 +175,11 @@ def main():
         f"{cite_source_lock_reminder()}\n"
     )
 
-    result = {
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "additionalContext": checklist,
-        }
-    }
+    # Stop hook schema: root-level systemMessage (NOT hookSpecificOutput,
+    # which is only for PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch).
+    # Pre-fix output produced "Hook JSON output validation failed — (root): Invalid input"
+    # on every Stop event. Fixed 2026-05-24 per user directive.
+    result = {"systemMessage": checklist}
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(0)
 

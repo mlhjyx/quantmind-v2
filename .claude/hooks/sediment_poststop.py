@@ -99,27 +99,27 @@ def _emit_reminder() -> None:
 
     沿用 cite_drift_stop_pretool.py + protect_critical_files.py WARN-with-PASS 体例.
     """
-    result = {
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "additionalContext": (
-                "REMINDER (sediment_poststop): recent commit(s) detected in last "
-                f"{LOOKBACK_MINUTES} min (proxy for sub-PR closure in current session period). "
-                "沿用 quantmind-v3-doc-sediment-auto skill SOP — sub-PR 闭后 sediment append "
-                "candidate checklist: "
-                "(a) LL append candidate (LESSONS_LEARNED.md 沿用 LL # registry SSOT, 沿用 "
-                "LL-105 SOP-6 cross-verify) / "
-                "(b) ADR row sediment candidate (docs/adr/REGISTRY.md + ADR-DRAFT.md, 沿用 ADR # "
-                "registry SSOT) / "
-                "(c) STATUS_REPORT sediment (沿用铁律 37 + handoff_template.md §3 cite SOP) / "
-                "(d) memory `project_sprint_state.md` handoff sediment (沿用铁律 37 sub-PR 闭后 "
-                "handoff). "
-                "反 silent skip 沿用 LL-098 X10 反 forward-progress + ADR-022 集中机制. "
-                "bypass: env QM_SEDIMENT_BYPASS=1 (session-level only — CC self-authorize is "
-                "X10/LL-098 anti-pattern violation, MUST be user-typed)."
-            ),
-        }
-    }
+    # Stop hook schema: root-level systemMessage (NOT hookSpecificOutput,
+    # which is only for PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch).
+    # Pre-fix output produced "Hook JSON output validation failed — (root): Invalid input"
+    # on every Stop event. Fixed 2026-05-24 per user directive.
+    message = (
+        "REMINDER (sediment_poststop): recent commit(s) detected in last "
+        f"{LOOKBACK_MINUTES} min (proxy for sub-PR closure in current session period). "
+        "沿用 quantmind-v3-doc-sediment-auto skill SOP — sub-PR 闭后 sediment append "
+        "candidate checklist: "
+        "(a) LL append candidate (LESSONS_LEARNED.md 沿用 LL # registry SSOT, 沿用 "
+        "LL-105 SOP-6 cross-verify) / "
+        "(b) ADR row sediment candidate (docs/adr/REGISTRY.md + ADR-DRAFT.md, 沿用 ADR # "
+        "registry SSOT) / "
+        "(c) STATUS_REPORT sediment (沿用铁律 37 + handoff_template.md §3 cite SOP) / "
+        "(d) memory `project_sprint_state.md` handoff sediment (沿用铁律 37 sub-PR 闭后 "
+        "handoff). "
+        "反 silent skip 沿用 LL-098 X10 反 forward-progress + ADR-022 集中机制. "
+        "bypass: env QM_SEDIMENT_BYPASS=1 (session-level only — CC self-authorize is "
+        "X10/LL-098 anti-pattern violation, MUST be user-typed)."
+    )
+    result = {"systemMessage": message}
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(0)
 
