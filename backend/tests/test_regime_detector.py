@@ -5,12 +5,27 @@
 
 import pytest
 
+# ARCHIVE (2026-05-24 iter 49 — explicit re-framing of "暂时 skip" stale marker):
 # Step 7bhmm 升级后 regime_detector 从 2-state 改为 3-state (bull/sideways/bear),
 # 旧 `_bear_prob_to_scale(float) -> float` 被替换为 `_probs_to_scale(state_probs, state_mapping)`,
-# 签名不兼容。本测试文件未迁移, 暂时 skip 避免阻塞 suite。
-# TODO: 按 3-state API 重写断言 (参考 engines.regime_detector._probs_to_scale).
+# 签名不兼容。本测试文件未迁移, module-level skip 避免阻塞 suite。
+#
+# Pre-iter-49 marker said "暂时 skip ... TODO: 按 3-state API 重写断言". L4+R iter
+# 44/45/46/47/49 evaluations each declined the rewrite (465-line scope vs smallest-first
+# iter discipline). The "暂时" framing was misleading (LL-194 anti-pattern family:
+# claim suggests near-term action when actually been waiting indefinitely).
+#
+# DEFER: the 3-state API rewrite remains a valid future-iter scope but is NOT "暂时".
+# It's a focused-effort future iter scope — when picked up, will need:
+#   1. Read engines/regime_detector._probs_to_scale signature + state_mapping enum
+#   2. Replace all `_bear_prob_to_scale(float)` callsites in assertions with
+#      `_probs_to_scale(np.array([p_bull, p_sideways, p_bear]), mapping_dict)`
+#   3. Run full 465-line test suite + fix failures incrementally
+#   4. Ship as dedicated iter (likely 1-2 iter cycles) — not a smallest-first slot
+# 0 §6 触发 (test-only, no production code change). PT-decoupled.
 pytest.skip(
-    "TODO: 3-state HMM API (原 2-state _bear_prob_to_scale 已删除)", allow_module_level=True
+    "ARCHIVE: 3-state HMM API rewrite (see file head comment — focused-effort future iter, not 暂时)",
+    allow_module_level=True,
 )
 
 from datetime import date, timedelta  # noqa: E402
