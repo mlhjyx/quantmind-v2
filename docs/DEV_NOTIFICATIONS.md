@@ -1,7 +1,7 @@
-> **文档状态: PARTIALLY_IMPLEMENTED — 🟡 ~60% Aligned (2026-05-20 audit sediment). Engine layer (alert.py) + Service layer (dingtalk_webhook_service.py) 双层架构, design 仅描述其一.**
-> 实现状态: ~35% (sustained) — notification_service+templates+throttler已实现。后端5个API端点已有(list/unread-count/read/detail/test)。notifications表已建(541行数据)。
+> **文档状态: PARTIALLY_IMPLEMENTED — 🟡 ~75% Aligned (2026-05-26 W2-E iter 144 sediment, post Wave 4 batch 3.x 17/17 SDK milestone iter 57 2026-05-25). Engine layer (alert.py) + Service layer (dingtalk_webhook_service.py) + AlertRouter SDK 三层架构, design 仅描述前两层.**
+> 实现状态: ~75% (iter 144 update) — notification_service+templates+throttler+AlertRouter SDK 已实现, 17 scripts migrated to Platform SDK (iter 51-57 batch 3.1-3.12 cumulative, commit `169ce00` 3.12 LAST = 100% milestone). 后端 5 API endpoint (list/unread-count/read/detail/test) + Wave 4 batch 2.1 PostgresAlertRouter + 4-domain outbox 整合 (MVP 4.1 batch 2.2). notifications 表已建.
 > **前端**: DEV_FRONTEND_UI.md §十三 定义了 Toast/铃铛/通知中心/分级/偏好, 前端页面待审计数据绑定状态。
-> 未实现: 邮件/微信推送、告警升级链、WebSocket实时推送(/ws/notifications)
+> 未实现 (sustained per Phase J): 邮件/微信推送、告警升级链、WebSocket实时推送(/ws/notifications) — 单人 paper mode 暂无 P0 trigger
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §13**
 >
 > **Session 57 (2026-05-19) addendum** (per ISSUES_PENDING_REGISTRY §4 A3):
