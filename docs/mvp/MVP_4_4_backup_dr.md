@@ -1,6 +1,6 @@
 # MVP 4.4 — Backup & Disaster Recovery (Wave 4 #4, final)
 
-**Status**: 🚧 启动 (iter 73 2026-05-25, entry skeleton shipped, multi-iter single-day campaign target)
+**Status**: ✅ COMPLETED (iter 75 2026-05-25, 7/7 sub-iters shipped in 3-iter batched campaign — efficiency mode)
 **前置**: Wave 4 MVP 4.3 CI/CD ✅ 7/7 = 100% (iter 66-72 完结, 100 cumulative tests)
 **Spec source**: [QPB v1.16](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 — MVP 4.4 + Framework #12 ROF
 
@@ -56,7 +56,7 @@ consistency with Wave 4 MVP 4.3 体例.
 |---|---|---|
 | iter 73 | enum + dataclass + Protocol + entry tests (15 tests) | ✅ |
 | iter 74 (batch sub-iter 2+3+4) | DB pg_dump + Filesystem tar + Config tar 3 orchestrators (27 tests) | ✅ |
-| iter 75+ (batch sub-iter 5+6+7) | restore verification + RPO/RTO alert + Beat schedule wire (final closeout) | pending |
+| iter 75 (batch sub-iter 5+6+7) | restore verification (10 tests) + RPO/RTO + alert (12 tests) + Beat schedule wire (daily-backup-run 02:30 + weekly-backup-verify Sunday 04:00) | ✅ |
 
 ## §5 §6 8-trigger STOP self-check
 
@@ -70,10 +70,22 @@ ALL NEGATIVE.
 
 ## §6 验收
 
-- [ ] BackupTarget enum + BackupTargetResult + Protocol skeleton (iter 73 ✅)
-- [ ] DB + Filesystem + Config orchestrators (iter 74-76)
-- [ ] Restore verification + RPO/RTO measurement (iter 77-78)
-- [ ] Beat schedule wire — daily backup + weekly verification (iter 79)
+- [x] BackupTarget enum + BackupTargetResult + Protocol skeleton (iter 73 ✅, 15 tests)
+- [x] DB + Filesystem + Config orchestrators (iter 74 batched ✅, 27 tests)
+- [x] Restore verification + RPO/RTO measurement (iter 75 batched ✅, 22 tests)
+- [x] Beat schedule wire — daily backup + weekly verification (iter 75 batched ✅, 2 Beat entries)
+
+**Cumulative tests**: 64/64 PASS (15 + 27 + 22 = 64) across 3 iters (efficiency mode).
+
+**铁律 44 X9 post-merge ops** (mandatory after this push lands):
+```
+powershell -File scripts\service_manager.ps1 restart celery
+powershell -File scripts\service_manager.ps1 restart celery-beat
+```
+
+**Beat schedule entries activated** (apps/tasks/beat_schedule.py):
+- `daily-backup-run` 02:30 SH daily — invokes DB + FS + Config orchestrators
+- `weekly-backup-verify` Sunday 04:00 SH — restore verification + RPO/RTO alert
 
 ## §7 关联
 

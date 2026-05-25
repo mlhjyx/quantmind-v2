@@ -39,6 +39,21 @@ from .orchestrator import (
     total_bytes_written,
     total_duration_ms,
 )
+from .restore_verification import (
+    DEFAULT_RESTORE_TIMEOUT_SECONDS,
+    RestoreVerificationOrchestrator,
+    RestoreVerificationSpec,
+    default_restore_spec,
+)
+from .rpo_rto import (
+    DEFAULT_RPO_HOURS,
+    DEFAULT_RTO_HOURS,
+    DEFAULT_SUPPRESS_MINUTES,
+    RpoRtoSnapshot,
+    compute_rpo_rto_snapshot,
+    fire_rpo_rto_alert,
+    measure_rpo_hours,
+)
 
 __all__ = [
     "BackupManager",

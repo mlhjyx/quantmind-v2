@@ -463,4 +463,28 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,  # 1h within next trading day cycle
         },
     },
+    # ── daily-backup-run (MVP 4.4 sub-iter 7, iter 75) ──
+    # 02:30 SH daily — DB pg_dump + Filesystem tar + Config tar batched.
+    # 反 hard collision: 03:00 SH QuantMind_VacuumAnalyze schtask (30min buffer);
+    # 04:30 SH reports-cleanup-weekly (Sunday only, 2h buffer). 02:30 quiet window.
+    # 铁律 44 X9 post-merge ops: Servy restart QuantMind-CeleryBeat + QuantMind-Celery
+    "daily-backup-run": {
+        "task": "app.tasks.backup_tasks.daily_backup_run_task",
+        "schedule": crontab(hour=2, minute=30),
+        "options": {
+            "queue": "default",
+            "expires": 14400,  # 4h: pg_dump can run up to 1h + tar up to 30min + buffer
+        },
+    },
+    # ── weekly-backup-verify (MVP 4.4 sub-iter 7, iter 75) ──
+    # Sunday 04:00 SH — restore verification + RPO/RTO snapshot + alert.
+    # 反 hard collision: 04:30 SH reports-cleanup-weekly Sunday (30min buffer after).
+    "weekly-backup-verify": {
+        "task": "app.tasks.backup_tasks.weekly_backup_verify_task",
+        "schedule": crontab(hour=4, minute=0, day_of_week="0"),  # 0=Sunday
+        "options": {
+            "queue": "default",
+            "expires": 7200,  # 2h within next weekly cycle
+        },
+    },
 }

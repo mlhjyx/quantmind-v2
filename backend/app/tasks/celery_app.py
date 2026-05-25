@@ -103,6 +103,7 @@ celery_app.conf.update(
         # Sustained pattern from Plan v10 P0-10 + P0-16 sediment (same failure mode).
         "app.tasks.report_tasks",  # iter 30/31: generate_performance_report + cleanup_old_reports (PR #459 + this PR)
         "app.tasks.attribution_tasks",  # MVP 4.2 sub-iter 7 (iter 65): daily-attribution-compute Beat (16:30 Mon-Fri) — DailyAttribution persist + residual alert
+        "app.tasks.backup_tasks",  # MVP 4.4 sub-iter 7 (iter 75): daily-backup-run Beat (02:30 daily) + weekly-backup-verify Beat (Sunday 04:00)
         # app.tasks.dual_write_tasks 已退役 (MVP 2.1c Sub3.5, 2026-04-18): 老 3 fetcher 退役后
         # dual-write 监控无必要, Celery Beat 条目 + task 已删
     ],
