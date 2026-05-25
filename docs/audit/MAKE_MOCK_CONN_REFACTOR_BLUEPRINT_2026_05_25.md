@@ -190,6 +190,43 @@ Beyond §7's strict "12 module-local defs deleted", revised target after iter 11
 4. **§9.4 canonical fixture enhancement** if factory-variant migrations need fetchall default (Plan mode entry)
 5. **Net LOC reduction goal**: ~50-80 LOC reduction across 6 migrated files (blueprint §5 estimated +80/-200 across 12 files; revised target ~+50/-130 across 6 files = -80 net)
 
+### §9.7 iter 116-118 closure status (2026-05-25 ~22:45 SH)
+
+Delivered:
+- iter 116 PR-direct `5c7a189` — test_announcement_processor.py migrated (8 sites)
+- iter 117 PR-direct `e78add1` — test_factor_health_daily.py migrated (8 sites, tuple-return pattern)
+- iter 118 (this doc update)
+
+**Total migration count post-iter-117**: **5/12 files migrated** (test_fundamental_context iter 111 / test_startup_assertions iter 112 / test_a3_a5_a7_a10 iter 113 / test_announcement_processor iter 116 / test_factor_health_daily iter 117).
+
+**Closure scoring**:
+- 5 migrated ✅
+- 3 kept-local-with-rationale ✅ (test_dingtalk_webhook_service / test_l4_sweep_tasks / test_pt_data_service_fail_loud per §9.2)
+- **Subtotal: 8/12 = 67% closure** vs §9.5 target 9/12 = 75%
+
+### §9.8 Remaining 4 candidates — Plan mode entry required (deferred)
+
+Migration of the final 4 files needs canonical fixture enhancement OR per-test re-architecture:
+
+| File | Blocker | Plan mode entry needed |
+|------|---------|------------------------|
+| test_qm_platform_attribution.py | Local def returns `MagicMock(return_value=mock_conn)` for `factory.assert_called_once()` semantic; canonical `mock_conn_factory_builder` returns plain function (no `.assert_called_once()` method) | Canonical enhancement: add `as_mock=True` optional param to wrap factory as MagicMock OR refactor 8 test sites to skip the assertion |
+| test_strategy_evaluation_required.py | Local factory sets `cursor.fetchall.return_value = []` default; tests rely on this default | Canonical enhancement: add `fetchall_default=[]` param OR per-test explicit `cur.fetchall.return_value = []` setup (10 sites) |
+| test_strategy_registry.py | Local factory sets `cursor.fetchall.return_value = []` default + 17 sites = highest complexity | Same as above; 17 site migration is high effort |
+| test_service_smoke.py | Local def sets `cursor.fetchone.return_value = (0,)` default; ~5 tests rely on implicit (0,) tuple sentinel per LL-198 root | Per-test audit: each test's reliance on (0,) default must be verified; some may need explicit override |
+
+**Recommendation**: defer 4 remaining migrations to next dedicated iter (after Plan mode user-alignment if canonical fixture enhancement is approved). Current 8/12 (67%) closure validates Option A pattern across 5 disparate shapes (bare / fetchall override / tuple-return method / id-iter / 2-query setup). Pattern proven; remaining work is finite + scope-bounded.
+
+### §9.9 Updated cite source for iter 116-118
+
+| Claim | path | line# | section | verify timestamp |
+|-------|------|-------|---------|------------------|
+| iter 116 migration | `backend/tests/test_announcement_processor.py` | full file | post-iter 116 | 2026-05-25 ~22:25 SH |
+| iter 117 migration | `backend/tests/test_factor_health_daily.py` | full file | post-iter 117 | 2026-05-25 ~22:40 SH |
+| qm_platform_attribution blocker | `backend/tests/test_qm_platform_attribution.py` | 787-810 | _make_mock_conn_factory + L810 factory.assert_called_once | 2026-05-25 ~22:45 SH iter 118 |
+| strategy_evaluation_required blocker | `backend/tests/test_strategy_evaluation_required.py` | 34-68 | _make_mock_conn_factory + fetchall default | 2026-05-25 ~22:00 SH iter 115 |
+| service_smoke (LL-198 root) blocker | `backend/tests/test_service_smoke.py` | 51-58 | _make_mock_conn default fetchone=(0,) | per LL-198 cite source iter 100 |
+
 ### §9.6 Cite source (4-element)
 
 | Claim | path | line# | section | verify timestamp |
