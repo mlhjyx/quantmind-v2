@@ -172,10 +172,68 @@ def compute_by_factor(
     return by_factor
 
 
+def compute_by_sector(
+    portfolio_weights: dict[str, float],
+    stock_industry_map: dict[str, str],
+    industry_returns: dict[str, float],
+) -> dict[str, float]:
+    """Per-sector P&L contribution via Brinson allocation effect (iter 61).
+
+    Daily attribution (single trade_date snapshot):
+        industry_weight = Σ_stock∈industry portfolio_weights[stock]
+        by_sector[industry] = industry_weight × industry_return
+
+    For multi-period Brinson-Fachler decomp (allocation + selection + interaction)
+    use backend/qm_platform/eval/attribution_brinson.py (research module, not
+    integrated to platform yet). Daily snapshot per QPB MVP 4.2 §2 spec is
+    sufficient for `by_sector` field.
+
+    沿用 SW1 (申万一级) industry classification convention (sustained
+    backend/data/sw1_industry_loader 体例 if exists, else caller provides
+    stock_industry_map). 铁律 31 Engine 纯计算 — 0 DB / HTTP / Redis.
+
+    Args:
+        portfolio_weights: {stock_code: weight} dict.
+        stock_industry_map: {stock_code: sw1_industry_name} mapping (caller-supplied).
+            Stocks missing from this dict are aggregated to "_unmapped" bucket.
+        industry_returns: {industry_name: cross_sectional_return} dict (decimal).
+
+    Returns:
+        {industry_name: contribution} dict. Empty when any input is empty.
+
+    Examples:
+        >>> weights = {"000001.SZ": 0.4, "600000.SH": 0.3, "000333.SZ": 0.3}
+        >>> map_ = {"000001.SZ": "银行", "600000.SH": "银行", "000333.SZ": "家电"}
+        >>> rets = {"银行": 0.002, "家电": -0.001}
+        >>> compute_by_sector(weights, map_, rets)
+        {'银行': 0.0014, '家电': -0.00030000000000000003}
+    """
+    by_sector: dict[str, float] = {}
+    if not portfolio_weights or not industry_returns:
+        return by_sector
+
+    # Aggregate portfolio weight per industry (silent _unmapped bucket for missing stocks)
+    industry_weights: dict[str, float] = {}
+    for stock_code, weight in portfolio_weights.items():
+        industry = stock_industry_map.get(stock_code, "_unmapped")
+        industry_weights[industry] = industry_weights.get(industry, 0.0) + weight
+
+    # Per-industry contribution: industry_weight × industry_return
+    for industry, ind_weight in industry_weights.items():
+        ind_ret = industry_returns.get(industry)
+        if ind_ret is None:
+            # silent_ok: industry without return data (e.g. _unmapped or rare sector) → 0 contribution
+            continue
+        by_sector[industry] = ind_weight * ind_ret
+
+    return by_sector
+
+
 __all__ = [
     "AttributionEngine",
     "DailyAttribution",
     "RegimeInfo",
     "compute_by_factor",
+    "compute_by_sector",
     "residual_exceeds_threshold",
 ]

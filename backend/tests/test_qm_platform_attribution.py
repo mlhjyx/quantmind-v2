@@ -18,6 +18,7 @@ from backend.qm_platform.eval.attribution import (
     DailyAttribution,
     RegimeInfo,
     compute_by_factor,
+    compute_by_sector,
     residual_exceeds_threshold,
 )
 
@@ -239,6 +240,126 @@ def test_compute_by_factor_attribution_dataclass_integration():
     )
     assert a.by_factor == {"f1": 0.002}
     assert sum(a.by_factor.values()) == pytest.approx(0.002)
+
+
+# ────────────────────────────────────────────────────────────────────
+# MVP 4.2 sub-iter 3 (iter 61): compute_by_sector — Brinson allocation effect
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_compute_by_sector_empty_inputs():
+    """Empty inputs → empty dict."""
+    assert compute_by_sector({}, {}, {}) == {}
+    assert compute_by_sector({"x": 1.0}, {}, {}) == {}
+    assert compute_by_sector({"x": 1.0}, {"x": "银行"}, {}) == {}
+    assert compute_by_sector({}, {"x": "银行"}, {"银行": 0.001}) == {}
+
+
+def test_compute_by_sector_single_industry():
+    """Single industry: weight × return."""
+    weights = {"000001.SZ": 0.5, "600000.SH": 0.5}
+    industry_map = {"000001.SZ": "银行", "600000.SH": "银行"}
+    returns = {"银行": 0.002}
+    result = compute_by_sector(weights, industry_map, returns)
+    # industry_weight = 1.0; contribution = 1.0 × 0.002 = 0.002
+    assert result == {"银行": pytest.approx(0.002)}
+
+
+def test_compute_by_sector_two_industries():
+    """Multi-industry breakdown."""
+    weights = {"000001.SZ": 0.4, "600000.SH": 0.3, "000333.SZ": 0.3}
+    industry_map = {"000001.SZ": "银行", "600000.SH": "银行", "000333.SZ": "家电"}
+    returns = {"银行": 0.002, "家电": -0.001}
+    result = compute_by_sector(weights, industry_map, returns)
+    # 银行 weight = 0.4+0.3 = 0.7; contribution = 0.7 × 0.002 = 0.0014
+    # 家电 weight = 0.3; contribution = 0.3 × -0.001 = -0.0003
+    assert result["银行"] == pytest.approx(0.0014)
+    assert result["家电"] == pytest.approx(-0.0003)
+    assert sum(result.values()) == pytest.approx(0.0011)
+
+
+def test_compute_by_sector_unmapped_stock_bucket():
+    """Stock missing from industry_map → "_unmapped" aggregation."""
+    weights = {"000001.SZ": 0.5, "999999.SZ": 0.5}  # 999999 not in map
+    industry_map = {"000001.SZ": "银行"}
+    returns = {"银行": 0.002, "_unmapped": 0.001}
+    result = compute_by_sector(weights, industry_map, returns)
+    # _unmapped weight = 0.5; contribution = 0.5 × 0.001 = 0.0005
+    assert result["_unmapped"] == pytest.approx(0.0005)
+    assert result["银行"] == pytest.approx(0.001)
+
+
+def test_compute_by_sector_unmapped_no_return_silent_skip():
+    """_unmapped bucket aggregated but no industry_return → silent skip from output."""
+    weights = {"x": 0.5, "y": 0.5}
+    industry_map = {"x": "银行"}  # y unmapped
+    returns = {"银行": 0.002}  # no _unmapped return
+    result = compute_by_sector(weights, industry_map, returns)
+    assert "_unmapped" not in result  # silent skip per 铁律 33 # silent_ok annotation
+    assert result["银行"] == pytest.approx(0.001)
+
+
+def test_compute_by_sector_industry_with_no_portfolio_stock():
+    """Industry in returns but no portfolio stock → 0 contribution (not in output)."""
+    weights = {"x": 1.0}
+    industry_map = {"x": "银行"}
+    returns = {"银行": 0.002, "家电": 0.005}  # 家电 has no portfolio stock
+    result = compute_by_sector(weights, industry_map, returns)
+    assert "家电" not in result
+    assert result == {"银行": pytest.approx(0.002)}
+
+
+def test_compute_by_sector_negative_returns():
+    """Negative industry returns → negative contribution."""
+    weights = {"x": 0.5, "y": 0.5}
+    industry_map = {"x": "电子", "y": "电子"}
+    returns = {"电子": -0.003}
+    result = compute_by_sector(weights, industry_map, returns)
+    assert result == {"电子": pytest.approx(-0.003)}
+
+
+def test_compute_by_sector_attribution_dataclass_integration():
+    """compute_by_sector output integrates with DailyAttribution.by_sector field."""
+    weights = {"x": 1.0}
+    industry_map = {"x": "银行"}
+    returns = {"银行": 0.002}
+    by_sector = compute_by_sector(weights, industry_map, returns)
+
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 27),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.01,
+        by_sector=by_sector,
+    )
+    assert a.by_sector == {"银行": pytest.approx(0.002)}
+
+
+def test_compute_by_sector_3_industries_sw1_sample():
+    """SW1 industry sample with 3 sectors (banking/electronics/consumer)."""
+    weights = {
+        "000001.SZ": 0.2,
+        "600036.SH": 0.2,  # both 银行
+        "002475.SZ": 0.2,
+        "002241.SZ": 0.2,  # both 电子
+        "600519.SH": 0.2,  # 食品饮料
+    }
+    industry_map = {
+        "000001.SZ": "银行",
+        "600036.SH": "银行",
+        "002475.SZ": "电子",
+        "002241.SZ": "电子",
+        "600519.SH": "食品饮料",
+    }
+    returns = {"银行": 0.0010, "电子": 0.0030, "食品饮料": -0.0020}
+    result = compute_by_sector(weights, industry_map, returns)
+    # 银行 = 0.4 × 0.001 = 0.0004
+    # 电子 = 0.4 × 0.003 = 0.0012
+    # 食品饮料 = 0.2 × -0.002 = -0.0004
+    assert result["银行"] == pytest.approx(0.0004)
+    assert result["电子"] == pytest.approx(0.0012)
+    assert result["食品饮料"] == pytest.approx(-0.0004)
+    assert sum(result.values()) == pytest.approx(0.0012)
 
 
 def test_attribution_engine_protocol_structural_typing():
