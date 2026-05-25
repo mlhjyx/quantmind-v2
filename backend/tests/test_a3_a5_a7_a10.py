@@ -7,7 +7,6 @@ A10: 相同输入两次运行回测结果完全一致（mergesort 确定性）
 """
 
 from datetime import date
-from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -183,23 +182,22 @@ class TestA5VolumeCap:
 class TestA7UnrealizedPnl:
     """A7: update_nav_sync 正确计算并写入 avg_cost / unrealized_pnl。"""
 
-    def _make_mock_conn(self):
-        """构造 mock psycopg2 连接。"""
-        conn = MagicMock()
-        cur = MagicMock()
-        conn.cursor.return_value = cur
-        # fetchone 默认返回 (初始资金,) 作为 prev_nav/peak_nav
+    # iter 113: migrated to conftest `mock_conn` fixture (iter 110 pilot canonical).
+    # Per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A.
+    # Local method `_make_mock_conn` deleted; tests now inject `mock_conn` fixture
+    # + set fetchone.side_effect explicitly per-test (per LL-198 B1 cure — no
+    # implicit (0,) default; opt-in required).
+
+    def test_avg_cost_written_when_provided(self, mock_conn):
+        """avg_costs 提供时 → INSERT 包含 avg_cost 和 unrealized_pnl。"""
+        from app.services.paper_trading_service import PaperTradingService
+
+        conn = mock_conn
+        cur = conn.cursor()
         cur.fetchone.side_effect = [
             None,  # prev_nav (无历史)
             (1_000_000.0,),  # peak_nav
         ]
-        return conn, cur
-
-    def test_avg_cost_written_when_provided(self):
-        """avg_costs 提供时 → INSERT 包含 avg_cost 和 unrealized_pnl。"""
-        from app.services.paper_trading_service import PaperTradingService
-
-        conn, cur = self._make_mock_conn()
         holdings = {"000001.SZ": 1000}
         prices = {"000001.SZ": 12.0}
         avg_costs = {"000001.SZ": 10.0}  # 成本10元/股
@@ -226,11 +224,13 @@ class TestA7UnrealizedPnl:
         assert 10.0 in args, f"avg_cost=10.0 应在 INSERT 参数中，实际={args}"
         assert 2000.0 in args, f"unrealized_pnl=2000.0 应在 INSERT 参数中，实际={args}"
 
-    def test_avg_cost_null_when_not_provided(self):
+    def test_avg_cost_null_when_not_provided(self, mock_conn):
         """avg_costs=None → INSERT 中 avg_cost=None, unrealized_pnl=None。"""
         from app.services.paper_trading_service import PaperTradingService
 
-        conn, cur = self._make_mock_conn()
+        conn = mock_conn
+        cur = conn.cursor()
+        cur.fetchone.side_effect = [None, (1_000_000.0,)]
         holdings = {"000001.SZ": 1000}
         prices = {"000001.SZ": 12.0}
 
@@ -254,11 +254,13 @@ class TestA7UnrealizedPnl:
         none_count = sum(1 for a in args if a is None)
         assert none_count >= 2, f"avg_cost/unrealized_pnl 应为 None，参数={args}"
 
-    def test_zero_avg_cost_unrealized_pnl_null(self):
+    def test_zero_avg_cost_unrealized_pnl_null(self, mock_conn):
         """avg_cost=0 → unrealized_pnl=NULL（避免除零）。"""
         from app.services.paper_trading_service import PaperTradingService
 
-        conn, cur = self._make_mock_conn()
+        conn = mock_conn
+        cur = conn.cursor()
+        cur.fetchone.side_effect = [None, (1_000_000.0,)]
         holdings = {"000001.SZ": 1000}
         prices = {"000001.SZ": 12.0}
         avg_costs = {"000001.SZ": 0.0}  # 0成本
