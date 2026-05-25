@@ -1015,6 +1015,10 @@ user: |
 
 ### §9.1 24h cycle 时序图
 
+> **Last fresh verify 2026-05-25 17:45 SH iter 99** per DEV_SCHEDULER.md §〇 24 Beat entries (line 28-89 + beat_schedule.py L48-490).
+> **Cite 4-element**: path=`backend/app/tasks/beat_schedule.py` / line#=L48-490 / section=CELERY_BEAT_SCHEDULE / verify_ts=2026-05-25 17:45 SH iter 99.
+> **Refresh source**: docs/audit/SCHEDULER_V3_CYCLE_DRIFT_2026_05_25.md §3+§5 — add 14 missing Beat + retire PMS 14:30 (IC-2b 2026-05-15, V3 chain covers via L1 RealtimeRiskEngine sustained).
+
 ```mermaid
 sequenceDiagram
     participant Markets
@@ -1026,25 +1030,42 @@ sequenceDiagram
     participant User
     participant Broker as broker_qmt
     participant L5 as L5 (Reflect)
+    participant Wave4 as Wave4 (Attribution/Backup)
+    participant Meta as Meta-Monitor
 
-    Note over Markets,L5: [Pre-Market 8:30]
-    L0->>L0: News 6 src ingest (overnight)
-    L0->>L0: NewsClassifier V4-Flash
-    L2->>L2: Bull/Bear regime (Tier B) update
-    L3->>L3: Update thresholds (Calm/Stress/Crisis)
+    Note over Markets,Meta: [Cross-cutting all-hours background]
+    L0->>L0: outbox-publisher-tick 30s (event_outbox → Redis Streams)
+    Meta->>Meta: meta-monitor-tick */5min (HC-1b 元告警, 7 polled rules)
+    L4->>L4: risk-l4-broker-stuck-sweep */5min (HC-2b2 G7, CONFIRMED stuck retry)
+
+    Note over Markets,Meta: [Overnight 02:00-04:30]
+    Wave4->>Wave4: daily-backup-run 02:30 (DB pg_dump + FS tar + Config tar)
+    Wave4->>Wave4: slippage-calibration-quarterly Q-start 1日 02:00 (铁律 18 季度复核)
+    Wave4->>Wave4: weekly-backup-verify Sun 04:00 (restore + RPO/RTO snapshot)
+    Wave4->>Wave4: reports-cleanup-weekly Sun 04:30 (FS retention 90d/20 per tuple)
+
+    Note over Markets,Meta: [Pre-Market 03:00 / 07:00 + Monthly 1日 08:00 / 09:00]
+    L0->>L0: news-ingest-5-source-cadence 3/7/11/15/19/23 (6/day, V4-Flash classify)
+    L0->>L0: news-ingest-rsshub-cadence 3/7/11/15/19/23 (6/day, RSSHub jin10)
+    Wave4->>Wave4: llm-cost-monthly-audit 月初 1日 08:00 (V3 §20.1 budget cap)
+    L5->>L5: risk-reflector-monthly 月初 1日 09:00 (5 维月复盘)
     L0->>User: P0 push (overnight P0 news, if any)
 
-    Note over Markets,L5: [Open Auction 9:15-9:25]
+    Note over Markets,Meta: [Open Auction 9:15-9:25 + 09:00 Regime]
+    L2->>L2: risk-market-regime-0900 (Bull/Bear V4-Pro #1)
     Markets->>L0: 集合竞价 tick
     L1->>L1: GapDownOpen check
     L1-->>User: P0 alert (gap > -5%, candidate sell)
     User-->>L4: confirm staged sell @ 9:30 open
 
-    Note over Markets,L5: [Trading 9:30-15:00]
+    Note over Markets,Meta: [Trading 9:30-15:00]
     Markets->>L0: 实时 tick (xtquant subscribe_quote)
     L0->>L1: tick stream
     L1->>L1: 8 RealtimeRiskRule eval
+    L3->>L3: risk-dynamic-threshold-5min */5 9-14 (DynamicThresholdEngine → RedisThresholdCache TTL=300s)
     L1->>L3: 读 thresholds_cache
+    L4->>L4: risk-l4-sweep-1min * 9-14 (PENDING_CONFIRM expired → TIMEOUT_EXECUTED)
+    L0->>L0: announcement-ingest-trading-hours 9,11,13,15,17:15 (cninfo P0 公告流)
     alt Limit Down detected
         L1->>L0: P0 trigger
         L0->>L2: query sentiment + fundamental
@@ -1055,23 +1076,29 @@ sequenceDiagram
         L4->>Broker: 14:55 execute (if confirmed)
         Broker->>L4: status (56=success / 57=cancel)
     end
+    L2->>L2: risk-market-regime-1430 (Bull/Bear V4-Pro #2)
 
-    Note over Markets,L5: [Daily PMS Beat 14:30]
-    L1->>L1: 10 sustained PMSRule eval (daily)
-    L1-->>User: P2 daily summary
+    Note over Markets,Meta: [Daily PMS 14:30 — RETIRED 2026-05-15 IC-2b]
+    L1->>L1: (V3 chain covers via L1 RealtimeRiskEngine subscribe_quote tick — PMSRule v1 14:30 Beat 已 retire)
 
-    Note over Markets,L5: [Close 15:00-16:00]
-    L0->>L0: fundamental_context_daily ingest
+    Note over Markets,Meta: [Close 15:00-17:45]
+    L2->>L2: risk-market-regime-1600 (Bull/Bear V4-Pro #3)
+    L0->>L0: fundamental-context-daily-1600 (AKShare stock_value_em)
     L4->>L4: outcome tracking (sell status / P&L)
+    Wave4->>Wave4: risk-metrics-daily-extract 16:30 Mon-Fri (V3 §13.2 元监控 daily aggregator)
+    Wave4->>Wave4: daily-attribution-compute 16:30 Mon-Fri (MVP 4.2 iter 65, T+1 attribution)
+    L0->>L0: daily-quality-report 17:40 Mon-Fri (DATA_SYSTEM_V1 P1-2)
 
-    Note over Markets,L5: [Sunday 19:00 (weekly)]
-    L5->>L5: RiskReflector V4-Pro (5 维反思)
+    Note over Markets,Meta: [Friday 19:00 + Sunday 19:00 + Sunday 22:00]
+    L0->>L0: factor-lifecycle-weekly Fri 19:00 (DEV_AI_EVOLUTION V2.1 §3.1)
+    L5->>L5: risk-reflector-weekly Sun 19:00 (RiskReflector V4-Pro 5 维周复盘)
     L5->>L0: lesson → risk_memory (RAG embed)
     L5->>User: weekly report push
     User->>L1: approve param adjustments
     User->>L3: approve threshold adjustments
+    L0->>L0: gp-weekly-mining Sun 22:00 (GP 因子挖掘 pop=100 gen=50 islands=4)
 
-    Note over Markets,L5: [Monday cycle restart]
+    Note over Markets,Meta: [Monday cycle restart]
 ```
 
 ### §9.2 闭环关键路径 (lesson learned 反馈)
