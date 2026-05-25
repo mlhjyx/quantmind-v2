@@ -6776,3 +6776,45 @@ How could this have been detected sooner?
 **ADR backref**: 候选 ADR-094 (PR description framing SOP — mutation-test-backed bug-fix claims).
 
 **Sediment trigger**: 2026-05-24 L4+R loop iter 36 reviewer P1-1 catch (PR #464, commit e106f0f); meta-LL appended iter 40 via PR pending merge per §5 same-commit-ship pair with paper_trading_service.py:361 signal→exec timing DEFER.
+
+## LL-195 — Major milestone closure → cross-doc SSOT cascade silent drift inevitable (post-Wave-4-closeout 8-iter cascade canonical example, 2026-05-25)
+
+**Pattern** (iter 76-83 L4+R loop, Wave 4 100% closeout iter 51-75 single-day):
+
+When a major Wave/Phase/MVP completes (≥3 MVP cumulative or single MVP with cross-doc impact), the closure delta propagates as silent drift across multiple SSOT documents simultaneously. Each SSOT serves a different reader audience and gets consulted independently → none surface drift via tests/CI/lint. Drift accumulates and propagates to misleading future sessions (new session reads stale doc as truth, makes decisions on stale data).
+
+**Observed cascade in iter 76-83** (Wave 4 closure 2026-05-25, 8 SSOTs drifted simultaneously):
+
+| SSOT | Drift | Reader audience | Discovery iter |
+|------|-------|-----------------|----------------|
+| `docs/DEV_SCHEDULER.md` §〇 | "20 active entries" stale (true=24, 4 missing Beat) | Operations team / Beat config readers | iter 76 |
+| `SYSTEM_STATUS.md` §0 | No Wave 4 closeout section (§0.-5 Plan v9 last) | Architecture overview readers / new session resume | iter 76 |
+| `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` v1.16 | Status "进 Wave 4 主线" stale (true=Wave 4 ✅ 4/4) | Architects / roadmap readers | iter 77 |
+| `docs/SOP_DISASTER_RECOVERY.md` v1.0 | 2026-03-28 stamp; 0 mention of MVP 4.4 backup SDK + Beat | Incident response operators | iter 78 |
+| `docs/mvp/MVP_4_1_observability.md` | Status "🟡 批 1 进行中 PR #131 待开" (Wave 4 launch stamp) | Future MVP readers | iter 79 |
+| 3× `docs/mvp/MVP_4_{2,3,4}_*.md` | Spec source `[QPB v1.16]` stale (iter 77 bumped v1.17) | Future MVP readers | iter 79 |
+| `pyproject.toml` markers | `slow` marker unregistered → PytestUnknownMarkWarning | Test framework | iter 80 |
+| `CLAUDE.md` L104 + L531 + L546 | "项目无 root pyproject.toml" stale; Wave 4 MVP 4.1 row "🟡 进行中"; test baseline 6251 stale (true=6714) | New sessions startup read | iter 80+83 |
+
+**Why this matters**:
+
+- Silent drift propagates to misleading future sessions: new CC session reads "Wave 4 MVP 4.1 进行中" + "项目无 pyproject.toml" + "DEV_SCHEDULER 20 Beat entries" → makes plan on stale truth → wastes iterations rediscovering closure.
+- Each SSOT serves a different audience; no single test/CI catches cross-SSOT cascade.
+- Even short delay (Wave 4 closed 2026-05-25 morning iter 75 → discovered drift 2026-05-25 evening iter 76) accumulates 8 SSOT drift.
+- Cascade is INEVITABLE post-major-closure — design assumption that "MVP design doc + STATUS_REPORT + git commit log" alone capture closure is incomplete; downstream SSOT readers don't consult any of those.
+
+**Fix SOP** (post-closure cascade sweep, mandatory within ≤1 session of milestone closure):
+
+1. **Trigger detection**: any of (a) Wave全完结, (b) Phase 全完结, (c) ≥3 MVP cumulative single-day, (d) single MVP with ≥3 cross-domain code impact → trigger cascade sweep.
+2. **Scope identification**: scan §-1 cross-domain HIGH priority candidates + 8 root doc SSOT (CLAUDE.md / IRONLAWS.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / QPB / SYSTEM_BLUEPRINT / V3_DESIGN) + each affected `docs/mvp/MVP_X_*.md` + relevant SOP/runbook + relevant DEV_*.md.
+3. **Batched-mode cascade** (per L4R loop spec §v8.1): 1 iter per SSOT domain (per §v8.6 cross-domain rotation), batched <20 lines auto-batch 3-5 per iter, smoke green at every pre-push.
+4. **Consolidated STATUS_REPORT** post-cascade: single `docs/audit/STATUS_REPORT_YYYY_MM_DD_<closure>_sediment_cascade.md` summarizing iter range + per-iter drift evidence + 6/6 domain rotation discipline + red-line sustained + X10 compliance + user 决议 points (sediment NOT offer per X10).
+5. **CLAUDE.md §当前进度 final row update**: closes cascade — the "新 session 冷启动必读" entry must reflect post-closure state, not stale milestone label.
+
+**Heuristic backref**: #14 Documentation Lying (drift between code reality + design doc claims), #15 Test-Reality Gap, #17 Cross-Component Cascade Audit.
+
+**Cross-ref**: `docs/audit/STATUS_REPORT_2026_05_25_wave4_closeout_sediment_cascade.md` (canonical example iter 76-81 sediment cascade), LL-098 X10 (forward-progress detection — cascade sweep is NOT forward offer; it's catching-up), LL-106 (8-doc fresh-read SOP — closure cascade is the inverse pattern: doc-side write after code closure, vs fresh-read is code-side validation after doc edits), L4R loop spec §v8.1 batched mode + §v8.6 domain rotation.
+
+**ADR backref**: 候选 future ADR (post-closure cascade sweep SOP formal codification).
+
+**Sediment trigger**: 2026-05-25 L4+R loop iter 76-84 8-iter Wave 4 closeout cascade (commits `4711242` → `5616b61` → `3f1518b` → `66fea1a` → `e3f79f8` → `9d34878` → `f93bbf9` → `a9b1644` → iter 84 本 LL append commit). Future Wave 5 / AI Layer 3-4 / V3 sprint closures must apply this SOP.
