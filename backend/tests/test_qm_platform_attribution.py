@@ -17,6 +17,7 @@ from backend.qm_platform.eval.attribution import (
     AttributionEngine,
     DailyAttribution,
     RegimeInfo,
+    compute_by_cost,
     compute_by_factor,
     compute_by_sector,
     residual_exceeds_threshold,
@@ -360,6 +361,124 @@ def test_compute_by_sector_3_industries_sw1_sample():
     assert result["电子"] == pytest.approx(0.0012)
     assert result["食品饮料"] == pytest.approx(-0.0004)
     assert sum(result.values()) == pytest.approx(0.0012)
+
+
+# ────────────────────────────────────────────────────────────────────
+# MVP 4.2 sub-iter 4 (iter 62): compute_by_cost — trade_log aggregation
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_compute_by_cost_empty_trades():
+    """Empty trades list → all 4 categories at 0.0."""
+    result = compute_by_cost([])
+    assert result == {
+        "commission": 0.0,
+        "slippage": 0.0,
+        "impact": 0.0,
+        "overnight_gap": 0.0,
+    }
+
+
+def test_compute_by_cost_single_trade_all_fields():
+    """Single trade with all 4 cost fields, nav=1.0 → output in yuan (negative)."""
+    trades = [{"commission": 5.0, "slippage": 2.0, "impact": 1.0, "overnight_gap": 0.5}]
+    result = compute_by_cost(trades, nav=1.0)
+    # All costs are negative P&L impact when nav=1.0
+    assert result == {
+        "commission": -5.0,
+        "slippage": -2.0,
+        "impact": -1.0,
+        "overnight_gap": -0.5,
+    }
+
+
+def test_compute_by_cost_normalization_decimal():
+    """nav=100000 → output is decimal fraction (yuan / nav)."""
+    trades = [{"commission": 5.0, "slippage": 2.0, "impact": 1.0, "overnight_gap": 0.0}]
+    result = compute_by_cost(trades, nav=100000.0)
+    assert result["commission"] == pytest.approx(-5.0 / 100000)
+    assert result["slippage"] == pytest.approx(-2.0 / 100000)
+    assert result["impact"] == pytest.approx(-1.0 / 100000)
+    assert result["overnight_gap"] == 0.0
+
+
+def test_compute_by_cost_multiple_trades_aggregation():
+    """Multi-trade aggregation: sums per category before normalization."""
+    trades = [
+        {"commission": 5.0, "slippage": 2.0, "impact": 1.0, "overnight_gap": 0.0},
+        {"commission": 5.0, "slippage": 3.0, "impact": 1.5, "overnight_gap": 0.5},
+        {"commission": 10.0, "slippage": 4.0, "impact": 2.0, "overnight_gap": 1.0},
+    ]
+    result = compute_by_cost(trades, nav=100000.0)
+    # commission total = 20, slippage total = 9, impact total = 4.5, overnight_gap total = 1.5
+    assert result["commission"] == pytest.approx(-20.0 / 100000)
+    assert result["slippage"] == pytest.approx(-9.0 / 100000)
+    assert result["impact"] == pytest.approx(-4.5 / 100000)
+    assert result["overnight_gap"] == pytest.approx(-1.5 / 100000)
+
+
+def test_compute_by_cost_missing_field_silent_zero():
+    """Trade missing some cost fields → 0 contribution for missing (silent skip per 铁律 33)."""
+    trades = [{"commission": 5.0}]  # only commission, others missing
+    result = compute_by_cost(trades, nav=1.0)
+    assert result == {
+        "commission": -5.0,
+        "slippage": 0.0,
+        "impact": 0.0,
+        "overnight_gap": 0.0,
+    }
+
+
+def test_compute_by_cost_negative_slippage_positive_for_portfolio():
+    """Negative slippage value (favorable fill) → positive P&L impact."""
+    trades = [{"commission": 0.0, "slippage": -2.0, "impact": 0.0, "overnight_gap": 0.0}]
+    result = compute_by_cost(trades, nav=1.0)
+    # slippage of -2 yuan → P&L = -(-2)/1 = +2 (favorable fill saves money)
+    assert result["slippage"] == 2.0
+
+
+def test_compute_by_cost_zero_nav_raises():
+    """nav<=0 → ValueError per 铁律 33 (反 silent zero division)."""
+    with pytest.raises(ValueError, match="nav must be positive"):
+        compute_by_cost([{"commission": 5.0}], nav=0.0)
+    with pytest.raises(ValueError, match="nav must be positive"):
+        compute_by_cost([{"commission": 5.0}], nav=-1.0)
+
+
+def test_compute_by_cost_pt_realistic_pt_topn5_day():
+    """PT realistic 5-stock day: ~commission 50 yuan + slippage 30 yuan + impact 20 yuan."""
+    # 5 trades, 国金 commission ~10 yuan/trade min, slippage realistic ~6 yuan/trade
+    trades = [
+        {"commission": 10.0, "slippage": 6.0, "impact": 4.0, "overnight_gap": 0.0},
+        {"commission": 10.0, "slippage": 6.0, "impact": 4.0, "overnight_gap": 0.0},
+        {"commission": 10.0, "slippage": 6.0, "impact": 4.0, "overnight_gap": 0.0},
+        {"commission": 10.0, "slippage": 6.0, "impact": 4.0, "overnight_gap": 0.0},
+        {"commission": 10.0, "slippage": 6.0, "impact": 4.0, "overnight_gap": 0.0},
+    ]
+    nav = 993520.66  # red line cash
+    result = compute_by_cost(trades, nav=nav)
+    # commission: -50/993520.66 ≈ -5.03e-05 (-0.5 bps)
+    assert result["commission"] == pytest.approx(-50.0 / nav)
+    assert result["slippage"] == pytest.approx(-30.0 / nav)
+    assert result["impact"] == pytest.approx(-20.0 / nav)
+    # Total cost as decimal
+    total_cost = sum(result.values())
+    assert total_cost == pytest.approx(-100.0 / nav)
+
+
+def test_compute_by_cost_attribution_dataclass_integration():
+    """compute_by_cost output integrates with DailyAttribution.by_cost field."""
+    trades = [{"commission": 5.0, "slippage": 2.0, "impact": 1.0, "overnight_gap": 0.0}]
+    by_cost = compute_by_cost(trades, nav=100000.0)
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 27),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.005,
+        by_cost=by_cost,
+    )
+    assert "commission" in a.by_cost
+    assert a.by_cost["commission"] < 0  # cost is negative P&L impact
 
 
 def test_attribution_engine_protocol_structural_typing():

@@ -229,10 +229,75 @@ def compute_by_sector(
     return by_sector
 
 
+_COST_FIELDS = ("commission", "slippage", "impact", "overnight_gap")
+
+
+def compute_by_cost(
+    trades: list[dict[str, float]],
+    nav: float = 1.0,
+) -> dict[str, float]:
+    """Aggregate trade-level cost fields into per-category P&L impact (iter 62).
+
+    Daily attribution single-day breakdown (per MVP_4_2_attribution.md §4 step 4):
+        per_category_total_yuan = Σ_trade trade[category]
+        by_cost[category] = -per_category_total_yuan / nav  (negative for costs)
+
+    Cost categories (per QPB MVP 4.2 §2 spec):
+        - commission: brokerage trade fee (国金 0.854/10000 + min 5 yuan + 印花税 + 过户费)
+        - slippage: actual_price vs expected_price difference × shares
+        - impact: market impact for large orders (3-factor slippage_model)
+        - overnight_gap: open-to-close gap effect (if PT not at close)
+
+    Trade-level fields convention (沿用 trade_log DDL line ~349 + slippage_model.py):
+        trade = {"commission": yuan, "slippage": yuan, "impact": yuan, "overnight_gap": yuan}
+        positive yuan → cost incurred → negative portfolio P&L impact
+
+    沿用 backend/engines/slippage_model.py 3-factor decomposition convention.
+    铁律 31 Engine 纯计算 — 0 DB / HTTP / Redis (trades dict 由 caller fetch).
+
+    Args:
+        trades: list of trade-level cost dicts (commission_yuan / slippage_yuan /
+            impact_yuan / overnight_gap_yuan fields).
+        nav: portfolio NAV in yuan for normalization (default 1.0 = no normalization,
+            output in yuan). Set nav=actual_portfolio_yuan for decimal output.
+
+    Returns:
+        {category: P&L_impact} dict with 4 categories. All values negative if costs
+        incurred. Output in yuan if nav=1.0; decimal fraction (e.g. -0.0008 = -8 bps)
+        if nav=actual_portfolio_yuan.
+
+    Examples:
+        >>> trades = [
+        ...     {"commission": 5.0, "slippage": 2.0, "impact": 1.0, "overnight_gap": 0.0},
+        ...     {"commission": 5.0, "slippage": 3.0, "impact": 1.5, "overnight_gap": 0.5},
+        ... ]
+        >>> compute_by_cost(trades, nav=100000.0)
+        {'commission': -0.0001, 'slippage': -5e-05, 'impact': -2.5e-05, 'overnight_gap': -5e-06}
+    """
+    by_cost: dict[str, float] = {field: 0.0 for field in _COST_FIELDS}
+    if not trades:
+        return by_cost
+
+    totals: dict[str, float] = dict.fromkeys(_COST_FIELDS, 0.0)
+    for trade in trades:
+        for field_name in _COST_FIELDS:
+            value = trade.get(field_name, 0.0)
+            # silent_ok: missing field → 0 contribution (sustained Brinson convention)
+            totals[field_name] += value
+
+    # Normalize by NAV; costs are negative P&L impact
+    if nav <= 0:
+        # Defensive: nav must be positive; raise per 铁律 33 vs silent zero division
+        raise ValueError(f"nav must be positive for normalization; got {nav}")
+
+    return {field_name: -total / nav for field_name, total in totals.items()}
+
+
 __all__ = [
     "AttributionEngine",
     "DailyAttribution",
     "RegimeInfo",
+    "compute_by_cost",
     "compute_by_factor",
     "compute_by_sector",
     "residual_exceeds_threshold",
