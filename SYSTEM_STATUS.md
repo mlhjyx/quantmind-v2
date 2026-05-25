@@ -1,8 +1,43 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** + **Plan v9 Design-Reality Reconciliation closure (2026-05-20, §0.-5)** ⭐
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** + **Plan v9 Design-Reality Reconciliation closure (2026-05-20, §0.-5)** + **Wave 4 100% closure iter 51-75 single-day (2026-05-25, §0.-6)** ⭐
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.-6 Wave 4 100% closure (iter 51-75 single-day, 2026-05-25) ⭐
+
+> **Wave 4 全 MVP closeout 1 single day**: 主线 = Wave 4 平台层封闭. 4 MVP cumulative iter 51-75 (25 iterations 单日) — 226+ cumulative unit tests / 5 new Beat entries / 5 new backup orchestrators / 5 new ci/ orchestrators / 1 .github/workflows/ci.yml. 详细 sprint state 走 Anthropic memory `project_sprint_state.md` 顶部 Session 50+1 ~ iter 76 handoff.
+
+### Wave 4 4-MVP rollup table
+
+| MVP | Iter range | Status | 关键产出 |
+|-----|-----------|--------|---------|
+| 4.1 Observability | iter 51-61 (batch 1+2.1+2.2+3.x) | ✅ 17/17 | PostgresAlertRouter / MetricExporter / AlertRulesEngine / 17 scripts SDK migration |
+| 4.2 Performance Attribution | iter 62-68 | ✅ 7/7 | attribution_tasks + daily-attribution-compute Beat (16:30 Mon-Fri) |
+| 4.3 CI/CD | iter 69-72 | ✅ 7/7 | 5 ci/ orchestrators + `.github/workflows/ci.yml` + entry script |
+| 4.4 Backup & DR | iter 73-75 | ✅ 7/7 | 5 backup orchestrators (DB pg_dump / Filesystem tar / Config tar / restore_verify / RPO/RTO) + daily-backup-run 02:30 Beat + weekly-backup-verify Sun 04:00 Beat |
+
+### Wave 4 cumulative artifact counts
+
+| 类目 | iter 51-75 增量 |
+|------|----------------|
+| Cumulative unit tests added | ~226+ |
+| NEW Beat entries (production-ready) | 5 (4.2 attribution + 4.4 daily-backup + 4.4 weekly-verify + earlier 4.1 etc) |
+| NEW backup orchestrators | 5 (db / fs / config / restore_verify / rpo_rto) |
+| NEW ci/ orchestrators | 5 |
+| NEW .github/workflows/ | 1 (ci.yml) |
+| main HEAD at iter 76 entry | `b321f44` (iter 76: test lambda short-circuit bug fix from iter 74) |
+
+### Wave 4 → Next milestone transition
+
+主线 transition to **PT 重启 gate 验证 + AI 闭环 Layer 3-4 启动** (Wave 4 平台层封闭后聚焦交易侧). PT 重启 gate prerequisite 见 [SHUTDOWN_NOTICE_2026_04_30 §9](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md). 历史 V4 路线图 (Phase 1.1-3 + Phase 4) 全 ✅ 或 NO-GO 沉淀. Layer 3-4 ADR-028 Q3-Q4 trigger sustained.
+
+### iter 76 cross-domain doc drift fix sediment (本 commit)
+
+- DEV_SCHEDULER §〇 Beat table 20 → **24 entries** drift fix (Wave 4 + 3 entries sediment)
+- SYSTEM_STATUS §0 — 本 §0.-6 section 新增 (Wave 4 closure formal sediment)
 
 ---
 

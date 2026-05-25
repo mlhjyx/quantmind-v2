@@ -25,11 +25,12 @@ Celery Beat(定时) + Celery Worker(执行) + Redis(Broker)。统一框架，不
 
 ---
 
-## 〇、Beat + Schtask 真实清单 (2026-05-20 Plan v9 audit sediment)
+## 〇、Beat + Schtask 真实清单 (2026-05-25 iter 76 Wave 4 sediment refresh)
 
-> **真值来源**: `backend/app/tasks/beat_schedule.py` (实测 20 active entries) + `scripts/audit_schtask_freshness.py` (27 schtask tasks).
+> **真值来源**: `backend/app/tasks/beat_schedule.py` (实测 **24 active entries**, iter 76 fresh grep) + `scripts/audit_schtask_freshness.py` (27 schtask tasks).
+> **iter 76 drift fix**: Wave 4 MVP 4.2 + 4.4 增 4 entries (reports-cleanup-weekly iter 30 + daily-attribution-compute iter 65 + daily-backup-run iter 75 + weekly-backup-verify iter 75) — 5-20 audit 时仅 20 entries, sediment 后未同步.
 
-### Celery Beat (backend/app/tasks/beat_schedule.py, 20 active entries)
+### Celery Beat (backend/app/tasks/beat_schedule.py, 24 active entries)
 
 | # | Key | Task | Schedule |
 |---|-----|------|----------|
@@ -53,6 +54,10 @@ Celery Beat(定时) + Celery Worker(执行) + Redis(Broker)。统一框架，不
 | 18 | meta-monitor-tick | app.tasks.meta_monitor_tasks.meta_monitor_tick | */5 all hours |
 | 19 | llm-cost-monthly-audit | app.tasks.llm_cost_audit_tasks.monthly_audit | 1st of month 08:00 |
 | 20 | slippage-calibration-quarterly | app.tasks.slippage_calibration_tasks.quarterly_recalibrate | Q1/Q2/Q3/Q4 1日 02:00 |
+| 21 | reports-cleanup-weekly | app.tasks.report_tasks.cleanup_old_reports | Sun 04:30 (max_age_days=90, keep_per_tuple=20) |
+| 22 | daily-attribution-compute | app.tasks.attribution_tasks.daily_attribution_compute_task | Mon-Fri 16:30 (MVP 4.2 iter 65) |
+| 23 | daily-backup-run | app.tasks.backup_tasks.daily_backup_run_task | daily 02:30 (MVP 4.4 iter 75, DB+FS+Config batched) |
+| 24 | weekly-backup-verify | app.tasks.backup_tasks.weekly_backup_verify_task | Sun 04:00 (MVP 4.4 iter 75, restore_verify + RPO/RTO) |
 
 ### Calendar gate status (Plan 1 — DEV_SCHEDULER §6.12 Phase I, 2026-05-20)
 
