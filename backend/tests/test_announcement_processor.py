@@ -145,34 +145,32 @@ def _make_news_item(
     )
 
 
-def _make_mock_conn(announcement_id_seq: list[int]) -> MagicMock:
-    """Helper — build mock psycopg2 conn with cursor.fetchone returning preset IDs.
+# iter 116: migrated to conftest `mock_conn` fixture (iter 110 pilot canonical).
+# Per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A + §9.2
+# MIGRATE recommendation. Local _make_mock_conn def deleted; tests now inject
+# `mock_conn` fixture + set fetchone.side_effect per-test with RETURNING-id tuples
+# (psycopg2 RETURNING semantics: `cursor.fetchone.side_effect = [(aid,) for aid in ids]`).
 
-    Args:
-        announcement_id_seq: list of announcement_id values RETURNING clause yields.
+
+def _set_announcement_id_seq(conn: MagicMock, ids: list[int]) -> None:
+    """Helper: set cursor.fetchone.side_effect to yield RETURNING-id tuples.
+
+    Per iter 116 migration — replaces local _make_mock_conn semantic without
+    duplicating MagicMock construction (canonical fixture handles construction).
     """
-    conn = MagicMock()
-    cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-
-    # fetchone returns single-element tuple of next id (psycopg2 RETURNING semantics)
-    fetchone_iter = iter([(aid,) for aid in announcement_id_seq])
-    cursor.fetchone = MagicMock(side_effect=lambda: next(fetchone_iter))
-
-    conn.cursor = MagicMock(return_value=cursor)
-    return conn
+    conn.cursor().fetchone.side_effect = [(aid,) for aid in ids]
 
 
 class TestAnnouncementProcessorIngest:
     """AnnouncementProcessor.ingest — full orchestration with mocked DataPipeline + conn."""
 
-    def test_ingest_material_event_inserts(self) -> None:
+    def test_ingest_material_event_inserts(self, mock_conn) -> None:
         # Given: DataPipeline returns 1 material_event item
         items = [_make_news_item(title="关于重大资产重组事项的进展公告")]
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=items)
-        conn = _make_mock_conn([12345])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [12345])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
 
@@ -201,7 +199,7 @@ class TestAnnouncementProcessorIngest:
         # conn.cursor.execute called once (1 INSERT)
         assert conn.cursor().execute.call_count == 1
 
-    def test_ingest_excludes_earnings_disclosure(self) -> None:
+    def test_ingest_excludes_earnings_disclosure(self, mock_conn) -> None:
         # Given: 3 items — annual_report (skip), quarterly_report (skip), material_event (insert)
         items = [
             _make_news_item(title="贵州茅台 2025 年度报告"),
@@ -210,7 +208,8 @@ class TestAnnouncementProcessorIngest:
         ]
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=items)
-        conn = _make_mock_conn([99999])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [99999])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
         stats = processor.ingest(
@@ -226,7 +225,7 @@ class TestAnnouncementProcessorIngest:
         assert stats.skipped_earnings == 2
         assert stats.skipped_unknown == 0
 
-    def test_ingest_excludes_unknown_type(self) -> None:
+    def test_ingest_excludes_unknown_type(self, mock_conn) -> None:
         # Given: 2 'other' type items + 1 dividend
         items = [
             _make_news_item(title="一般通知公告"),
@@ -235,7 +234,8 @@ class TestAnnouncementProcessorIngest:
         ]
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=items)
-        conn = _make_mock_conn([1, 2, 3])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [1, 2, 3])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
         stats = processor.ingest(
@@ -251,10 +251,11 @@ class TestAnnouncementProcessorIngest:
         assert stats.skipped_earnings == 0
         assert stats.skipped_unknown == 2
 
-    def test_ingest_empty_pipeline_returns_zero_stats(self) -> None:
+    def test_ingest_empty_pipeline_returns_zero_stats(self, mock_conn) -> None:
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=[])
-        conn = _make_mock_conn([])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
         stats = processor.ingest(
@@ -280,10 +281,11 @@ class TestAnnouncementProcessorIngest:
         # by checking no execute was triggered for empty fetch_all
         assert cur.execute.call_count == 0
 
-    def test_ingest_unknown_source_raises_value_error(self) -> None:
+    def test_ingest_unknown_source_raises_value_error(self, mock_conn) -> None:
         pipeline = MagicMock()
         processor = AnnouncementProcessor(pipeline=pipeline)
-        conn = _make_mock_conn([])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [])
 
         with pytest.raises(ValueError, match="Unknown announcement source"):
             processor.ingest(
@@ -296,7 +298,7 @@ class TestAnnouncementProcessorIngest:
         # pipeline.fetch_all NOT called (route building fails before fetch)
         pipeline.fetch_all.assert_not_called()
 
-    def test_ingest_dividend_inserts_with_correct_type(self) -> None:
+    def test_ingest_dividend_inserts_with_correct_type(self, mock_conn) -> None:
         # Given: dividend item with content snippet
         items = [
             _make_news_item(
@@ -306,7 +308,8 @@ class TestAnnouncementProcessorIngest:
         ]
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=items)
-        conn = _make_mock_conn([42])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [42])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
         stats = processor.ingest(
@@ -326,13 +329,14 @@ class TestAnnouncementProcessorIngest:
         assert params["source"] == "cninfo"
         assert params["title"] == "2025 年权益分派实施公告"
 
-    def test_ingest_truncates_content_snippet(self) -> None:
+    def test_ingest_truncates_content_snippet(self, mock_conn) -> None:
         # Given: very long content (defensive truncate to 1000 chars)
         long_content = "x" * 5000
         items = [_make_news_item(title="重大事项公告", content=long_content)]
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=items)
-        conn = _make_mock_conn([1])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [1])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
         processor.ingest(symbol_id="600519", source="cninfo", conn=conn, limit=1)
@@ -341,12 +345,13 @@ class TestAnnouncementProcessorIngest:
         params = conn.cursor().execute.call_args[0][1]
         assert len(params["content_snippet"]) == 1000
 
-    def test_ingest_handles_none_content(self) -> None:
+    def test_ingest_handles_none_content(self, mock_conn) -> None:
         # Given: NewsItem with content=None (RSSHub feed without summary)
         items = [_make_news_item(title="股东大会通知", content=None)]
         pipeline = MagicMock()
         pipeline.fetch_all = MagicMock(return_value=items)
-        conn = _make_mock_conn([1])
+        conn = mock_conn
+        _set_announcement_id_seq(conn, [1])
 
         processor = AnnouncementProcessor(pipeline=pipeline)
         stats = processor.ingest(symbol_id="600519", source="cninfo", conn=conn, limit=1)
