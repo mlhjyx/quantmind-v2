@@ -246,9 +246,23 @@ CREATE INDEX idx_scheduler_log_status ON scheduler_task_log(status, market);
 
 ---
 
-## ⚠️ Review补丁（2026-03-20，以下内容覆盖本文档中的旧版设计）
+## ⚠️ Review补丁（2026-03-20）— **HISTORICAL,见 §〇 for current truth (iter 126 2026-05-25 audit closure)**
 
-> **Claude Code注意**: 本章节的内容优先级高于文档其他部分。如有冲突，以本章节为准。
+> **Status update 2026-05-25 iter 126** (per `docs/audit/SCHEDULER_V3_CYCLE_DRIFT_2026_05_25.md` §5 Rec #2):
+> 本 P1 补丁是 March 2026 vintage. Iter 76 起 §〇 (lines 28-89) 已 refresh 为 production
+> 真值 SSOT (24 active Beat + schtask entries, mirror beat_schedule.py L48-490).
+> 本 P1 章节多处 stale:
+> - T5: 文档说 Mon 17:25, 生产实际 Fri 19:00 (`factor-lifecycle-weekly`)
+> - T9: 文档说 17:50 report, 生产实际 17:40 (`daily-quality-report`)
+> - T16: 文档 conflates Reflector+GP mining 22:00, 生产实际是 2 separate tasks
+>   (Reflector Sun 19:00 + GP mining 22:00)
+>
+> **引用规范**: 任 future PR / audit / cross-doc cite 需要调度信息时, **走 §〇 表**
+> (operational SSOT mirror beat_schedule.py). 本 P1 补丁保留作历史记录, 不再更新.
+>
+> 若发现 P1 补丁与 §〇 / beat_schedule.py 冲突, 以 §〇 + beat_schedule.py 为准.
+
+> **Claude Code注意**: ~~本章节的内容优先级高于文档其他部分。如有冲突，以本章节为准。~~ **iter 126 update**: 优先级反转 — §〇 现是 operational SSOT, P1 是历史记录.
 
 ### P1. A股调度时序重大修正（覆盖 §二 全部内容）
 
