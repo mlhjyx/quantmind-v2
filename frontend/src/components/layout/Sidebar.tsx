@@ -12,6 +12,7 @@ import {
   ArrowLeftRight,
   GraduationCap,
   Settings,
+  ClipboardCheck,
 } from "lucide-react";
 import { C } from "@/theme";
 import { NotificationPanel } from "@/components/ui/NotificationPanel";
@@ -63,7 +64,11 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     group: "AI",
-    items: [{ icon: Brain, label: "AI闭环", path: "/pipeline" }],
+    items: [
+      { icon: Brain, label: "AI闭环", path: "/pipeline" },
+      // iter 136 W2-F F1 closure — gp_approval_queue 6 endpoints frontend surface
+      { icon: ClipboardCheck, label: "因子审批", path: "/approval-queue" },
+    ],
   },
   {
     group: "系统",
