@@ -528,7 +528,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | **Plan v8 doc-level 100% closure** | ✅ (2026-05-19) | 22 docs / 6000+ lines / 14 user 决议触发 enumerate + Phase J/K DOC-CLOSED + decision tree | docs/audit/PLAN_V8_DOCS_INDEX_2026_05_19.md |
 | **Phase H Frontend Redesign v3 W1+2+4+5+6 ✅** | ✅ (Session 57, 2026-05-19) | 11 commits / 5 NEW components + 10/15 v3 findings closed + axios SSOT + dead code -370 lines | LL-187 / STATUS_REPORT_2026_05_19_frontend_v3_phase_h_w1_w6.md |
 | **V3 Full Project Deep Audit (Plan v8)** | ✅ (2026-05-18) | 11 audit docs + Top 50 findings + 3 HTML mockup + LL-184/185/186 | V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md |
-| **Wave 4 MVP 4.1 Observability** | 🟡 进行中 | batch 1+2.1+2.2 ✅ (PostgresAlertRouter / MetricExporter / AlertRulesEngine), batch 3.x 17 scripts SDK migration 进行中 | SYSTEM_STATUS §0 + QPB v1.16 |
+| **Wave 4 全 4/4 ✅ 完结** | ✅ (iter 51-75 single-day 2026-05-25) | MVP 4.1 Observability 17/17 + MVP 4.2 Attribution 7/7 + MVP 4.3 CI/CD 7/7 + MVP 4.4 Backup & DR 7/7; ~226+ unit tests / 5 new Beat / 5 backup orch / 5 ci orch / 1 .github/workflows/ci.yml | SYSTEM_STATUS §0.-6 + QPB v1.17 + STATUS_REPORT_2026_05_25_wave4_closeout_sediment_cascade.md (iter 76-81) |
 | **Wave 3 MVP 3.3 Signal-Exec ✅** | 🟢 完结 (Session 40, 2026-04-28) | Stage 3.0 切换 PR #116, signal_service 内部走 PlatformSignalPipeline | LL-082~088 + memory sprint_state |
 | **Wave 3 MVP 3.1 Risk Framework ✅** | 🟢 完结 (Session 30, 2026-04-24) | 6 PR / 65 新 tests / Celery Beat 5 schedule entries 生产激活 | ADR-010 addendum |
 | **Wave 2 ✅ 完结** | 🟢 (Session 9, 2026-04-19) | Data Framework / Lineage / MVP 2.1c / 2.2 / 2.3 Sub1+Sub2+Sub3 | SYSTEM_STATUS §0.0 |
@@ -543,7 +543,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 
 - **Sprint 治理基础设施 5 块基石** (2026-04-30, Step 6-6.3a): IRONLAWS.md / ADR-021 / 第 19 条 memory 铁律 / X10+LL-098+pre-push hook / §23 双口径
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
-- **测试基线** (5-20 SH 实测, 铁律 40 baseline 保持): **6251 collected / 0 collection error** (vs Session 9 实测 2864 pass / 24 fail, 接近 1 月增量 +3387 tests / +118%) + **smoke 70 PASS** (vs 28 stale) + regression 5yr+12yr max_diff=0 (baseline 2026-04-28, 22d stale, 待 Phase B-2 post 5-27 refresh)
+- **测试基线** (iter 80 fresh verify 2026-05-25, 铁律 40 baseline 保持): **6714 collected / 0 collection error** (vs 5-20 实测 6251 = +463 / +7.4% Wave 4 iter 51-75 ~226 unit tests cumulative + iter 76-82 0 production code; vs Session 9 实测 2864 pass / 24 fail, ~1.5 月增量 +3850 tests / +134%) + **smoke 61 PASS** (sustained iter 76-82 pre-push hook 7/7 green; vs Session 9 28 stale) + regression 5yr+12yr max_diff=0 (baseline 2026-04-28, 27d stale, 待 Phase B-2 post 5-27 refresh)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
 
