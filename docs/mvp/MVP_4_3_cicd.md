@@ -52,7 +52,7 @@ class CIOrchestrator(Protocol):
 |---|---|---|
 | iter 66 | dataclass + Protocol + entry tests (14 tests) | ✅ |
 | iter 67 | pre-commit orchestrator (ruff + ruff format + pytest collect + check_llm_imports merged, 15 tests) | ✅ |
-| iter 68+ | pre-push orchestrator (smoke + X10 + DataPipeline guard merged) | pending |
+| iter 68 | pre-push orchestrator (X10 cutover-bias scan + smoke + DataPipeline guard merged, 16 tests) | ✅ |
 | iter 69+ | CI matrix runner (multi-version compat) | pending |
 | iter 70+ | Regression baseline gate (max_diff=0 enforcement per 铁律 15) | pending |
 | iter 71+ | PR review automation (reviewer findings → PR comments via gh) | pending |
