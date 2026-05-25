@@ -106,7 +106,7 @@
 | F1 | Approval queue UI (V3 §S5/§S6/§S7/§S8 closure) | P0 | ✅ 6 endpoints | ~600 LOC + tests | iter 136 |
 | F2 | L4 Recovery completion (l4-approve POST + state display) | P0 | ✅ A7+A8 ready | ~300 LOC | iter 137 |
 | F3 | Risk event stream consumer (LiveRiskEventsPanel real data) | ~~P0~~ **ARCHIVED iter 138 2026-05-26** | ✅ shipped Session 58 round-5 (ADR-084 Phase 1) | already done | ~~iter 138~~ |
-| F4 | Wave 4 Observability dashboard (Beat tasks + scheduler_task_log) | P1 | ✅ B1-B3 ready | ~400 LOC + new page | iter 139 |
+| F4 | Wave 4 Observability dashboard (Beat tasks + scheduler_task_log) | ~~P1~~ **ARCHIVED iter 142 2026-05-26** | ✅ shipped pre-existing | already done (SystemSettings.tsx + IndustryAndSystem.tsx) | ~~iter 139~~ |
 | F5 | Risk history + summary surface (A2+A3 add to RiskManagement.tsx) | P1 | ✅ A2+A3 ready | ~150 LOC | iter 140 |
 | F6 | Attribution API + UI (per backend lib) | P1 | ❌ NO API yet | backend ~200 + frontend ~300 | iter 141-142 |
 | F7 | PT trade log surface (PTGraduation 增 history tab) | P1 | ✅ D5 ready | ~150 LOC | iter 143 |
@@ -117,6 +117,8 @@
 **Cumulative wire estimate**: ~2700 LOC frontend + ~350 LOC backend (attribution + audit_log API) + tests ≈ 10-12 iter cycles to full closure.
 
 **iter 138 ARCHIVE discovery (2026-05-26)**: F3 LiveRiskEventsPanel reality check — fresh grep `frontend/src/pages/RiskManagement.tsx:33-87` shows `LiveRiskEventsPanel` sub-component IS fully wired (uses `useRiskEventsSSE` hook from `frontend/src/hooks/useRiskEventsSSE.ts` + `backend/app/api/sse.py:159` GET /api/sse/risk-events SSE endpoint). Connection status (已连接/未连接 with pulse animation) + heartbeat timestamp + error display + reconnect button + empty state + event list (50 buffer, newest-first reverse). Session 58 round-5 ADR-084 Phase 1 closure commit. **W2-F audit iter 135 misclassified as DARK** — staleness gap (audit Explore subagent enumeration may have missed sub-component grep or scanned older snapshot). LL-194 anti-pattern (claim verify pre-commit): future Explore-driven audits SHOULD grep for sub-component definitions within page files, not just file-level export consumption. **Verdict**: F3 ARCHIVE (no implement needed); Tier A§2 P0 closure 100% (F1+F2 shipped iter 136-137 + F3 already shipped Session 58).
+
+**iter 142 ARCHIVE discovery (2026-05-26)**: F4 Wave 4 Observability dashboard reality check — fresh grep across `frontend/src/pages/SystemSettings.tsx` shows all 3 B1+B2+B3 endpoints (`fetchDataSources` line 72 / `fetchSchedulerTasks` line 329 / `fetchSystemHealth` line 405) actively consumed in 858-LOC settings page. Additional consumer `frontend/src/pages/Dashboard/IndustryAndSystem.tsx:3,11` separately consumes `fetchSystemHealth` for industry+system widget. **W2-F audit iter 135 misclassified B1+B2+B3 as DARK** — same staleness gap as F3 (Explore subagent enumeration likely scanned only direct file-level imports OR predates the SystemSettings shipping). LL-194 anti-pattern sustained: Explore-audit grep should cover `api/system.ts` wrapper consumers, not just guess "(no UI surface)" from backend file grep alone. **Verdict**: F4 ARCHIVE (no implement needed). Tier A§2 + Tier B Wave 5 MVP 5.x P1 progress: F8+F5+F7 implemented (iter 139/140/141), F4 ARCHIVE iter 142, **F6 Attribution remains as only true gap** (backend has NO /api/attribution/* endpoint per W2-F §2 Scope B — backend lib + frontend both need NEW code).
 
 ---
 
