@@ -7,7 +7,6 @@ StrategyRegistryIntegrityError. 用 in-memory mock conn (psycopg2 不启真 DB, 
 from __future__ import annotations
 
 from decimal import Decimal
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -53,47 +52,28 @@ class _FakeStrategy(Strategy):
         return signals
 
 
-def _make_mock_conn_factory(fetchone_queue: list | None = None, rowcounts: list | None = None):
-    """Build a mock conn_factory that returns queued SELECT results.
-
-    fetchone_queue: sequentially returned from cursor.fetchone()
-    rowcounts: ignored for now (UPDATE rowcount), reserved for future.
-    """
-    conn = MagicMock()
-    cursor = MagicMock()
-    conn.cursor.return_value = cursor
-    # Support `with conn.cursor() as cur:` context manager (reviewer P1 fix)
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    conn.closed = 0
-
-    _fetchone_iter = iter(fetchone_queue or [])
-
-    def _fetchone():
-        try:
-            return next(_fetchone_iter)
-        except StopIteration:
-            return None
-
-    cursor.fetchone.side_effect = _fetchone
-    cursor.fetchall.return_value = []
-
-    def factory():
-        return conn
-
-    factory._conn = conn  # type: ignore[attr-defined]
-    factory._cursor = cursor  # type: ignore[attr-defined]
-    return factory
+# iter 124: migrated to conftest `mock_conn_factory_builder` fixture (iter 110
+# pilot canonical + iter 120 fetchall=[] default enhancement).
+# Per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A + §9.8.
+# Local _make_mock_conn_factory def deleted; tests inject mock_conn_factory_builder
+# as fixture parameter + call it directly.
+#
+# Minor differences vs local def (sustained per-test audit, sibling pattern from
+# iter 123 test_strategy_evaluation_required migration):
+# - `conn.closed = 0` not set by canonical (prod grep 0 hit → unused defensive padding)
+# - fetchone overflow: local lambda → None vs canonical MagicMock side_effect → StopIteration.
+#   Per-test audit: 17 tests' fetchone_queue lengths match prod fetchone call counts.
+# - canonical supports `rowcounts` param (local def "ignored for now"); both functional
 
 
 # ─── register() tests ────────────────────────────────────────────────
 
 
-def test_register_first_time_inserts_row_and_audit_log():
+def test_register_first_time_inserts_row_and_audit_log(mock_conn_factory_builder):
     sid = uuid4()
     s = _FakeStrategy(strategy_id=str(sid), name="s1")
     # fetchone returns None (first register, no existing row)
-    factory = _make_mock_conn_factory(fetchone_queue=[None])
+    factory = mock_conn_factory_builder(fetchone_queue=[None])
     reg = DBStrategyRegistry(conn_factory=factory)
     reg.register(s)
 
@@ -108,11 +88,11 @@ def test_register_first_time_inserts_row_and_audit_log():
     assert reg._instances[sid] is s
 
 
-def test_register_idempotent_upsert_no_audit_log_for_existing():
+def test_register_idempotent_upsert_no_audit_log_for_existing(mock_conn_factory_builder):
     sid = uuid4()
     s = _FakeStrategy(strategy_id=str(sid), name="s1")
     # existing row returns ('draft',), second register does NOT insert audit log
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",)])
     reg = DBStrategyRegistry(conn_factory=factory)
     reg.register(s)
 
@@ -121,7 +101,7 @@ def test_register_idempotent_upsert_no_audit_log_for_existing():
     assert cur.execute.call_count == 2
 
 
-def test_register_raises_on_empty_factor_pool_for_ranking_strategy():
+def test_register_raises_on_empty_factor_pool_for_ranking_strategy(mock_conn_factory_builder):
     """铁律 13/14: ranking/timing 策略 (MONTHLY/WEEKLY/etc.) 必须显式 factor_pool."""
     sid = uuid4()
     s = _FakeStrategy(
@@ -130,13 +110,13 @@ def test_register_raises_on_empty_factor_pool_for_ranking_strategy():
         factor_pool=[],
         rebalance_freq=RebalanceFreq.MONTHLY,
     )
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     with pytest.raises(ValueError, match="factor_pool is empty"):
         reg.register(s)
 
 
-def test_register_accepts_empty_factor_pool_for_event_driven_strategy():
+def test_register_accepts_empty_factor_pool_for_event_driven_strategy(mock_conn_factory_builder):
     """铁律 13/14 例外: event-driven 策略由 event source (e.g. earnings_announcements)
     提供 alpha, factor_pool=[] 是有意设计 (S2PEADEvent), 注册必须接受不抛.
 
@@ -155,7 +135,7 @@ def test_register_accepts_empty_factor_pool_for_event_driven_strategy():
     )
     # fetchone 返 None (新 strategy, 走 INSERT 路径). 显式 queue 防 _make_mock_conn_factory
     # 默认行为变更.
-    factory = _make_mock_conn_factory(fetchone_queue=[None])
+    factory = mock_conn_factory_builder(fetchone_queue=[None])
     reg = DBStrategyRegistry(conn_factory=factory)
     reg.register(s)  # 不应抛 ValueError
 
@@ -170,9 +150,9 @@ def test_register_accepts_empty_factor_pool_for_event_driven_strategy():
     assert reg._instances[sid] is s
 
 
-def test_register_raises_on_invalid_uuid():
+def test_register_raises_on_invalid_uuid(mock_conn_factory_builder):
     s = _FakeStrategy(strategy_id="not-a-uuid", name="s1")
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     with pytest.raises(ValueError, match="必须是 UUID"):
         reg.register(s)
@@ -181,13 +161,13 @@ def test_register_raises_on_invalid_uuid():
 # ─── get_live() tests ────────────────────────────────────────────────
 
 
-def test_get_live_returns_registered_live_instances():
+def test_get_live_returns_registered_live_instances(mock_conn_factory_builder):
     sid1 = uuid4()
     sid2 = uuid4()
     s1 = _FakeStrategy(strategy_id=str(sid1), name="s1")
     s2 = _FakeStrategy(strategy_id=str(sid2), name="s2")
 
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     # manually populate cache (skip register)
     reg._instances[sid1] = s1
@@ -200,17 +180,17 @@ def test_get_live_returns_registered_live_instances():
     assert s1 in live and s2 in live
 
 
-def test_get_live_empty_when_no_db_live_rows():
-    factory = _make_mock_conn_factory()
+def test_get_live_empty_when_no_db_live_rows(mock_conn_factory_builder):
+    factory = mock_conn_factory_builder()
     factory._cursor.fetchall.return_value = []
     reg = DBStrategyRegistry(conn_factory=factory)
     assert reg.get_live() == []
 
 
-def test_get_live_raises_integrity_error_when_db_has_live_but_cache_missing():
+def test_get_live_raises_integrity_error_when_db_has_live_but_cache_missing(mock_conn_factory_builder):
     """DB 有 live UUID 但 in-memory cache 没 register → fail-loud 禁静默跳过."""
     sid = uuid4()
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     factory._cursor.fetchall.return_value = [(str(sid), "ghost_strategy")]
     reg = DBStrategyRegistry(conn_factory=factory)  # cache 空
 
@@ -221,10 +201,10 @@ def test_get_live_raises_integrity_error_when_db_has_live_but_cache_missing():
 # ─── get_by_id() tests ────────────────────────────────────────────────
 
 
-def test_get_by_id_returns_instance():
+def test_get_by_id_returns_instance(mock_conn_factory_builder):
     sid = uuid4()
     s = _FakeStrategy(strategy_id=str(sid), name="s1")
-    factory = _make_mock_conn_factory(fetchone_queue=[(1,)])  # WHERE strategy_id=... returns 1
+    factory = mock_conn_factory_builder(fetchone_queue=[(1,)])  # WHERE strategy_id=... returns 1
     reg = DBStrategyRegistry(conn_factory=factory)
     reg._instances[sid] = s
 
@@ -232,17 +212,17 @@ def test_get_by_id_returns_instance():
     assert got is s
 
 
-def test_get_by_id_raises_when_not_in_db():
+def test_get_by_id_raises_when_not_in_db(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[None])
+    factory = mock_conn_factory_builder(fetchone_queue=[None])
     reg = DBStrategyRegistry(conn_factory=factory)
     with pytest.raises(StrategyNotFound, match="不在 strategy_registry DB"):
         reg.get_by_id(str(sid))
 
 
-def test_get_by_id_raises_when_db_ok_but_cache_missing():
+def test_get_by_id_raises_when_db_ok_but_cache_missing(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[(1,)])
+    factory = mock_conn_factory_builder(fetchone_queue=[(1,)])
     reg = DBStrategyRegistry(conn_factory=factory)
     # cache intentionally empty
     with pytest.raises(StrategyNotFound, match="cache 未 register"):
@@ -252,13 +232,13 @@ def test_get_by_id_raises_when_db_ok_but_cache_missing():
 # ─── update_status() tests ───────────────────────────────────────────
 
 
-def test_update_status_writes_audit_log():
+def test_update_status_writes_audit_log(mock_conn_factory_builder):
     """MVP 3.5.1 (Session 43, 2026-04-28) 后 LIVE 升迁需 strategy_evaluations 守门.
     用 BACKTEST 作 target 避守门 (本测试只验 audit log SQL 序列, 守门由
     test_strategy_evaluation_required.py 单独覆盖).
     """
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",)])
     reg = DBStrategyRegistry(conn_factory=factory)
     reg.update_status(str(sid), StrategyStatus.BACKTEST, reason="enter backtest")
 
@@ -271,9 +251,9 @@ def test_update_status_writes_audit_log():
     assert "INSERT INTO strategy_status_log" in calls_sql[2]
 
 
-def test_update_status_no_op_when_same_status():
+def test_update_status_no_op_when_same_status(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[("live",)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("live",)])
     reg = DBStrategyRegistry(conn_factory=factory)
     reg.update_status(str(sid), StrategyStatus.LIVE, reason="idempotent no-op test")
 
@@ -281,17 +261,17 @@ def test_update_status_no_op_when_same_status():
     assert factory._cursor.execute.call_count == 1
 
 
-def test_update_status_raises_on_empty_reason():
+def test_update_status_raises_on_empty_reason(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     with pytest.raises(ValueError, match="reason"):
         reg.update_status(str(sid), StrategyStatus.LIVE, reason="  ")
 
 
-def test_update_status_raises_when_not_in_db():
+def test_update_status_raises_when_not_in_db(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[None])
+    factory = mock_conn_factory_builder(fetchone_queue=[None])
     reg = DBStrategyRegistry(conn_factory=factory)
     with pytest.raises(StrategyNotFound, match="先调 register"):
         reg.update_status(str(sid), StrategyStatus.LIVE, reason="promote")
