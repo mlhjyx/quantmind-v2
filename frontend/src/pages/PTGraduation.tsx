@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 // Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
 import apiClient from "@/api/client";
 import { useNavigate } from "react-router-dom";
 import NAVChart from "@/components/NAVChart";
-import type { NAVPoint, NAVPeriod } from "@/types/dashboard";
-import { fetchNAVSeries } from "@/api/dashboard";
+import type { NAVPoint, NAVPeriod, Trade } from "@/types/dashboard";
+import { fetchNAVSeries, fetchPaperTrades } from "@/api/dashboard";
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
@@ -137,6 +138,111 @@ function MetricCard({ metric }: { metric: GraduationMetric }) {
           {metric.target}
         </span>
       </div>
+    </div>
+  );
+}
+
+// ── iter 141 W2-F F7 — Trade Log Panel (D5 wire) ─────────────────────────
+// Backend SSOT: backend/app/api/paper_trading.py:243 GET /api/paper-trading/trades
+// Returns Trade[] (id/code/trade_date/direction/quantity/fill_price/slippage_bps/...)
+// Exported for isolated unit testing (sustained iter 139 F8 pattern).
+
+function formatTradeDate(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function fmtPrice(v: number): string {
+  return v.toFixed(2);
+}
+
+function fmtBps(v: number): string {
+  return `${v.toFixed(1)} bps`;
+}
+
+export function TradeLogPanel({ limit = 50 }: { limit?: number } = {}) {
+  const { data, isLoading, error, refetch } = useQuery<Trade[]>({
+    queryKey: ["paper-trades", limit],
+    queryFn: () => fetchPaperTrades(limit),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 mb-4">
+        <div className="text-xs text-slate-400 mb-3">最近交易记录</div>
+        <div className="h-24 bg-white/5 rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-slate-400">最近交易记录</div>
+          <button onClick={() => void refetch()} className="text-xs text-orange-400 hover:text-orange-300">
+            重试
+          </button>
+        </div>
+        <div className="text-xs text-red-400">
+          加载失败: {error instanceof Error ? error.message : "未知错误"}
+        </div>
+      </div>
+    );
+  }
+
+  const trades = data ?? [];
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs text-slate-400">
+          最近交易记录 <span className="text-slate-500">({trades.length} / max {limit})</span>
+        </div>
+        <button onClick={() => void refetch()} className="text-[10px] text-slate-500 hover:text-slate-300">
+          刷新
+        </button>
+      </div>
+      {trades.length === 0 ? (
+        <div className="text-xs text-slate-500 py-4 text-center">无交易记录 (PT 27d 0 trade sustained since 2026-04-29)</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-[10px] text-slate-500 border-b border-white/5">
+              <tr>
+                <th className="text-left py-1.5 pr-2">日期</th>
+                <th className="text-left py-1.5 pr-2">代码</th>
+                <th className="text-left py-1.5 pr-2">方向</th>
+                <th className="text-right py-1.5 pr-2">数量</th>
+                <th className="text-right py-1.5 pr-2">价格</th>
+                <th className="text-right py-1.5 pr-2">佣金</th>
+                <th className="text-right py-1.5 pr-2">滑点</th>
+                <th className="text-left py-1.5 pr-2">备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.map((t) => (
+                <tr key={t.id} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="py-1.5 pr-2 text-slate-300 font-mono">{formatTradeDate(t.trade_date)}</td>
+                  <td className="py-1.5 pr-2 text-slate-200 font-mono">{t.code}</td>
+                  <td
+                    className="py-1.5 pr-2 font-medium"
+                    style={{ color: t.direction === "BUY" ? "#ef4444" : "#22c55e" }}
+                  >
+                    {t.direction === "BUY" ? "买入" : t.direction === "SELL" ? "卖出" : t.direction}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right text-slate-200 font-mono">{t.quantity.toLocaleString()}</td>
+                  <td className="py-1.5 pr-2 text-right text-slate-200 font-mono">{fmtPrice(t.fill_price)}</td>
+                  <td className="py-1.5 pr-2 text-right text-slate-400 font-mono">{fmtPrice(t.commission)}</td>
+                  <td className="py-1.5 pr-2 text-right text-slate-400 font-mono">{fmtBps(t.slippage_bps)}</td>
+                  <td className="py-1.5 pr-2 text-slate-400 text-[10px]">{t.reject_reason ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -316,6 +422,9 @@ export default function PTGraduation() {
           loading={false}
         />
       </div>
+
+      {/* iter 141 W2-F F7 — Trade log section (D5 wire) */}
+      <TradeLogPanel limit={50} />
 
       {/* Footer: advice + button */}
       <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

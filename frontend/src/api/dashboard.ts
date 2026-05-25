@@ -8,6 +8,7 @@ import type {
   PendingAction,
   Position,
   CircuitBreakerState,
+  Trade,
 } from "@/types/dashboard";
 
 const api = apiClient;
@@ -32,6 +33,15 @@ export async function fetchPendingActions(): Promise<PendingAction[]> {
   const { data } = await api.get<PendingAction[]>(
     "/dashboard/pending-actions",
   );
+  return data;
+}
+
+/** iter 141 W2-F F7 — fetch paper trading trades (D5 wire).
+ *  Backend: GET /api/paper-trading/trades?strategy_id=&limit=N (paper_trading.py:243). */
+export async function fetchPaperTrades(limit = 50): Promise<Trade[]> {
+  const { data } = await api.get<Trade[]>("/paper-trading/trades", {
+    params: { limit },
+  });
   return data;
 }
 
