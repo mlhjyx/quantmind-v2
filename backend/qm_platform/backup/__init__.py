@@ -6,6 +6,24 @@ RestoreResult / DisasterRecoveryRunner) with multi-target orchestration
 docs/mvp/MVP_4_4_backup_dr.md.
 """
 
+from .config_backup import (
+    DEFAULT_CONFIG_TIMEOUT_SECONDS,
+    ConfigBackupOrchestrator,
+    ConfigBackupSpec,
+    default_config_spec,
+)
+from .db_backup import (
+    DEFAULT_PG_DUMP_TIMEOUT_SECONDS,
+    DBBackupOrchestrator,
+    DBBackupSpec,
+    default_db_spec,
+)
+from .filesystem_backup import (
+    DEFAULT_TAR_TIMEOUT_SECONDS,
+    FilesystemBackupOrchestrator,
+    FilesystemBackupSpec,
+    default_filesystem_spec,
+)
 from .interface import (
     BackupManager,
     BackupResult,
@@ -28,9 +46,21 @@ __all__ = [
     "BackupResult",
     "BackupTarget",
     "BackupTargetResult",
+    "ConfigBackupOrchestrator",
+    "ConfigBackupSpec",
+    "DBBackupOrchestrator",
+    "DBBackupSpec",
+    "DEFAULT_CONFIG_TIMEOUT_SECONDS",
+    "DEFAULT_PG_DUMP_TIMEOUT_SECONDS",
+    "DEFAULT_TAR_TIMEOUT_SECONDS",
     "DisasterRecoveryRunner",
+    "FilesystemBackupOrchestrator",
+    "FilesystemBackupSpec",
     "RestoreResult",
     "all_targets_passed",
+    "default_config_spec",
+    "default_db_spec",
+    "default_filesystem_spec",
     "targets_in_canonical_order",
     "total_bytes_written",
     "total_duration_ms",

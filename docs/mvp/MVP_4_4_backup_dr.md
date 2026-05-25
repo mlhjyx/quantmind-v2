@@ -54,13 +54,9 @@ consistency with Wave 4 MVP 4.3 体例.
 
 | Sub-iter | scope | status |
 |---|---|---|
-| iter 73 (本) | enum + dataclass + Protocol + entry tests | 🚧 |
-| iter 74+ | DB backup orchestrator (pg_dump wrapper + retention policy) | pending |
-| iter 75+ | filesystem backup orchestrator (parquet + cache/baseline snapshot) | pending |
-| iter 76+ | config backup (.env encrypted + configs/*.yaml + hooks settings) | pending |
-| iter 77+ | restore verification orchestrator (sample restore + integrity SQL) | pending |
-| iter 78+ | RPO/RTO measurement + alert (PlatformAlertRouter dispatch) | pending |
-| iter 79+ | Beat schedule wire — daily backup 02:00 SH + weekly verification | pending |
+| iter 73 | enum + dataclass + Protocol + entry tests (15 tests) | ✅ |
+| iter 74 (batch sub-iter 2+3+4) | DB pg_dump + Filesystem tar + Config tar 3 orchestrators (27 tests) | ✅ |
+| iter 75+ (batch sub-iter 5+6+7) | restore verification + RPO/RTO alert + Beat schedule wire (final closeout) | pending |
 
 ## §5 §6 8-trigger STOP self-check
 
