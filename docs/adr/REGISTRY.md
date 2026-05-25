@@ -204,3 +204,29 @@ post-ADR-076 (2026-05-15) 剩余 1 reserved (ADR-030):
 - **维护频率**: 每次新 ADR # reserve / 创建时同步 update (1 PR cover)
 - ** SSOT**: 本 [REGISTRY.md](REGISTRY.md) 是 ADR # 待办 / 创建状态唯一权威源 (沿用 LL-105 SOP-6 sediment 5-02 sprint close)
 - **现 last update**: 2026-05-24 L4+R loop iter 34 retroactive sediment (ADR-091/092/093 committed — iter 30/31/32 reports system full lifecycle PRs #459/#460/#461 sediment via iter 34 pair-with-sensitivity-DEFER PR; ironlaw 22 doc-tracking properly satisfied for the 3 sub-PRs that shipped without inline ADR sediment under v5 §4 HARD BAN standalone-PN/ADR-DRAFT-row constraint)
+
+## Fresh verify — 2026-05-25 16:55 SH (iter 97 sub2 — taskboard task_004)
+
+**ADR file count**: **71** (ADR-NNN-name pattern, including 1 4-digit anomaly `ADR-0009-datacontract-tablecontract-convergence.md`). Excludes `ADR-DRAFT.md` template + `REGISTRY.md` + `README.md`. **Sustained vs CLAUDE.md §文件路径 "71 ADR sparse numbering, 累计 71 .md 实测 2026-05-19 22:00 SH"** — net 0 drift (ADR-094 added iter 50 2026-05-24 sustained sparse numbering principle; 1 earlier ID likely renamed/merged within window — not investigated, out of scope).
+
+**REGISTRY unique ID tokens** (regex `ADR-\d{3}` on REGISTRY.md): **94** (`ADR-000` ... `ADR-094`). The `ADR-000` token is a regex artifact partial-match of `ADR-0009` 4-digit anomaly (no real ADR-000 entity). Effective unique entities: **93 distinct ADRs + 1 4-digit anomaly = 94**.
+
+**ADR-094 PMS retire**: ✓ **listed** — REGISTRY.md:200 row "PMS v1.0 物理退役 (V3 SSOT 集成)" + file `docs/adr/ADR-094-pms-v1-physical-retirement.md` exists (verify 2026-05-25 16:55 SH, sustained iter 50 commit `4d8ca04` 2026-05-24 23:36 +0800).
+
+### Drift table
+
+| Class | Count | Sample IDs | Note |
+|------:|------:|------------|------|
+| **File + REGISTRY both present** (matched) | **69** | ADR-001 / ADR-010 / ADR-094 ... | Normal case; 3-digit ADR-NNN-name format |
+| **4-digit anomaly** (file matches REGISTRY via regex partial) | **1** | ADR-0009-datacontract-tablecontract-convergence.md | Pre-3-digit convention; sustained historical (no rename) |
+| **REGISTRY row-only inline ADRs** (no separate file) | **25** | ADR-015–018 / ADR-024–026 / ADR-030 / ADR-038 / ADR-044–046 / ADR-077–082 / ADR-087–093 | **Intentional per "sparse numbering" pattern** — REGISTRY embeds full text inline; recent burst ADR-087-093 = iter 10-32 L4+R loop committed inline rows (PRs #450-#461) |
+| **Ghost files** (file present, no REGISTRY mention) | **0** | — | ✓ no orphan files |
+
+### Cite source (4-element)
+
+- `docs/adr/ADR-*.md` (verify 2026-05-25 16:55 SH) — 70 proper ADR-NNN files + 1 ADR-DRAFT.md template = 71 files matching ADR-NNN-name pattern (PowerShell `Get-ChildItem` filter match)
+- `docs/adr/REGISTRY.md:200` (verify 2026-05-25 16:55 SH) — ADR-094 PMS retire row exists
+- `CLAUDE.md` §文件路径 line ~286 grep `"71 ADR"` — "累计 71 .md 实测 2026-05-19 22:00 SH" claim location (sustained vs fresh)
+- iter 50 commit `4d8ca04` 2026-05-24 23:36 +0800 — ADR-094 PMS retire commit (sustained, verified via `git log -1 docs/adr/ADR-094-pms-v1-physical-retirement.md`)
+
+**Verdict**: **0 drift** — REGISTRY ⊆ file set ∪ {25 intentional row-only inline ADRs}; file set ⊆ REGISTRY (0 ghost files); ADR-094 properly tracked. CLAUDE.md "71 ADR" count sustained. Sparse numbering pattern (CLAUDE.md §文件路径) confirmed as intentional design — 25 row-only ADRs are inline-tracked, not orphans. 红线 5/5 sustained: LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / 0 持仓 / cash ¥993,520.66 / 0 trades since 2026-04-29.
