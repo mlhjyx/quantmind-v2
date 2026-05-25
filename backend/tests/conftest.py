@@ -104,3 +104,144 @@ try:
 except ImportError:
     # fastapi/sqlalchemy/pytest_asyncio not installed — skip DB/API fixtures
     pass
+
+
+# ───────────────────────────────────────────────────────────────
+# iter 110 (2026-05-25): MagicMock-based psycopg2 conn fixtures (Option A pilot)
+# per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 — canonical
+# replacement for 12 module-local `_make_mock_conn` definitions (LL-198 root).
+#
+# Migration is incremental — pilot lands fixture infrastructure here without
+# touching any existing test file. Future iter migrates test_*.py files one
+# cluster at a time + deletes module-local definitions per blueprint §7.
+#
+# Key design (cures B1-B5 from blueprint §3):
+#   - Fresh MagicMock per test invocation (no module-global state → kills B3+B5)
+#   - NO default fetchone return value (test MUST opt-in via builder → kills B1)
+#   - __enter__/__exit__ on cursor (with conn.cursor() as cur: 体例 works → kills B4)
+#   - assert_no_db_writes() helper codifies LL-198 fix point 2 (write-only assert)
+# ───────────────────────────────────────────────────────────────
+
+from unittest.mock import MagicMock  # noqa: E402
+
+
+@pytest.fixture
+def mock_conn() -> MagicMock:
+    """Yield a fresh MagicMock psycopg2-like connection per test invocation.
+
+    Default state:
+      - conn.cursor() returns a context-manager-capable MagicMock cursor
+        (supports both `cur = conn.cursor()` and `with conn.cursor() as cur:`).
+      - NO default fetchone / fetchall return value — test MUST explicitly set
+        via `mock_conn.cursor().fetchone.return_value = ...` or similar.
+
+    This intentional null-default cures LL-198 root (default (0,) tuple
+    mis-classified by prod code expecting None / multi-column row).
+
+    Usage:
+        def test_foo(mock_conn):
+            mock_conn.cursor().fetchone.return_value = ("draft",)
+            service = MyService()
+            result = service.process(conn=mock_conn)
+            assert result.status == "ok"
+
+    Sibling helpers (below) provide common shapes for fetchone queues + write
+    counting.
+    """
+    conn = MagicMock(name="mock_conn")
+    cursor = MagicMock(name="mock_cursor")
+    cursor.__enter__ = MagicMock(return_value=cursor)
+    cursor.__exit__ = MagicMock(return_value=False)
+    conn.cursor = MagicMock(return_value=cursor)
+    return conn
+
+
+@pytest.fixture
+def mock_conn_factory_builder():
+    """Yield a callable that builds conn-factory functions with fetchone queue.
+
+    Some prod code (e.g. DBStrategyRegistry) takes `conn_factory` callable
+    rather than conn directly — this builder mirrors test_strategy_registry's
+    `_make_mock_conn_factory` pattern but lives in conftest as canonical.
+
+    Usage:
+        def test_bar(mock_conn_factory_builder):
+            factory = mock_conn_factory_builder(fetchone_queue=[None, ("draft",)])
+            registry = DBStrategyRegistry(conn_factory=factory)
+            ...
+            # factory._conn / factory._cursor attributes expose the underlying
+            # mocks for assertion (sustained sibling pattern).
+    """
+
+    def _build(
+        fetchone_queue: list | None = None,
+        rowcounts: list | None = None,
+    ):
+        """Build a conn_factory callable returning a fresh MagicMock per call.
+
+        Args:
+            fetchone_queue: list of fetchone return values consumed iter-style.
+                None → fetchone returns None always.
+            rowcounts: list of cursor.rowcount values consumed iter-style.
+                None → rowcount returns 1 (typical UPSERT success).
+        """
+        conn = MagicMock(name="mock_factory_conn")
+        cursor = MagicMock(name="mock_factory_cursor")
+        cursor.__enter__ = MagicMock(return_value=cursor)
+        cursor.__exit__ = MagicMock(return_value=False)
+        if fetchone_queue is not None:
+            cursor.fetchone = MagicMock(side_effect=list(fetchone_queue))
+        if rowcounts is not None:
+            # rowcount is property-like; PropertyMock + side_effect for queue
+            from unittest.mock import PropertyMock
+
+            type(cursor).rowcount = PropertyMock(side_effect=list(rowcounts))
+        else:
+            cursor.rowcount = 1
+        conn.cursor = MagicMock(return_value=cursor)
+
+        def _factory():
+            return conn
+
+        # Expose underlying mocks for test-side assertion (sustained体例)
+        _factory._conn = conn  # type: ignore[attr-defined]
+        _factory._cursor = cursor  # type: ignore[attr-defined]
+        return _factory
+
+    return _build
+
+
+def _assert_no_db_writes_impl(conn: MagicMock) -> None:
+    """Implementation of write-only assertion (separated from fixture for direct call).
+
+    Codifies LL-198 fix point 2: SELECT-read is NOT a write side effect.
+    Walks `conn.cursor().execute.call_args_list` and asserts every executed
+    SQL starts with a read-only verb (SELECT / WITH / SHOW / EXPLAIN).
+    """
+    cursor = conn.cursor.return_value
+    write_prefixes = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "DROP", "ALTER")
+    bad_calls: list[str] = []
+    for call in cursor.execute.call_args_list:
+        sql = call.args[0] if call.args else ""
+        sql_upper = str(sql).lstrip().upper()
+        if sql_upper.startswith(write_prefixes):
+            bad_calls.append(str(sql)[:80])
+    assert not bad_calls, (
+        f"Expected no DB writes but found {len(bad_calls)}: {bad_calls!r}"
+    )
+
+
+@pytest.fixture
+def assert_no_db_writes():
+    """Yield assert_no_db_writes(conn) callable — write-only assert helper.
+
+    Codifies LL-198 fix point 2: SELECT-read is NOT a write side effect.
+    Tests inject this as a fixture and call directly.
+
+    Usage:
+        def test_no_writes(mock_conn, assert_no_db_writes):
+            service = MyService()
+            service.read_only_op(conn=mock_conn)
+            assert_no_db_writes(mock_conn)
+    """
+    return _assert_no_db_writes_impl
