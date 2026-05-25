@@ -225,7 +225,7 @@ AI助手: 因子设计建议/解释/诊断/推荐, API: POST /api/ai/factor-assi
 
 ---
 
-## 四、AI闭环模块页面（2个）
+## 四、AI闭环模块页面（3个）
 
 > 后端详见 DEV_AI_EVOLUTION.md
 
@@ -244,6 +244,43 @@ AI助手: 因子设计建议/解释/诊断/推荐, API: POST /api/ai/factor-assi
 4个Agent Tab: [因子发现] [策略构建] [诊断优化] [风控监督]
 每个: 决策规则阈值+LLM/GP配置+入库/风控阈值+自动修复权限
 [保存配置] [恢复默认]
+
+### 4.3 页面⑫: 因子审批队列 (Approval Queue)
+
+> iter 136 W2-F F1 closure — V3 §S5/§S6/§S7/§S8 backend → frontend gap 填补.
+> 后端: `backend/app/api/approval.py` (6 endpoints) → DB `gp_approval_queue` (DDL 域12).
+> 前端入口: 侧栏 AI 组 > 因子审批 (`/approval-queue`).
+
+**路由**: `/approval-queue` (lazy load via `pages/ApprovalQueue.tsx`).
+
+**Tab 设计**:
+- 待审批 Tab — `getApprovalQueue` polling 30s, 显示 pending 因子表 (factor_name + factor_expr 截断预览 + ast_hash + created_at + 3 action 按钮)
+- 历史 Tab — `getApprovalHistory` 分页 (20/页) + 状态筛选 (全部/已批准/已拒绝/已暂缓)
+
+**Detail Drawer** (560px 右侧抽屉):
+- 因子名 + run_id + status badge + 完整 factor_expr + ast_hash
+- Gate Report (G1-G8 JSONB) 折叠面板 (每个 key 一个 collapsible section, JSON 美化展示)
+- 审批时间 + 审批人 + 备注 (history 视图)
+
+**Action 4-tier 安全 ConfirmModal**:
+- **批准** (LOW tier): 简单确认, 备注可选
+- **暂缓** (MED tier): 需理由 ≥5 字符
+- **拒绝** (HIGH tier): 需理由 ≥5 字符 + 拒绝原因写入 mining_knowledge 供 GP 学习, danger 高亮
+
+**Fail-loud render guard** (LL-205 sustained):
+- 加载: 3 row skeleton
+- 错误: AlertTriangle 红卡 + 错误消息 + 重试按钮 (不静默 fallback)
+- 空: CheckCircle 绿卡 "审批队列已清空"
+
+**测试**: `frontend/src/__tests__/ApprovalQueue.test.tsx` 7 case (T1-T7) 覆盖
+loading skeleton / fail-loud error / retry / empty / happy / history fail-loud / detail drawer
+gate_report render. iter 136 vitest run 7/7 PASS.
+
+**API 契约** (4-element cite source):
+- `frontend/src/api/approval.ts:78` `getApprovalQueue(limit=50)` → GET /api/approval/queue
+- `frontend/src/api/approval.ts:86` `getApprovalDetail(itemId)` → GET /api/approval/queue/{id}
+- `frontend/src/api/approval.ts:92-100` approve/reject/hold POST wrappers
+- `frontend/src/api/approval.ts:120` `getApprovalHistory({status,limit,offset})` → GET /api/approval/history
 
 ---
 
