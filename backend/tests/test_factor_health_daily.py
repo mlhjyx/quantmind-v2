@@ -425,29 +425,38 @@ class TestExitCodes:
 # ──────────────────────────────────────────────────────────
 
 
-def _make_mock_conn(fetchall_candidates, fetchone_side_effects):
-    """构造模拟psycopg2连接。"""
-    mock_conn = MagicMock()
-    mock_cursor = MagicMock()
-    mock_conn.cursor.return_value = mock_cursor
-    mock_cursor.fetchall.return_value = fetchall_candidates
-    mock_cursor.fetchone.side_effect = fetchone_side_effects
-    return mock_conn, mock_cursor
+# iter 117: migrated to conftest `mock_conn` fixture (iter 110 pilot canonical).
+# Per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A + §9.2.
+# Local _make_mock_conn def deleted; tests inject mock_conn fixture + use helper
+# below to set fetchall_candidates + fetchone_side_effects per-test.
+
+
+def _set_factor_health_responses(conn: MagicMock, fetchall_candidates, fetchone_side_effects):
+    """Helper: set cursor fetchall + fetchone side_effect per test.
+
+    Per iter 117 migration — preserves the 2-query setup semantic
+    (fetchall returns candidates, fetchone iter for IC stats) without
+    duplicating MagicMock construction (canonical fixture handles construction).
+    """
+    cur = conn.cursor.return_value
+    cur.fetchall.return_value = fetchall_candidates
+    cur.fetchone.side_effect = fetchone_side_effects
 
 
 class TestCheckAndUpdateLifecycle:
     """check_and_update_lifecycle() 因子生命周期迁移测试。"""
 
-    def test_no_candidates_returns_empty(self) -> None:
+    def test_no_candidates_returns_empty(self, mock_conn) -> None:
         """无active/warning因子 → 返回空列表，不查IC。"""
-        mock_conn, _ = _make_mock_conn(fetchall_candidates=[], fetchone_side_effects=[])
+        _set_factor_health_responses(mock_conn, fetchall_candidates=[], fetchone_side_effects=[])
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
         assert result == []
         mock_conn.cursor.return_value.execute.assert_called_once()  # 只查了candidates
 
-    def test_active_to_degraded_dry_run(self) -> None:
+    def test_active_to_degraded_dry_run(self, mock_conn) -> None:
         """active因子近3月IC < 历史IC×0.5 → dry_run返回warning迁移，不UPDATE DB。"""
-        mock_conn, mock_cursor = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[("turnover_mean_20", "active")],
             fetchone_side_effects=[
                 # 历史均IC + 样本数
@@ -456,6 +465,7 @@ class TestCheckAndUpdateLifecycle:
                 (0.015, 25),
             ],
         )
+        mock_cursor = mock_conn.cursor.return_value
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
         assert len(result) == 1
         assert result[0]["factor_name"] == "turnover_mean_20"
@@ -465,9 +475,10 @@ class TestCheckAndUpdateLifecycle:
         update_calls = [c for c in mock_cursor.execute.call_args_list if "UPDATE" in str(c)]
         assert len(update_calls) == 0
 
-    def test_degraded_to_active_dry_run(self) -> None:
+    def test_degraded_to_active_dry_run(self, mock_conn) -> None:
         """degraded因子近3月IC ≥ 历史IC×0.5 → dry_run返回active迁移，不UPDATE DB。"""
-        mock_conn, _ = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[("volatility_20", "warning")],
             fetchone_side_effects=[
                 # 历史均IC + 样本数
@@ -482,9 +493,10 @@ class TestCheckAndUpdateLifecycle:
         assert result[0]["old_status"] == "warning"
         assert result[0]["new_status"] == "active"
 
-    def test_insufficient_history_skipped(self) -> None:
+    def test_insufficient_history_skipped(self, mock_conn) -> None:
         """历史数据不足MIN_HISTORY_DAYS → 跳过，返回空列表。"""
-        mock_conn, _ = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[("amihud_20", "active")],
             fetchone_side_effects=[
                 # 历史均IC=None, 样本数=5 (< 20)
@@ -494,9 +506,10 @@ class TestCheckAndUpdateLifecycle:
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
         assert result == []
 
-    def test_no_migration_when_ic_above_threshold(self) -> None:
+    def test_no_migration_when_ic_above_threshold(self, mock_conn) -> None:
         """active因子近3月IC ≥ 历史IC×0.5 → 无迁移。"""
-        mock_conn, _ = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[("reversal_20", "active")],
             fetchone_side_effects=[
                 # 历史均IC=0.04, 样本数=50
@@ -508,15 +521,17 @@ class TestCheckAndUpdateLifecycle:
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
         assert result == []
 
-    def test_active_to_degraded_writes_db(self) -> None:
+    def test_active_to_degraded_writes_db(self, mock_conn) -> None:
         """active→warning 非dry_run → 调用UPDATE factor_registry。"""
-        mock_conn, mock_cursor = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[("bp_ratio", "active")],
             fetchone_side_effects=[
                 (0.05, 60),  # hist: mean=0.05, count=60
                 (0.01, 30),  # recent: mean=0.01 < 0.05×0.5=0.025
             ],
         )
+        mock_cursor = mock_conn.cursor.return_value
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=False)
         assert len(result) == 1
         assert result[0]["new_status"] == "warning"
@@ -524,9 +539,10 @@ class TestCheckAndUpdateLifecycle:
         assert len(update_calls) == 1
         mock_conn.commit.assert_called_once()
 
-    def test_multiple_factors_mixed(self) -> None:
+    def test_multiple_factors_mixed(self, mock_conn) -> None:
         """多因子：1个需迁移，1个不需要。"""
-        mock_conn, _ = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[
                 ("factor_a", "active"),
                 ("factor_b", "active"),
@@ -543,9 +559,10 @@ class TestCheckAndUpdateLifecycle:
         assert result[0]["factor_name"] == "factor_a"
         assert result[0]["new_status"] == "warning"
 
-    def test_insufficient_recent_data_skipped(self) -> None:
+    def test_insufficient_recent_data_skipped(self, mock_conn) -> None:
         """近3个月数据不足5条 → 跳过该因子。"""
-        mock_conn, _ = _make_mock_conn(
+        _set_factor_health_responses(
+            mock_conn,
             fetchall_candidates=[("factor_c", "warning")],
             fetchone_side_effects=[
                 (0.03, 30),  # hist ok
