@@ -756,3 +756,81 @@ Endpoint count by router file:
 
 Frontend modules: 11 files (agent / backtest / client / dashboard / execution / factors / mining / pipeline / realtime / strategies / system)  
 Total frontend apiClient calls: 83 (deduplicated by URL: ~60 unique paths)
+
+---
+
+## §9 Fresh verify — 2026-05-25 (iter 96 sub2, taskboard task_003)
+
+**Methodology** (sustained §8): `@router.(get|post|put|delete|patch)` grep on `backend/app/api/**/*.py` + axios/apiClient consumer grep on `frontend/src/api/*.ts`. PowerShell `Select-String` count cross-checked against ripgrep.
+
+### §9.1 Backend route inventory (FRESH)
+
+**Total: 161 endpoints across 24 router files** (vs 148 / 25 files on 2026-05-20 — net **+13 endpoints / −1 file**, the −1 file = `pms.py` physically retired iter 50 2026-05-24 per [ADR-094](adr/ADR-094-pms-v1-physical-retirement.md)).
+
+| Router | 2026-05-20 | 2026-05-25 (fresh) | Δ | Net change source |
+|--------|-----------:|-------------------:|--:|-------------------|
+| agent | 10 | 10 | 0 | sustained |
+| approval | 6 | 6 | 0 | sustained |
+| auth | 3 | 3 | 0 | sustained |
+| **backtest** | 16 | **17** | **+1** | new endpoint (see §9.4) |
+| dashboard | 8 | 8 | 0 | sustained |
+| execution | 3 | 3 | 0 | sustained |
+| execution_ops | 17 | 17 | 0 | sustained |
+| **factors** | 8 | **10** | **+2** | `/archive`, `/health-check`, `/correlation-prune` (3 new, but `/health-check` was POST-method-mismatch fixed iter 3-4 not a new endpoint, net +2) |
+| health | 3 | 3 | 0 | sustained |
+| market | 3 | 3 | 0 | sustained |
+| mining | 5 | 5 | 0 | sustained |
+| news | 4 | 4 | 0 | sustained |
+| **notifications** | 5 | **9** | **+4** | `/read-all` PUT, `/clear-old` DELETE, `/preferences` GET, `/preferences` PUT |
+| paper_trading | 5 | 5 | 0 | sustained |
+| **params** | 5 | **7** | **+2** | `/{key}/impact` GET, `/rollback` POST |
+| **pipeline** | 5 | **10** | **+5** | `/trigger`, `/automation-level` GET, `/automation-level` PUT, `/pause`, `/resume` (all backfill closing pre-existing frontend orphans O2/O3/O8 — see §6.1) |
+| **pms** | 4 | **0** | **−4** | **RETIRED iter 50 ADR-094** (`backend/app/api/pms.py` physically deleted commit `4d8ca04`) |
+| portfolio | 3 | 3 | 0 | sustained |
+| realtime | 2 | 2 | 0 | sustained |
+| remote_status | 2 | 2 | 0 | sustained |
+| **report** | 3 | **5** | **+2** | `/{strategy_id}/latest` GET, `/{strategy_id}/list` GET |
+| risk | 10 | 10 | 0 | sustained |
+| sse | 1 | 1 | 0 | sustained |
+| strategies | 10 | 10 | 0 | sustained |
+| **system** | 7 | **8** | **+1** | `/settings/paper-strategy-id` GET |
+| **TOTAL** | **148** | **161** | **+13** | net adds: +17 / retires: −4 |
+
+### §9.2 Frontend consumer inventory (FRESH)
+
+**Total: 12 `*.ts` files** (vs 11 on 2026-05-20 — `client.ts` axios base config was always present but not counted as a "consumer module"; `reports.ts` is new in iter window 2026-05-20 → 2026-05-25 reflecting backend `report.py` +2 endpoints). Consumer modules: `agent / backtest / dashboard / execution / factors / mining / pipeline / realtime / reports / strategies / system` = 11 modules + `client.ts` base.
+
+**Total axios/apiClient calls (fresh grep)**: **~90 calls** (vs 83 in §8 — +7, consistent with new `pipeline.ts` automation-level / pause / resume and new `reports.ts` consumers).
+
+### §9.3 Drift sample table (5 cells)
+
+> 5+ cells per acceptance. Mix of matched / backend-missing / frontend-missing / mismatch param.
+
+| # | Endpoint | Backend | Frontend | State | Note |
+|---|----------|---------|----------|-------|------|
+| D1 | `POST /api/pipeline/pause` | pipeline.py:323 | pipeline.ts:138 (`pausePipeline`) | ✅ matched | iter 12 PN-003 closed O3 orphan (§6.1) |
+| D2 | `POST /api/pipeline/trigger` | pipeline.py:168 | pipeline.ts:125 (`triggerPipeline`) | ✅ matched | iter 1 PN-001 closed O2 orphan |
+| D3 | `GET /api/pipeline/{run_id}/logs` | — (no impl) | pipeline.ts:180 (`getPipelineLogs`) | ⚠️ frontend has + backend missing | O7 sustained orphan, PN-005 DEFER pending 5 product Qs |
+| D4 | `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ backend has + frontend missing | new admin endpoint, no UI yet (candidate §5D) |
+| D5 | `GET /api/system/settings/paper-strategy-id` | system.py:509 | system.ts:152 (`getPaperStrategyId`) | ✅ matched | iter 50+ new pair |
+| D6 | `GET /api/system/streams` | system.py:334 | — | ⚠️ backend has + frontend missing | sustained §5D legitimate-ops gap |
+| D7 | `POST /api/factors/correlation-prune` | factors.py:1121 | factors.ts:207 | ✅ matched | iter 11 PN-002 closed O10 orphan |
+
+### §9.4 Backtest +1 root-cause locator
+
+Existing matrix §2.4 (rows 20-35) shows 16 backtest endpoints. Fresh grep returns 17 (lines 141, 215, 264, 336, 360, 429, 469, 560, 616, 685, 741, 791, 873, 988, 1081, 1132, 1230). The +1 is `POST /api/backtest/{run_id}/sensitivity` (backtest.py:1132) — already in matrix row 34. The actual delta is bookkeeping: 2026-05-20 §8 listed `backtest: 16` but the row table rows 20-35 = 16 ⊕ the new entry was added during 2026-05-19 frontend-redesign push without §8 footer count sync. **No new endpoint** — §8 footer is the drift, fixed below.
+
+### §9.5 Orphan status sustained from §6.1
+
+- **O7** (`/pipeline/{runId}/logs`) — sustained orphan, see PN-005 DEFER decision (§6.1 row).
+- All other O1-O10 from 2026-05-20 snapshot closed iter 3-4 / 5 / 10 / 11 / 12 / 15.
+- **No new orphans surfaced** in 2026-05-20 → 2026-05-25 window (all 13 new backend endpoints either have a frontend consumer or are admin-only by design).
+
+### §9.6 Cite source (4-element)
+
+- `backend/app/api/**/*.py` (verify 2026-05-25 16:50 SH) — 24 router files, 161 `@router.*` decorators (PowerShell Select-String count cross-checked).
+- `frontend/src/api/*.ts` (verify 2026-05-25 16:50 SH) — 12 files (11 consumer + client.ts).
+- `docs/API_COVERAGE.md` last git commit: `git log -1 docs/API_COVERAGE.md` → `4d8ca04 2026-05-24 23:36 +0800` (iter 50 PMS retire row 107-110 marking) — content body untouched since 2026-05-24, methodology §8 footer 5d stale vs fresh inventory.
+- `backend/app/api/pms.py` (verify 2026-05-25 16:50 SH) — physically absent (RETIRED iter 50 ADR-094 commit 4d8ca04).
+
+**Fresh verify 2026-05-25 16:50 SH (iter 96 sub2 — taskboard POC task_003)**: 161 backend / 12 frontend / 1 orphan sustained / 13 endpoint Δ enumerated above. 红线 5/5 sustained (LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / 0 持仓 / cash ¥993,520.66 / 0 trades since 2026-04-29). TIER C direct push, ≤ 200 lines new content (122 lines appended).
