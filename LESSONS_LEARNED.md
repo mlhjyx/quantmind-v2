@@ -7062,3 +7062,111 @@ Agent applied skill SOP + 返回 STOP + report 而非 obey + fabricate cite. Mai
 **Cross-ref**: V3 §quantmind-v3-anti-pattern-guard + §quantmind-v3-cite-source-lock skills + LL-105 SOP-6 cite SSOT + LL-130 skill SOP enforcement + LL-196/197/198/199/200 cluster.
 
 **Sediment trigger**: 2026-05-25 iter 99 实证 — Pattern B Task agent 第一次拒绝 task premise (anti-pattern guard active enforcement). 未来 task spec authoring 时 main 须 fresh grep verify target file 含 expected content before派单 (反 assumption-driven task spec).
+
+---
+
+## LL-202 — Stop hook schema 拒绝 hookSpecificOutput.hookEventName == "Stop" — 必走 top-level systemMessage (2026-05-25 iter 100)
+
+**Pattern essence**:
+
+iter 77 修 `.claude/hooks/verify_completion.py` 想实现 "silent-UI mode" — 让 governance checklist 通过 `hookSpecificOutput.additionalContext` 静默注入 CC 下一回合 context (非 UI popup). 抄了 PostToolUse hook 的体例:
+
+```python
+output = {
+    "hookSpecificOutput": {
+        "hookEventName": "Stop",        # ← Claude Code schema 不允许
+        "additionalContext": checklist,
+    }
+}
+```
+
+但 Claude Code hook schema 对 `hookSpecificOutput.hookEventName` 只接受 4 个合法值: `PreToolUse` / `UserPromptSubmit` / `PostToolUse` / `PostToolBatch`. **Stop 不在合法值列表**. 每次 Stop event harness echo `Hook JSON output validation failed — (root): Invalid input`, sustained ~1 个月 (4-25 → 5-25 iter 100) silent fail (warning level, 非 block).
+
+**真 fix** (反 schema-mismatch silent fail v1):
+
+iter 100 改 top-level `systemMessage` 字段 (schema valid for Stop hook):
+```python
+output = {"systemMessage": checklist}
+```
+
+Test 同步: `backend/tests/test_verify_completion_hook.py::test_stop_event_handled` 之前 assert `parsed["hookSpecificOutput"]["hookEventName"] == "Stop"` — 把 broken contract enforce 进 test. iter 100 更新为 assert `"systemMessage" in parsed`. 8/8 tests PASS.
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+Hook output JSON 设计前必 fresh-read Claude Code hook 官方 schema (`hookSpecificOutput` 各 event type 合法值 + top-level 合法字段). 不可基于另一个 hook event 的体例推断 Stop / Notification / SessionStart 等其他 event 的 schema. 适用范围:
+- 任 `.claude/hooks/*.py` 编辑或新增 — 必 cite 4 元素 official schema
+- 任何看到 harness echo "validation failed" 警告 → fresh-verify hook output 是否 schema-conformant, 别假设是 transient
+
+**Why this matters**:
+
+- 反 schema-mismatch silent fail anti-pattern (warning 一直 echo 没人看, 实际意图未达成)
+- 反 体例 silent copy (iter 77 抄 PostToolUse 体例不 verify, sustained 1 个月)
+- 反 broken-contract test enforce — test assert 错的 schema → 把 bug 锁死防修复 (LL-199 同源 anti-pattern)
+- Sustained 1 个月才 surface — 因为是 warning 非 block, 用户 normalize the warning. 类比 iter 100 user 显式问 "为什么一直显示这个"
+
+**Cite source (4-element, verify 2026-05-25 19:35 SH iter 100)**:
+
+- `.claude/hooks/verify_completion.py:178-189` (iter 77 broken 体例 + iter 100 fix)
+- `backend/tests/test_verify_completion_hook.py::test_stop_event_handled` (test 同步 iter 100)
+- Harness validation error message (user paste 2026-05-25 19:31 SH): "Expected schema: ... hookSpecificOutput.for Stop: (not in enum)"
+- iter 100 commit `b35d3fb` (修 hook + test 同 commit)
+
+**Heuristic backref**: #14 Documentation Lying (assumed schema = PostToolUse 体例, 但 Stop schema 不同), #15 Test-Reality Gap (test enforce 错 schema, lock-in bug), #11 Convenience-Driven Development (复制邻近 hook 体例不 verify, 节省 5 分钟换 sustained 1 月 silent fail).
+
+**Cross-ref**: LL-199 (patch test when prod intentionally changed enum, 同源 test-locks-in-bug pattern) + LL-196 (silent-UI hook reconciliation — iter 77 同 commit 同 hook 但 silent-UI 设计正确, 仅 JSON schema 错).
+
+**Sediment trigger**: 2026-05-25 iter 100 user 反复挑战 "为什么一直显示这个" — sustained warning normalize 是 anti-pattern surface trigger. 未来任何 sustained ≥7 day warning level harness echo 必当 P1 finding 不可 normalize.
+
+---
+
+## LL-203 — Celery worker 静默 task registration miss — Beat 派发但 worker KeyError 吞掉, sustained ≥6 cycles 不可观察 (2026-05-25 iter 101)
+
+**Pattern essence**:
+
+`factor_lifecycle` Celery Beat 任务 Fri 19:00 SH 调度. iter 100 audit 发现 5 cycles silent dispatch (4-24/5-01/5-08/5-15/5-22), `scheduler_task_log` 0 row, `factor_lifecycle` table last_updated 4-16. iter 101 Pattern B agent static analysis 找到 smoking gun:
+
+`logs/celery-stderr.log:11183-11200` (2026-04-17 19:00:00,005):
+```
+ERROR/MainProcess: Received unregistered task of type 'daily_pipeline.factor_lifecycle'.
+KeyError: 'daily_pipeline.factor_lifecycle'
+```
+
+Beat 端 dispatch 全 6 cycles (4-17 + 5 follow-up Fri), worker 端 task name 未 registered. 4-17 后 worker 端 log 完全 silent — log rotation OR worker restart 但 registration miss 沿用.
+
+**Compounding observability gap** (独立 root cause): `factor_lifecycle_task` body (`backend/app/tasks/daily_pipeline.py:1067-1121`) **NOT** 调用 `_write_scheduler_log_safe` helper (同 file L57-105 已存在, `risk_daily_check` L262 + `intraday_risk_check` L522 已用). 即使 task 真 execute 了, audit row 也 0. Calendar-gate "skipped" return silent exit, 无 DB trace.
+
+**真 fix** (反 silent task registration miss + 反 observability gap, 双层):
+
+(a) **Boot-time self-check** (P0 surface): `celery_app` boot 时 assert `every CELERY_BEAT_SCHEDULE[*].task in celery_app.tasks.keys()`. 若 missing → fail-loud P0 DingTalk + worker refuse start. 防 H2 future 重演.
+
+(b) **scheduler_task_log envelope** (defensive observability): 每个 Beat task body 起手 + 终点 调用 `_write_scheduler_log_safe(status='received'/'success'/'skipped'/'error', ...)`. 与 root cause 无关, 闭 observability gap, idempotent + 非 breaking.
+
+(c) **Post-fix ops**: Servy restart `QuantMind-Celery + QuantMind-CeleryBeat` (LL-141 4-step ops). Manual `celery -A app.tasks.celery_app send_task` smoke verify.
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+任 Celery `@task` decorator 新增 / rename / import path 改 → boot-time self-check 强制 catches drift. 任何 Beat task 新增 → 必 wrap `_write_scheduler_log_safe` envelope (calendar-gate 也必 log skip status). 适用 V3 风控 14:30 risk-daily-check Beat / GP daily Beat / IC compute Beat / 等所有 Celery Beat task.
+
+**Why this matters**:
+
+- 反 silent failure 铁律 33 — KeyError on task receive 被 Celery worker 吞掉 ERROR level, 但 production ops 未 alert/page (DingTalk silence)
+- 反 observability-gap-driven debt — `_write_scheduler_log_safe` helper 已 exist + 已 use elsewhere, 但 `factor_lifecycle_task` 漏接入, sustained silent 5+ weeks 不可观察
+- 反 Beat schedule entry 与 worker task registration 双源 drift — Beat 端 schedule string 与 worker autodiscover/include 配置可独立 drift, 必 boot-time cross-check
+- 沿用 LL-141 (4-step ops post-merge sequence for Celery service changes) + LL-097 (X9 Beat schedule restart sustained 提醒)
+
+**Cite source (4-element, verify 2026-05-25 19:50 SH iter 101)**:
+
+- `docs/audit/FACTOR_LIFECYCLE_BEAT_2026_05_25.md` (iter 100 P0 finding initial)
+- `docs/audit/FACTOR_LIFECYCLE_ROOT_CAUSE_2026_05_25.md` (iter 101 root cause + smoking gun)
+- `backend/app/tasks/daily_pipeline.py:1067-1121` (factor_lifecycle_task body, 缺 envelope)
+- `backend/app/tasks/daily_pipeline.py:57-105` (`_write_scheduler_log_safe` helper definition)
+- `backend/app/tasks/daily_pipeline.py:262 + 522` (helper 正确使用例)
+- `backend/app/tasks/beat_schedule.py:113-120` (Beat entry)
+- `logs/celery-stderr.log:11183-11200` (KeyError smoking gun 4-17 19:00)
+- `logs/celery-beat-stderr.log` (grep factor_lifecycle count=6 Fri dispatch confirmed)
+
+**Heuristic backref**: #4 Silent Failure (KeyError ERROR level 但 DingTalk silence), #15 Test-Reality Gap (无 boot-time self-check → Beat/worker drift sustained), #11 Convenience-Driven Development (`_write_scheduler_log_safe` helper exists 但 new task 漏接入 — 复制邻近 task body 体例时 reviewer 漏 catch).
+
+**Cross-ref**: LL-141 (4-step Celery service ops) + LL-097 X9 (Beat schedule restart 体例) + 铁律 33 (silent failure) + 铁律 X9 LL-097 (schedule 注释 ≠ 停服).
+
+**Sediment trigger**: 2026-05-25 iter 101 Pattern B agent static analysis 找到 smoking gun + remediation plan. 未来 iter 102+ 实施 (a)+(b)+(c) 三 fix (TIER B PR ~2-3h). 沿用 audit-first then fix-PR 体例.
