@@ -363,6 +363,12 @@ Deferred (5 项 DOC-CLOSED): #3 双轨样式 (50h) / #7 cron hardcoded / #12 PMS
 - **Total rows**: 145,874 (vs §2 table 57,711 是 2026-04-06 前的 stale 数字, **本 section 为准**)
 - **ic_ma20 rows**: 142,990 (80% coverage, PR #43 回填后)
 - **113 factors** with ic_20d, **83 factors** with valid ic_ma20 (min_periods=5 限制)
+  - **⚠️ 语义澄清** (2026-05-25 17:40 SH fresh annotation, 33d stale 原 4-22 snapshot 保留作历史):
+    - "113 factors with ic_20d" = factor_ic_history **coverage 计数** (历史 IC 入库因子总数), **NOT** PT active count
+    - **PT active = 4 CORE 因子** (turnover_mean_20 / volatility_20 / bp_ratio / dv_ttm), cite FACTOR_TEST_REGISTRY.md:36-38 (sustained since 2026-04-12 WF PASS)
+    - 原 4-22 01:35 snapshot 保留 (cite: 本文件 §factor_ic_history Session 23 Part 2)
+    - 113 实际 fresh 数 pending next DB query window (`SELECT COUNT(DISTINCT factor_name) FROM factor_ic_history WHERE ic_20d IS NOT NULL`)
+    - audit verdict cite: docs/audit/FACTOR_POOL_HEALTH_2026_05_25.md §1
 - **max trade_date**: 2026-04-21 (ic_5d/10d), 2026-03-23 (ic_20d, T+20 forward return 约束)
 
 ### 实战 rehearsal (Session 23 Part 2, 02:30 跨日)
