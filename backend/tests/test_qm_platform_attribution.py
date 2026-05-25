@@ -19,6 +19,7 @@ from backend.qm_platform.eval.attribution import (
     RegimeInfo,
     compute_by_cost,
     compute_by_factor,
+    compute_by_regime,
     compute_by_sector,
     residual_exceeds_threshold,
 )
@@ -479,6 +480,99 @@ def test_compute_by_cost_attribution_dataclass_integration():
     )
     assert "commission" in a.by_cost
     assert a.by_cost["commission"] < 0  # cost is negative P&L impact
+
+
+# ────────────────────────────────────────────────────────────────────
+# MVP 4.2 sub-iter 5 (iter 63): compute_by_regime — HMM 3-state integration
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_compute_by_regime_bull_argmax():
+    """Bull dominant probability → detected = bull."""
+    probs = {0: 0.7, 1: 0.2, 2: 0.1}
+    mapping = {0: "bull", 1: "sideways", 2: "bear"}
+    info = compute_by_regime(probs, mapping, actual_perf_bps=10.0)
+    assert info.detected == "bull"
+    # expected = 0.7*12 + 0.2*0 + 0.1*(-8) = 8.4 + 0 - 0.8 = 7.6
+    assert info.expected_perf_bps == pytest.approx(7.6)
+    assert info.actual_perf_bps == 10.0
+
+
+def test_compute_by_regime_bear_argmax():
+    """Bear dominant probability → detected = bear."""
+    probs = {0: 0.1, 1: 0.2, 2: 0.7}
+    mapping = {0: "bull", 1: "sideways", 2: "bear"}
+    info = compute_by_regime(probs, mapping, actual_perf_bps=-5.0)
+    assert info.detected == "bear"
+    # expected = 0.1*12 + 0.2*0 + 0.7*(-8) = 1.2 - 5.6 = -4.4
+    assert info.expected_perf_bps == pytest.approx(-4.4)
+
+
+def test_compute_by_regime_sideways_argmax():
+    """Sideways dominant probability → detected = sideways."""
+    probs = {0: 0.2, 1: 0.6, 2: 0.2}
+    mapping = {0: "bull", 1: "sideways", 2: "bear"}
+    info = compute_by_regime(probs, mapping, actual_perf_bps=1.0)
+    assert info.detected == "sideways"
+    # expected = 0.2*12 + 0.6*0 + 0.2*(-8) = 2.4 + 0 - 1.6 = 0.8
+    assert info.expected_perf_bps == pytest.approx(0.8)
+
+
+def test_compute_by_regime_list_probs():
+    """state_probs as list (indexed by position) — alternative input form."""
+    probs = [0.5, 0.3, 0.2]  # 0=bull, 1=sideways, 2=bear
+    mapping = {0: "bull", 1: "sideways", 2: "bear"}
+    info = compute_by_regime(probs, mapping, actual_perf_bps=5.0)
+    assert info.detected == "bull"
+    assert info.expected_perf_bps == pytest.approx(0.5 * 12 + 0.3 * 0 + 0.2 * -8)  # 4.4
+
+
+def test_compute_by_regime_custom_baseline():
+    """Custom baseline_perf_bps override."""
+    probs = {0: 0.8, 1: 0.1, 2: 0.1}
+    mapping = {0: "bull", 1: "sideways", 2: "bear"}
+    custom = {"bull": 20.0, "sideways": 0.0, "bear": -15.0}
+    info = compute_by_regime(probs, mapping, actual_perf_bps=15.0, baseline_perf_bps=custom)
+    # expected = 0.8*20 + 0.1*0 + 0.1*(-15) = 16 - 1.5 = 14.5
+    assert info.expected_perf_bps == pytest.approx(14.5)
+
+
+def test_compute_by_regime_empty_probs_raises():
+    """Empty state_probs → ValueError."""
+    with pytest.raises(ValueError, match="state_probs is empty"):
+        compute_by_regime({}, {0: "bull"}, actual_perf_bps=0.0)
+    with pytest.raises(ValueError, match="state_probs is empty"):
+        compute_by_regime([], {0: "bull"}, actual_perf_bps=0.0)
+
+
+def test_compute_by_regime_empty_mapping_raises():
+    """Empty state_mapping → ValueError."""
+    with pytest.raises(ValueError, match="state_mapping is empty"):
+        compute_by_regime({0: 1.0}, {}, actual_perf_bps=0.0)
+
+
+def test_compute_by_regime_unknown_argmax_raises():
+    """state_mapping missing argmax state → ValueError."""
+    probs = {0: 0.3, 5: 0.7}  # state 5 not in mapping
+    mapping = {0: "bull", 1: "sideways"}
+    with pytest.raises(ValueError, match="state_mapping missing argmax index 5"):
+        compute_by_regime(probs, mapping, actual_perf_bps=0.0)
+
+
+def test_compute_by_regime_attribution_dataclass_integration():
+    """compute_by_regime output integrates with DailyAttribution.by_regime field."""
+    probs = {0: 0.6, 1: 0.3, 2: 0.1}
+    mapping = {0: "bull", 1: "sideways", 2: "bear"}
+    by_regime = compute_by_regime(probs, mapping, actual_perf_bps=8.0)
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 27),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.008,
+        by_regime=by_regime,
+    )
+    assert a.by_regime is not None
+    assert a.by_regime.detected == "bull"
 
 
 def test_attribution_engine_protocol_structural_typing():

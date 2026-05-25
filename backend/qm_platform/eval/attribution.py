@@ -232,6 +232,91 @@ def compute_by_sector(
 _COST_FIELDS = ("commission", "slippage", "impact", "overnight_gap")
 
 
+def compute_by_regime(
+    state_probs: dict[int, float] | list[float],
+    state_mapping: dict[int, str],
+    actual_perf_bps: float,
+    baseline_perf_bps: dict[str, float] | None = None,
+) -> RegimeInfo:
+    """HMM 3-state regime attribution (iter 63, sub-iter 5).
+
+    Per MVP_4_2_attribution.md §4 step 5 + backend/engines/regime_detector.py
+    3-state HMM (bull / sideways / bear). Constructs RegimeInfo with detected state +
+    expected performance (state-weighted baseline) + actual performance.
+
+    Algorithm:
+        detected = state_mapping[argmax(state_probs)]
+        expected_perf_bps = Σ_state state_prob × baseline_perf_bps[state_name]
+        return RegimeInfo(detected, expected_perf_bps, actual_perf_bps)
+
+    Default baselines (per backend/engines/regime_detector.py SCALE_BEAR=0.3 + standard
+    A股 regime returns from research-kb):
+        bull: +12 bps/day (long-term bull expected)
+        sideways: 0 bps/day (mean-reverting)
+        bear: -8 bps/day (negative drift)
+
+    沿用 regime_detector.py state mapping convention. 铁律 31 Engine 纯计算.
+
+    Args:
+        state_probs: HMM posterior probabilities. dict[int, float] keyed by state index,
+            OR list[float] indexed by state position.
+        state_mapping: dict[int → state_name_str] from regime_detector._state_mapping.
+        actual_perf_bps: actual portfolio daily return in basis points.
+        baseline_perf_bps: optional state→bps baseline. Defaults to {bull: 12, sideways: 0, bear: -8}.
+
+    Returns:
+        RegimeInfo with detected state + expected + actual perf bps.
+
+    Raises:
+        ValueError: state_probs empty / state_mapping missing detected state.
+
+    Examples:
+        >>> probs = {0: 0.7, 1: 0.2, 2: 0.1}
+        >>> mapping = {0: "bull", 1: "sideways", 2: "bear"}
+        >>> info = compute_by_regime(probs, mapping, actual_perf_bps=10.0)
+        >>> info.detected
+        'bull'
+        >>> info.expected_perf_bps
+        7.6
+    """
+    if not state_probs:
+        raise ValueError("state_probs is empty; HMM regime detection requires ≥1 state")
+    if not state_mapping:
+        raise ValueError("state_mapping is empty; cannot resolve detected state name")
+
+    if baseline_perf_bps is None:
+        baseline_perf_bps = {"bull": 12.0, "sideways": 0.0, "bear": -8.0}
+
+    # Normalize state_probs to dict[int, float]
+    if isinstance(state_probs, list):
+        probs_dict = dict(enumerate(state_probs))
+    else:
+        probs_dict = dict(state_probs)
+
+    # Detected = argmax state index → name
+    max_state_idx = max(probs_dict, key=lambda k: probs_dict[k])
+    detected = state_mapping.get(max_state_idx)
+    if detected is None:
+        raise ValueError(
+            f"state_mapping missing argmax index {max_state_idx}; mapping keys={list(state_mapping)}"
+        )
+
+    # Expected perf = state-weighted average of baselines
+    expected_perf_bps = 0.0
+    for state_idx, prob in probs_dict.items():
+        state_name = state_mapping.get(state_idx)
+        if state_name is None:
+            continue  # silent_ok: missing mapping → skip (rare HMM state)
+        baseline_bps = baseline_perf_bps.get(state_name, 0.0)
+        expected_perf_bps += prob * baseline_bps
+
+    return RegimeInfo(
+        detected=detected,
+        expected_perf_bps=expected_perf_bps,
+        actual_perf_bps=actual_perf_bps,
+    )
+
+
 def compute_by_cost(
     trades: list[dict[str, float]],
     nav: float = 1.0,
@@ -299,6 +384,7 @@ __all__ = [
     "RegimeInfo",
     "compute_by_cost",
     "compute_by_factor",
+    "compute_by_regime",
     "compute_by_sector",
     "residual_exceeds_threshold",
 ]
