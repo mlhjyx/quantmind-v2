@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -31,41 +30,17 @@ from backend.qm_platform.strategy import (
 # ─── helpers (镜像 test_strategy_registry.py 模式) ─────────────────────
 
 
-def _make_mock_conn_factory(fetchone_queue: list | None = None):
-    """Build a mock conn_factory returning a MagicMock with cursor context manager.
-
-    fetchone_queue: sequentially returned from cursor.fetchone() each call.
-
-    **Contract mirror (reviewer P1 2026-04-28 PR #126)**: factory() always returns
-    the SAME mock conn instance (镜像生产 pooled-connection 行为, 见 docstring of
-    DBStrategyRegistry.record_evaluation). 这保证 record_evaluation INSERT 与
-    后续 update_status SELECT 共享 cursor / tx, 测试反映生产 caller-managed-tx
-    pattern (铁律 32). 若未来要测真"跨连接"场景需 monkeypatch factory 返不同 conn.
-    """
-    conn = MagicMock()
-    cursor = MagicMock()
-    conn.cursor.return_value = cursor
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    conn.closed = 0
-
-    _it = iter(fetchone_queue or [])
-
-    def _fetchone():
-        try:
-            return next(_it)
-        except StopIteration:
-            return None
-
-    cursor.fetchone.side_effect = _fetchone
-    cursor.fetchall.return_value = []
-
-    def factory():
-        return conn
-
-    factory._conn = conn  # type: ignore[attr-defined]
-    factory._cursor = cursor  # type: ignore[attr-defined]
-    return factory
+# iter 123: migrated to conftest `mock_conn_factory_builder` fixture (iter 110
+# pilot canonical + iter 120 fetchall=[] default enhancement).
+# Per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A + §9.8.
+# Local _make_mock_conn_factory def deleted; tests now inject mock_conn_factory_builder
+# as fixture parameter + call it directly.
+#
+# Minor differences vs local def (sustained per-test audit):
+# - `conn.closed = 0` not set by canonical (prod grep 0 hit → unused defensive padding)
+# - fetchone overflow: local lambda → None vs canonical MagicMock side_effect → StopIteration.
+#   Per-test audit: no test in this file exceeds fetchone_queue length (verified by reading
+#   prod DBStrategyRegistry.record_evaluation + update_status fetchone call counts).
 
 
 def _make_verdict(
@@ -88,9 +63,9 @@ def _make_verdict(
 # ─── record_evaluation tests ──────────────────────────────────────────
 
 
-def test_record_evaluation_inserts_row_with_passed_true():
+def test_record_evaluation_inserts_row_with_passed_true(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     verdict = _make_verdict(str(sid), passed=True, p_value=0.001)
 
@@ -109,9 +84,9 @@ def test_record_evaluation_inserts_row_with_passed_true():
     assert args[5] == "PlatformStrategyEvaluator"  # evaluator_class default
 
 
-def test_record_evaluation_serializes_blockers_and_details_to_json():
+def test_record_evaluation_serializes_blockers_and_details_to_json(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     verdict = _make_verdict(
         str(sid),
@@ -136,8 +111,8 @@ def test_record_evaluation_serializes_blockers_and_details_to_json():
     assert args[5] == "CustomEvaluator"
 
 
-def test_record_evaluation_invalid_subject_uuid_raises():
-    factory = _make_mock_conn_factory()
+def test_record_evaluation_invalid_subject_uuid_raises(mock_conn_factory_builder):
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     verdict = _make_verdict("not-a-uuid", passed=True)
 
@@ -147,9 +122,9 @@ def test_record_evaluation_invalid_subject_uuid_raises():
     assert factory._cursor.execute.call_count == 0
 
 
-def test_record_evaluation_empty_evaluator_class_raises():
+def test_record_evaluation_empty_evaluator_class_raises(mock_conn_factory_builder):
     sid = uuid4()
-    factory = _make_mock_conn_factory()
+    factory = mock_conn_factory_builder()
     reg = DBStrategyRegistry(conn_factory=factory)
     verdict = _make_verdict(str(sid), passed=True)
 
@@ -161,13 +136,13 @@ def test_record_evaluation_empty_evaluator_class_raises():
 # ─── update_status(LIVE) 守门 tests ───────────────────────────────────
 
 
-def test_update_status_to_live_without_any_evaluation_raises():
+def test_update_status_to_live_without_any_evaluation_raises(mock_conn_factory_builder):
     """无 strategy_evaluations 行 → EvaluationRequired."""
     sid = uuid4()
     # Sequence:
     #   1) SELECT status FROM strategy_registry → ('draft',)
     #   2) SELECT ... FROM strategy_evaluations → None
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), None])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",), None])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     with pytest.raises(EvaluationRequired, match="无 strategy_evaluations 记录"):
@@ -181,11 +156,11 @@ def test_update_status_to_live_without_any_evaluation_raises():
     assert "FROM strategy_evaluations" in calls[1]
 
 
-def test_update_status_to_live_with_failed_verdict_raises():
+def test_update_status_to_live_with_failed_verdict_raises(mock_conn_factory_builder):
     """最新 evaluation passed=False → EvaluationRequired with blockers in message."""
     sid = uuid4()
     fresh_ts = datetime.now(UTC) - timedelta(hours=1)
-    factory = _make_mock_conn_factory(
+    factory = mock_conn_factory_builder(
         fetchone_queue=[
             ("draft",),
             (False, ["G1prime_sharpe_bootstrap"], fresh_ts),
@@ -200,11 +175,11 @@ def test_update_status_to_live_with_failed_verdict_raises():
     assert "G1prime_sharpe_bootstrap" in msg
 
 
-def test_update_status_to_live_with_stale_evaluation_raises():
+def test_update_status_to_live_with_stale_evaluation_raises(mock_conn_factory_builder):
     """最新 evaluation evaluated_at 过期 → EvaluationRequired."""
     sid = uuid4()
     stale_ts = datetime.now(UTC) - timedelta(days=60)  # > 30 day default
-    factory = _make_mock_conn_factory(
+    factory = mock_conn_factory_builder(
         fetchone_queue=[
             ("draft",),
             (True, [], stale_ts),
@@ -216,11 +191,11 @@ def test_update_status_to_live_with_stale_evaluation_raises():
         reg.update_status(str(sid), StrategyStatus.LIVE, reason="promote")
 
 
-def test_update_status_to_live_with_fresh_passed_evaluation_succeeds():
+def test_update_status_to_live_with_fresh_passed_evaluation_succeeds(mock_conn_factory_builder):
     """最新 evaluation passed=True 且 fresh → UPDATE + INSERT log 正常执行."""
     sid = uuid4()
     fresh_ts = datetime.now(UTC) - timedelta(days=1)
-    factory = _make_mock_conn_factory(
+    factory = mock_conn_factory_builder(
         fetchone_queue=[
             ("draft",),
             (True, [], fresh_ts),
@@ -240,10 +215,10 @@ def test_update_status_to_live_with_fresh_passed_evaluation_succeeds():
     assert "INSERT INTO strategy_status_log" in calls[3]
 
 
-def test_update_status_live_to_paused_skips_eval_check():
+def test_update_status_live_to_paused_skips_eval_check(mock_conn_factory_builder):
     """LIVE→PAUSED 是降级路径, 不查 strategy_evaluations 表."""
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[("live",)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("live",)])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     reg.update_status(str(sid), StrategyStatus.PAUSED, reason="降级 PAUSE")
@@ -255,10 +230,10 @@ def test_update_status_live_to_paused_skips_eval_check():
     assert all("FROM strategy_evaluations" not in q for q in calls)
 
 
-def test_update_status_to_draft_skips_eval_check():
+def test_update_status_to_draft_skips_eval_check(mock_conn_factory_builder):
     """target != LIVE 时不查 strategy_evaluations 表."""
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[("backtest",)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("backtest",)])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     reg.update_status(str(sid), StrategyStatus.DRY_RUN, reason="进入 dry_run")
@@ -272,19 +247,19 @@ def test_update_status_to_draft_skips_eval_check():
 # ─── 配置 + edge cases ─────────────────────────────────────────────────
 
 
-def test_freshness_days_must_be_positive():
-    factory = _make_mock_conn_factory()
+def test_freshness_days_must_be_positive(mock_conn_factory_builder):
+    factory = mock_conn_factory_builder()
     with pytest.raises(ValueError, match="必须 > 0"):
         DBStrategyRegistry(conn_factory=factory, live_eval_freshness_days=0)
     with pytest.raises(ValueError, match="必须 > 0"):
         DBStrategyRegistry(conn_factory=factory, live_eval_freshness_days=-5)
 
 
-def test_freshness_days_configurable_short_window():
+def test_freshness_days_configurable_short_window(mock_conn_factory_builder):
     """live_eval_freshness_days=1: 2 天前的 eval 算 stale."""
     sid = uuid4()
     ts = datetime.now(UTC) - timedelta(days=2)
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), (True, [], ts)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",), (True, [], ts)])
     reg = DBStrategyRegistry(conn_factory=factory, live_eval_freshness_days=1)
 
     with pytest.raises(EvaluationRequired, match="已过期"):
@@ -296,10 +271,10 @@ def test_default_freshness_days_constant_is_30():
     assert DEFAULT_LIVE_EVAL_FRESHNESS_DAYS == 30
 
 
-def test_evaluation_required_message_contains_remediation_path():
+def test_evaluation_required_message_contains_remediation_path(mock_conn_factory_builder):
     """EvaluationRequired 错误消息必须告知调用方修复路径 (operator-friendly)."""
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), None])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",), None])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     with pytest.raises(EvaluationRequired) as excinfo:
@@ -310,14 +285,14 @@ def test_evaluation_required_message_contains_remediation_path():
     assert "record_evaluation" in msg
 
 
-def test_naive_datetime_treated_as_utc_defensive():
+def test_naive_datetime_treated_as_utc_defensive(mock_conn_factory_builder):
     """defensive: psycopg2 应永远返 tz-aware, 但 mock / 老 driver 若 naive 当 UTC.
 
     fresh naive ts (now - 1 day, naive) 应正常通过 freshness check.
     """
     sid = uuid4()
     naive_fresh = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), (True, [], naive_fresh)])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",), (True, [], naive_fresh)])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     # 应不抛 (naive 当 UTC, 1 天前在 30 天窗口内)
@@ -325,10 +300,10 @@ def test_naive_datetime_treated_as_utc_defensive():
     assert factory._cursor.execute.call_count == 4  # full path
 
 
-def test_non_datetime_evaluated_at_raises_evaluation_required():
+def test_non_datetime_evaluated_at_raises_evaluation_required(mock_conn_factory_builder):
     """defensive: evaluated_at 非 datetime (e.g. None / str) → fail-loud."""
     sid = uuid4()
-    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), (True, [], "not-a-datetime")])
+    factory = mock_conn_factory_builder(fetchone_queue=[("draft",), (True, [], "not-a-datetime")])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     with pytest.raises(EvaluationRequired, match="非 datetime"):
