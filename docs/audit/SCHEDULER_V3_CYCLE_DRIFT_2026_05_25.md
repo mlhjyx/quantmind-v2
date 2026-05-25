@@ -78,6 +78,15 @@ Full 24 entries enumerated in DEV_SCHEDULER §〇 table (verified line-by-line v
 
 3. **09:25 集合竞价 gap check 0 Beat entry** (implementation gap): both DEV §二 P6 and V3 §9.1 declare 09:25 GapDownOpen check; production has 0 Beat schedule entry. Either (a) gap check runs inside L1 RealtimeRiskEngine on subscribe_quote tick (need code-trace verify) or (b) genuine missing implementation — recommend grep `GapDownOpen` in backend code as follow-up.
 
+**Iter 127 closure (2026-05-25)**: hypothesis (a) **CONFIRMED**. `GapDownOpen` is implemented in L1 RealtimeRiskEngine — code-trace verify via Grep "GapDownOpen":
+   - `backend/qm_platform/risk/realtime/rule_registry.py` (rule registration)
+   - `backend/qm_platform/risk/realtime/alert.py` (alert handling)
+   - `backend/qm_platform/risk/backtest_adapter.py` + `replay/acceptance.py` (backtest replay)
+   - 6 test files cover the rule
+   No Beat entry needed — rule fires on `subscribe_quote` tick via L1 RealtimeRiskEngine sustained pattern (V3 §S5). Doc narrative says "09:25" because gap is detectable then but execution is real-time subscription-driven, not scheduled.
+
+**Verdict**: §5 Rec #3 CLOSED (not implementation gap, just narrative-vs-architecture-pattern misalignment).
+
 4. **§〇 table is the operational SSOT** — §二 P1 patch + V3 §9.1 sequenceDiagram are narrative/design artifacts; truth is `beat_schedule.py` 24 entries (already mirrored in §〇 table line-for-line as of iter 76).
 
 ---
