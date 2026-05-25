@@ -641,18 +641,32 @@ export default function ApprovalQueue() {
   const handleConfirm = async (meta: { reason?: string }) => {
     if (!pendingAction) return;
     const { item, action } = pendingAction;
-    if (action === "approve") {
-      await approveMutation.mutateAsync({ id: item.id, notes: meta.reason });
-    } else if (action === "reject") {
-      await rejectMutation.mutateAsync({
-        id: item.id,
-        reason: meta.reason ?? "未填写原因",
-        notes: meta.reason,
-      });
-    } else if (action === "hold") {
-      await holdMutation.mutateAsync({ id: item.id, notes: meta.reason });
+    // iter 136e PR #485 reviewer M1 fix (follow-up to PR #486 which closed
+    // M2+L1) — wrap mutateAsync in try/catch so modal stays open on failure
+    // (preserves user-entered reason text). Pre-fix: on mutation throw
+    // (409 conflict, network error), onError fires user notification but
+    // `await` re-throws; ConfirmModal `void onConfirm(...)` swallows it; then
+    // `setPendingAction(null)` runs and modal closes with reason text lost.
+    // UX regression: user types rejection reason ≥5 chars → submit fails →
+    // reason gone, must re-type. Fix: close modal only on success path; on
+    // error, mutation onError already notified user + modal stays open.
+    try {
+      if (action === "approve") {
+        await approveMutation.mutateAsync({ id: item.id, notes: meta.reason });
+      } else if (action === "reject") {
+        await rejectMutation.mutateAsync({
+          id: item.id,
+          reason: meta.reason ?? "未填写原因",
+          notes: meta.reason,
+        });
+      } else if (action === "hold") {
+        await holdMutation.mutateAsync({ id: item.id, notes: meta.reason });
+      }
+      setPendingAction(null);
+    } catch {
+      // silent_ok: onError on each mutation already fires user notification.
+      // Keep modal open so user can adjust reason and retry without losing input.
     }
-    setPendingAction(null);
   };
 
   return (
