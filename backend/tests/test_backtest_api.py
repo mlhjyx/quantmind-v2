@@ -799,7 +799,11 @@ async def test_cost_sensitivity_warning_when_2x_sharpe_low():
 
 @pytest.mark.asyncio
 async def test_sensitivity_analysis(completed_run: dict):
-    """POST /{run_id}/sensitivity 返回pending状态。"""
+    """POST /{run_id}/sensitivity 返回 deferred 状态 (iter 32-34 DEFER sediment + ADR-DRAFT row 18).
+
+    历史 Phase 0 返回 'pending', iter 34 anti-assumption SOP verify FAILED 后改 'deferred'
+    (Architecture-level design pass deferred to Phase B post-PT-restart per §6 trigger 8).
+    """
     session = _mock_session_with_run(completed_run)
     app.dependency_overrides[_get_session] = lambda: session
     try:
@@ -811,7 +815,7 @@ async def test_sensitivity_analysis(completed_run: dict):
             )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "deferred"
         assert data["param_name"] == "rebalance_freq"
     finally:
         app.dependency_overrides.clear()

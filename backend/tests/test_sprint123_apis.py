@@ -366,7 +366,8 @@ async def test_report_generate_returns_task_id():
     data = resp.json()
     assert "task_id" in data
     assert "status" in data
-    assert data["status"] in ("queued", "accepted")
+    # Sprint 1.24 (iter 30) Celery dispatch sediment — 'dispatched' = task.delay() invoked
+    assert data["status"] in ("queued", "accepted", "dispatched")
 
 
 # ---------------------------------------------------------------------------
