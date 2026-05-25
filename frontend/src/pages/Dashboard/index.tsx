@@ -7,10 +7,10 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Card, CardHeader } from "@/components/shared";
-import { fetchSummary, fetchPositions, fetchNAVSeries } from "@/api/dashboard";
+import { fetchSummary, fetchPositions, fetchNAVSeries, fetchPendingActions } from "@/api/dashboard";
 import { fetchEnvState, fetchCalendarInfo, type EnvState, type CalendarInfo } from "@/api/system";
 import { C } from "@/theme";
-import type { DashboardSummary, Position } from "@/types/dashboard";
+import type { DashboardSummary, Position, PendingAction } from "@/types/dashboard";
 import { usePortfolio } from "@/hooks/useRealtimeData";
 import { ShutdownBanner } from "@/components/safety/ShutdownBanner";
 
@@ -19,6 +19,7 @@ import { EquityCurve } from "./EquityCurve";
 import type { NavChartPoint } from "./EquityCurve";
 import { AlertsPanel } from "./AlertsPanel";
 import type { Alert } from "./AlertsPanel";
+import { PendingActionsPanel } from "./PendingActionsPanel";
 import { StrategiesPanel } from "./StrategiesPanel";
 import { HoldingsTable } from "./HoldingsTable";
 import { MonthlyHeatmap } from "./MonthlyHeatmap";
@@ -36,6 +37,8 @@ export default function DashboardOverview() {
   const [envState, setEnvState] = useState<EnvState | null>(null);
   const [calendarInfo, setCalendarInfo] = useState<CalendarInfo | null>(null);
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  // iter 139 W2-F F8 closure — pending actions widget (熔断/健康/管道)
+  const [pendingActions, setPendingActions] = useState<PendingAction[] | null>(null);
   const [monthlyData, setMonthlyData] = useState<Record<string, number[]> | null>(null);
   const [industryDist, setIndustryDist] = useState<IndustryItem[] | null>(null);
   const [navChartData, setNavChartData] = useState<NavChartPoint[]>([]);
@@ -73,6 +76,13 @@ export default function DashboardOverview() {
         setAlertsError(`预警数据加载失败: ${msg}`);
         setAlerts([]);
       });
+
+    // iter 139 W2-F F8 — pending actions (熔断/健康/管道 events).
+    // Backend: GET /api/dashboard/pending-actions (dashboard.py:67).
+    // Fail-soft: on error fall back to empty array (sibling alerts pattern).
+    fetchPendingActions()
+      .then(setPendingActions)
+      .catch(() => setPendingActions([]));
 
     // Monthly returns
     setMonthlyError(null);
@@ -265,6 +275,18 @@ export default function DashboardOverview() {
         <div className="grid grid-cols-12 gap-3">
           <EquityCurve navChartData={navChartData} />
           <div className="col-span-4 flex flex-col gap-3">
+            {/* iter 139 W2-F F8 — Pending Actions widget (熔断/健康/管道). */}
+            {pendingActions === null ? (
+              <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 200 }}>
+                <div className="p-4 space-y-2">
+                  {[...Array(2)].map((_, i) => (
+                    <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: C.bg2 }} />
+                  ))}
+                </div>
+              </Card>
+            ) : (
+              <PendingActionsPanel actions={pendingActions} />
+            )}
             {alerts === null ? (
               <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 320 }}>
                 <div className="p-4 space-y-2">
