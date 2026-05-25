@@ -55,7 +55,7 @@ class CIOrchestrator(Protocol):
 | iter 68 | pre-push orchestrator (X10 cutover-bias scan + smoke + DataPipeline guard merged, 16 tests) | ✅ |
 | iter 69 | CI matrix runner (multi-version Python × PostgreSQL cell iteration, 13 tests) | ✅ |
 | iter 70 | Regression baseline gate (max_diff=0 per 铁律 15, 17 tests with compute_max_diff helper) | ✅ |
-| iter 71+ | PR review automation (reviewer findings → PR comments via gh) | pending |
+| iter 71 | PR review automation (reviewer findings → gh PR comments, severity gating P0/P1 block, 17 tests) | ✅ |
 | iter 72+ | GitHub Actions yaml + .github/workflows/ wire | pending |
 
 ## §5 §6 8-trigger STOP self-check

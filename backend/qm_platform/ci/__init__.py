@@ -47,6 +47,14 @@ from .regression import (
     compute_max_diff,
     default_pairs,
 )
+from .review import (
+    DEFAULT_GH_TIMEOUT_SECONDS,
+    SEVERITY_LEVELS,
+    SEVERITY_ORDER,
+    ReviewFinding,
+    ReviewOrchestrator,
+    format_findings_as_comment,
+)
 
 __all__ = [
     "CIMatrixOrchestrator",
@@ -56,6 +64,7 @@ __all__ = [
     "CoverageGate",
     "DEFAULT_CELL_TIMEOUT_SECONDS",
     "DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS",
+    "DEFAULT_GH_TIMEOUT_SECONDS",
     "DEFAULT_SMOKE_TIMEOUT_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
     "MAX_DIFF_THRESHOLD",
@@ -66,6 +75,10 @@ __all__ = [
     "PrePushOrchestrator",
     "RegressionOrchestrator",
     "RegressionPair",
+    "ReviewFinding",
+    "ReviewOrchestrator",
+    "SEVERITY_LEVELS",
+    "SEVERITY_ORDER",
     "SmokeTestSuite",
     "TestRunner",
     "TestSummary",
@@ -76,6 +89,7 @@ __all__ = [
     "default_matrix",
     "default_pairs",
     "default_subprocess_checks",
+    "format_findings_as_comment",
     "phases_in_canonical_order",
     "total_duration_ms",
     "x10_scan",
