@@ -2,7 +2,7 @@
 
 **Status**: ✅ COMPLETED (iter 75 2026-05-25, 7/7 sub-iters shipped in 3-iter batched campaign — efficiency mode)
 **前置**: Wave 4 MVP 4.3 CI/CD ✅ 7/7 = 100% (iter 66-72 完结, 100 cumulative tests)
-**Spec source**: [QPB v1.16](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 — MVP 4.4 + Framework #12 ROF
+**Spec source**: [QPB v1.17](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 — MVP 4.4 + Framework #12 ROF (iter 77 v1.16→v1.17 Wave 4 closure bump)
 
 ---
 

@@ -1,8 +1,8 @@
-# MVP 4.1 Observability Framework (Wave 4 启动)
+# MVP 4.1 Observability Framework (Wave 4 #1)
 
-> **状态**: 🟡 批 1 进行中 (PR #131 待开)
+> **状态**: ✅ COMPLETED (iter 51-61 2026-05-25, 17/17 sub-iters shipped — batch 1 + 2.1 + 2.2 + 3.x: PostgresAlertRouter / MetricExporter / AlertRulesEngine / 17 scripts SDK migration; iter 79 status sediment, was "🟡 批 1 进行中 PR #131 待开" stale)
 > **ADR**: Platform Blueprint §Framework #7 / 铁律 28 (发现即报告) / 铁律 33 (禁 silent failure) / 铁律 34 (config SSOT) / 铁律 43 (schtask fail-loud)
-> **Sprint**: Wave 4 1/4 (Wave 3 ✅ 5/5 完结后启动)
+> **Sprint**: Wave 4 1/4 ✅ (Wave 3 ✅ 5/5 完结后启动; Wave 4 全 4/4 ✅ iter 51-75)
 > **前置 (铁律 36 实测复核, Session 43 2026-04-28)**:
 >   - ✅ MVP 1.1 Platform Skeleton: `qm_platform/observability/interface.py` MetricExporter / AlertRouter / EventBus ABC 已存
 >   - ✅ MVP 3.4 Event Sourcing: `qm_platform/observability/outbox.py` OutboxWriter concrete (event_outbox 表 + publisher worker), batch 4+5 sunset 全 outbox 化

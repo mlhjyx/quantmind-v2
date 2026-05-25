@@ -2,7 +2,7 @@
 
 **Status**: ✅ COMPLETED (iter 72 2026-05-25, 7/7 sub-iters shipped in single-day campaign)
 **前置**: Wave 4 MVP 4.2 Performance Attribution ✅ 7/7 = 100% (iter 59-65 完结)
-**Spec source**: [QPB v1.16](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 详细 — MVP 4.3 CI/CD Orchestration
+**Spec source**: [QPB v1.17](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 详细 — MVP 4.3 CI/CD Orchestration (iter 77 v1.16→v1.17 Wave 4 closure bump)
 
 ---
 
