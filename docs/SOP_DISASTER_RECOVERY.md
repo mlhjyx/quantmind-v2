@@ -1,8 +1,42 @@
 # SOP — 灾备恢复操作手册
 
 > QuantMind V2 灾备恢复标准操作程序 (R6 §8)
-> 版本: 1.0 | 日期: 2026-03-28
+> 版本: **1.1** | 日期: **2026-05-25** (iter 78 Wave 4 MVP 4.4 sediment refresh — was v1.0 2026-03-28)
 > 目标RTO: <2小时（L3/L4级别故障，含数据库恢复）
+
+---
+
+## §0 iter 78 (2026-05-25) Wave 4 MVP 4.4 sediment refresh — what changed since v1.0 ⭐
+
+> **真值来源**: `backend/qm_platform/backup/` (iter 73-75 MVP 4.4 8 modules) + `backend/app/tasks/beat_schedule.py` (iter 75 sub-iter 7 wire) + commit chain `90dddb8` (iter 73) → `e581e78` (iter 75 closeout).
+
+### 新增 Backup Automation (iter 75 sub-iter 7)
+
+| Beat entry | Schedule | Task |
+|------------|----------|------|
+| `daily-backup-run` | daily 02:30 SH | `app.tasks.backup_tasks.daily_backup_run_task` (DB pg_dump + Filesystem tar + Config tar batched) |
+| `weekly-backup-verify` | Sun 04:00 SH | `app.tasks.backup_tasks.weekly_backup_verify_task` (restore_verify + RPO/RTO snapshot + alert) |
+
+### 新增 backup SDK modules (`backend/qm_platform/backup/`, iter 73-75)
+
+| Module | Purpose |
+|--------|---------|
+| `interface.py` | Backup contract (BackupResult / BackupSpec dataclasses) |
+| `orchestrator.py` | Top-level orchestrator (sub-iter 1 skeleton iter 73) |
+| `db_backup.py` | pg_dump wrapper (sub-iter 2 iter 74) |
+| `filesystem_backup.py` | tar wrapper (sub-iter 3 iter 74) |
+| `config_backup.py` | config tar wrapper (sub-iter 4 iter 74) |
+| `restore_verification.py` | pg_restore to test DB + row count assert (sub-iter 5 iter 75) |
+| `rpo_rto.py` | RPO/RTO calculation (sub-iter 6 iter 75) |
+
+### 关键 corrections to §1 (L25-26) since v1.0
+
+- **NSSM → Servy**: v1.0 says "NSSM自动重启"; 实际 2026-04-04 已 migrate 到 Servy v7.6 (CLAUDE.md §部署规则 SSOT). 服务管理走 `D:\tools\Servy\servy-cli.exe`. NSSM 配置 backup 在 `config/nssm-backup/` 但 production 未用.
+- **Backup paths 检查**: §1 L32-34 path 仍为 `D:/quantmind-v2/backups/daily|monthly|parquet/` — daily-backup-run Beat task config 在 `app/tasks/backup_tasks.py` 实测 path 走 SDK default (须 task runtime config 确认; 若不一致, MVP 4.4 design `docs/mvp/MVP_4_4_backup_dr.md` 为 SSOT).
+
+### iter 78 sediment scope
+
+本 §0 仅 sediment Wave 4 MVP 4.4 真值, 不重写 §1-§7 既有 procedure. v1.0 §1-§7 在 L3/L4 灾难场景下仍 actionable, 但 reviewer 需结合 §0 新 Beat + SDK module 真值. v1.2 重写候选: 留 user 决议 future SOP iteration timing.
 
 ---
 
