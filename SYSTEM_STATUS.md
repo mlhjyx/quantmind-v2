@@ -359,17 +359,18 @@ Deferred (5 项 DOC-CLOSED): #3 双轨样式 (50h) / #7 cron hardcoded / #12 PMS
 - **铁律 32** (Service 不 commit): 3 脚本 main() 统一 commit/rollback
 - **铁律 33** (fail-loud): per-factor try/except + 单因子异常 log + continue
 
-### factor_ic_history 当前状态 (Session 23 Part 2 实测, 2026-04-22 01:35)
-- **Total rows**: 145,874 (vs §2 table 57,711 是 2026-04-06 前的 stale 数字, **本 section 为准**)
-- **ic_ma20 rows**: 142,990 (80% coverage, PR #43 回填后)
-- **113 factors** with ic_20d, **83 factors** with valid ic_ma20 (min_periods=5 限制)
-  - **⚠️ 语义澄清** (2026-05-25 17:40 SH fresh annotation, 33d stale 原 4-22 snapshot 保留作历史):
+### factor_ic_history 当前状态 (iter 106 2026-05-25 ~21:15 SH fresh DB verify, Session 23 Part 2 4-22 baseline 沉淀)
+- **Total rows**: 145,938 [iter 106 fresh verify; vs Session 23 Part 2 4-22 145,874 = +64 / +0.044% drift in 33d]
+- **ic_ma20 rows**: 142,990 (80% coverage, PR #43 回填后; iter 106 not re-queried, sustained per CLAUDE.md §因子存储)
+- **113 factors** with ic_20d, **83 factors** with valid ic_ma20 (min_periods=5 限制) — **iter 106 fresh verify: 113/83 SUSTAINED 4-22 → 5-25 33d** (0 distinct-factor drift, only +64 row drift from existing factors' new IC datapoints)
+  - **⚠️ 语义澄清** (iter 106 2026-05-25 ~21:15 SH fresh verify closure):
     - "113 factors with ic_20d" = factor_ic_history **coverage 计数** (历史 IC 入库因子总数), **NOT** PT active count
     - **PT active = 4 CORE 因子** (turnover_mean_20 / volatility_20 / bp_ratio / dv_ttm), cite FACTOR_TEST_REGISTRY.md:36-38 (sustained since 2026-04-12 WF PASS)
-    - 原 4-22 01:35 snapshot 保留 (cite: 本文件 §factor_ic_history Session 23 Part 2)
-    - 113 实际 fresh 数 pending next DB query window (`SELECT COUNT(DISTINCT factor_name) FROM factor_ic_history WHERE ic_20d IS NOT NULL`)
-    - audit verdict cite: docs/audit/FACTOR_POOL_HEALTH_2026_05_25.md §1
-- **max trade_date**: 2026-04-21 (ic_5d/10d), 2026-03-23 (ic_20d, T+20 forward return 约束)
+    - 113 distinct factor count **fresh verified iter 106** (`SELECT COUNT(DISTINCT factor_name) FROM factor_ic_history WHERE ic_20d IS NOT NULL` = 113) — closes audit `docs/audit/FACTOR_POOL_HEALTH_2026_05_25.md §5 Recommendation #1` (stale 33d concern resolved)
+    - audit verdict cite: docs/audit/FACTOR_POOL_HEALTH_2026_05_25.md §1 + §5 Rec #1 (closed iter 106)
+- **max trade_date** (iter 106 2026-05-25 ~21:15 SH fresh DB):
+  - **ic_5d**: 2026-05-18 (vs 4-22 snapshot 4-21 = +27d advance, daily IC pipeline 健康 sustained)
+  - **ic_20d**: 2026-04-14 (vs 4-22 snapshot 3-23 = +22d advance; T+20 forward return 约束 → 当前 max 约 5-04 受 5-22 data 限制)
 
 ### 实战 rehearsal (Session 23 Part 2, 02:30 跨日)
 - `schtasks /Run QuantMind_DailyIC` → **80 rows upserted / 1.5s / LastTaskResult=0** ✓
