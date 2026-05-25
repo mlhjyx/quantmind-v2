@@ -6978,3 +6978,48 @@ production code 走 sediment'd intentional enum / status / response shape change
 
 **Sediment trigger**: 2026-05-25 iter 80 taskboard task_006 sediment (20 fail → 16 fail 4-test fix; 累计 iter 78-80 24 fail → 16 fail 33% reduction). 未来 prod sediment'd enum / status / shape change → apply 本 LL pattern 更新 test allowlist + cite ADR / sprint.
 
+---
+
+## LL-200 — Multi-CLI sub session 无 IPC, 真 autonomy = 单 main + Task spawn — 反 Pattern A → Pattern B pivot (2026-05-25 iter 82-99)
+
+**Pattern essence** (iter 82-99 实证 Multi-CLI 架构限制 + Pattern B pivot):
+
+Multi-CLI Claude Code sub session architecture (Pattern A) 真核心限制: sub session **Stop event → process death → 无 IPC channel** for main 唤醒. L4R Loop Spec §v9.4 "持续不止" 仅在 active session 内生效; process 退出后 spec 无效化. Sub1 iter 82-99 实证: STATUS_REPORT halt + Sub session Stop hooks fired → process 真死, main 无法 revive. Multi-CLI 架构 = user 必须手动 keep-alive each session, **非真 autonomy**.
+
+**真 fix** (架构层 pivot Pattern A → Pattern B):
+
+**Pattern B**: main CC spawn Task subagent **in-process**. Subagent isolated context, returns ≤300 word final report. Main 收集 → commit + push. user 离开也跑.
+- main commit `266a363` Pattern B pivot decision
+- main commit `828aa0b` 4 audits via 4 parallel Task agents (2 minutes 内完成)
+- 对比 Pattern A iter 82-99: ~2 小时浪费 (sub1 STATUS_REPORT halt + sub2 PR race + main cherry-pick + smoke block + git push reject 循环)
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+任何 "multi-process Claude Code 协作" 需求时, **default Pattern B** (in-process Task subagent), **非 Pattern A** (multi-CLI). Exception: 强烈 process isolation 需求 (e.g. 真独立 context window, 不分享 cache, 真独立 process tree) — 但实际 user-router 真 exists, isolation 多余.
+
+3 类典型反例 (Pattern A 必失败):
+1. **sub session STATUS_REPORT halt** → process 真死, main 无 IPC 唤醒 → 卡 indefinite
+2. **多 CLI PR race** → main cherry-pick + smoke block + git push reject 循环 (多 process 抢同一 repo)
+3. **L4R Spec §v9.4 误用** → "持续不止" 仅 active session 内, process exit 后 spec 无效
+
+→ 默认 Pattern B: 1 main + N Task subagent, parallel in-process, isolated context window, return final report.
+
+**Why this matters**:
+
+- 反 architecture sprawl — Multi-CLI 看似 isolation 强但实际 IPC 缺失 → autonomy false advertise.
+- 反 spec literal-read — L4R §v9.4 "持续不止" 不能跨 process boundary, spec 必读 scope.
+- 反 iter waste — Pattern A iter 82-99 ~2h vs Pattern B iter 99 2min 4 audits, **60x speedup**.
+- 沿用 LL-196/197/198/199 cluster format — 同 iter 78-99 cumulative sediment cluster.
+
+**Cite source (4-element, verify 2026-05-25 16:40 SH iter 99)**:
+- `docs/audit/STATUS_REPORT_2026_05_25_sub1_iter1_smoke_block.md` §2 (Pattern A sub1 halt 实证)
+- `docs/taskboard/messages/to_sub1.md` (Pattern A directive 已 obsolete, sediment marker)
+- main commit `266a363` 2026-05-25 iter 99 Pattern B pivot decision
+- main commit `828aa0b` 2026-05-25 iter 99 4 audits via 4 parallel Task agents (2min completion)
+
+**Heuristic backref**: #11 Convenience-Driven Development (Multi-CLI 看似方便实际架构 trap), #14 Documentation Lying (L4R Spec §v9.4 "持续不止" 隐含 active session scope, 未显式标注), #15 Test-Reality Gap (Pattern A 设计假设 IPC 存在, 真实 process boundary 阻断).
+
+**Cross-ref**: L4R Loop Spec §v9.37 (multi-session 设计已 obsolete) + §v9.18 (subagent rotation 真路径) + `docs/L4R_LOOP_SPEC.md` Pattern B addendum 候选 + 沿用 LL-196/197/198/199 (同 iter 78-99 sediment cluster).
+
+**Sediment trigger**: 2026-05-25 iter 99 main session pivot decision (user agreement to Pattern B). 未来 "multi-process Claude Code 协作" 需求 → default Pattern B (in-process Task spawn), 仅极少 isolation case 走 Pattern A.
+
