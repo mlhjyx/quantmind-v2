@@ -47,23 +47,16 @@ const LOG_LEVEL_COLORS: Record<string, string> = {
 const TABS = ["状态流程", "待审批", "运行历史", "AI决策日志", "AI助手"] as const;
 type Tab = (typeof TABS)[number];
 
-// Mock empty state for use when API not yet available
-const EMPTY_STATUS: PipelineStatus = {
-  run_id: null,
-  automation_level: "L1",
-  is_running: false,
-  is_paused: false,
-  current_node: null,
-  nodes: [],
-  schedule_cron: "0 20 * * 1-5",
-  next_run_at: null,
-  last_run_at: null,
-};
+// iter 107 W14 (Frontend Design v3 §6 W14 closure): EMPTY_STATUS mock removed.
+// 反 silent failure (铁律 33) — UI must fail-loud when backend /api/pipeline/status
+// is unavailable, not mask outage with mock cron "0 20 * * 1-5" + 0 nodes.
+// Replaces previous EMPTY_STATUS constant + non-null state with null sentinel +
+// top-level render guard (below) showing retry card on error.
 
 export default function PipelineConsole() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>("状态流程");
-  const [status, setStatus] = useState<PipelineStatus>(EMPTY_STATUS);
+  const [status, setStatus] = useState<PipelineStatus | null>(null);
   const [pending, setPending] = useState<ApprovalItem[]>([]);
   const [history, setHistory] = useState<PipelineRun[]>([]);
   const [logs, setLogs] = useState<PipelineLogEntry[]>([]);
@@ -87,6 +80,9 @@ export default function PipelineConsole() {
       setStatus(data);
       setError(null);
     } catch {
+      // iter 107 W14: fail-loud — clear status to null so top-level guard renders
+      // error card instead of stale mock. 反 silent failure 铁律 33.
+      setStatus(null);
       setError("无法加载 Pipeline 状态，请检查后端连接");
     } finally {
       setLoadingStatus(false);
@@ -130,7 +126,7 @@ export default function PipelineConsole() {
   }, []);
 
   const loadLogs = useCallback(async () => {
-    if (!status.run_id) return;
+    if (!status?.run_id) return;
     setLoadingLogs(true);
     try {
       const data = await getPipelineLogs(status.run_id);
@@ -140,7 +136,7 @@ export default function PipelineConsole() {
     } finally {
       setLoadingLogs(false);
     }
-  }, [status.run_id]);
+  }, [status?.run_id]);
 
   // Initial load + polling
   useEffect(() => {
@@ -155,17 +151,17 @@ export default function PipelineConsole() {
   useEffect(() => {
     if (activeTab === "待审批") {
       loadPending();
-      if (status.run_id) loadCandidates(status.run_id);
+      if (status?.run_id) loadCandidates(status.run_id);
     } else if (activeTab === "运行历史") {
       loadHistory();
     } else if (activeTab === "AI决策日志") {
       loadLogs();
     }
-  }, [activeTab, loadPending, loadCandidates, loadHistory, loadLogs, status.run_id]);
+  }, [activeTab, loadPending, loadCandidates, loadHistory, loadLogs, status?.run_id]);
 
   // WebSocket connection when pipeline is running
   useEffect(() => {
-    if (!status.run_id || !status.is_running) {
+    if (!status?.run_id || !status.is_running) {
       wsRef.current?.close();
       wsRef.current = null;
       return;
@@ -176,7 +172,11 @@ export default function PipelineConsole() {
       try {
         const msg = JSON.parse(evt.data as string) as { type: string; payload: unknown };
         if (msg.type === "status_update") {
-          setStatus((prev) => ({ ...prev, ...(msg.payload as Partial<PipelineStatus>) }));
+          // iter 107 W14: guard prev nullable case (top-level guard prevents this
+          // in render but WS can fire during transient null window)
+          setStatus((prev) =>
+            prev ? { ...prev, ...(msg.payload as Partial<PipelineStatus>) } : prev
+          );
         } else if (msg.type === "log") {
           setLogs((prev) => [msg.payload as PipelineLogEntry, ...prev].slice(0, 200));
         }
@@ -186,7 +186,7 @@ export default function PipelineConsole() {
     };
     wsRef.current = ws;
     return () => ws.close();
-  }, [status.run_id, status.is_running]);
+  }, [status?.run_id, status?.is_running]);
 
   // Handlers
   const handleTrigger = async () => {
@@ -213,7 +213,9 @@ export default function PipelineConsole() {
   const handleLevelChange = async (level: AutomationLevel) => {
     try {
       await setAutomationLevel(level);
-      setStatus((prev) => ({ ...prev, automation_level: level }));
+      // iter 107 W14: nullable status — only update if previously loaded; else
+      // wait for next loadStatus poll to merge.
+      setStatus((prev) => (prev ? { ...prev, automation_level: level } : prev));
     } catch {
       setError("自动化级别设置失败");
     }
@@ -235,7 +237,7 @@ export default function PipelineConsole() {
   };
 
   const handleCandidateApprove = async (factorId: number) => {
-    if (!status.run_id) return;
+    if (!status?.run_id) return;
     setCandidateActions((prev) => ({ ...prev, [factorId]: "approving" }));
     try {
       await approveFactor(status.run_id, factorId);
@@ -249,17 +251,18 @@ export default function PipelineConsole() {
     }
   };
 
-  // Frontend Design v3 §6 #8 — replace window.prompt → ConfirmModal HIGH-tier
+  // Frontend Design v3 §6 #8 — reject reason capture (W1-W6 closed window.prompt;
+  // iter 107 W14 reword per plan §2 Change E, LL audit trail sustained)
   const [rejectingId, setRejectingId] = useState<number | null>(null);
 
   const handleCandidateReject = (factorId: number) => {
-    if (!status.run_id) return;
+    if (!status?.run_id) return;
     setRejectingId(factorId);  // opens modal
   };
 
   const doCandidateReject = async (meta: { reason?: string }) => {
     const factorId = rejectingId;
-    if (factorId == null || !status.run_id) {
+    if (factorId == null || !status?.run_id) {
       setRejectingId(null);
       return;
     }
@@ -284,6 +287,51 @@ export default function PipelineConsole() {
 
   const pendingCount = pending.filter((p) => !p.decision).length;
   const pendingCandidatesCount = candidates.filter((c) => c.status === "pending").length;
+
+  // iter 107 W14 (Frontend Design v3 §6 W14): Fail-loud render guard. EMPTY_STATUS
+  // mock removed — UI must surface backend outage instead of masking with stale
+  // mock data. Three render states:
+  //   1. Initial loading: skeleton spinner (loadingStatus && status == null)
+  //   2. Hard fail-loud: full-page error card with retry (loadingStatus done + status null)
+  //   3. Loaded: existing tabbed UI (status non-null guaranteed below)
+  if (!status) {
+    if (loadingStatus) {
+      return (
+        <div>
+          <Breadcrumb items={[{ label: "AI闭环" }, { label: "Pipeline控制台" }]} />
+          <div className="mt-8 flex items-center justify-center">
+            <div className="h-32 w-full max-w-md rounded-xl bg-slate-800/40 animate-pulse" />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <Breadcrumb items={[{ label: "AI闭环" }, { label: "Pipeline控制台" }]} />
+        <div className="mt-8 mx-auto max-w-lg">
+          <GlassCard>
+            <div className="text-center space-y-4 py-4">
+              <div className="text-base font-semibold text-red-300">
+                Pipeline 状态加载失败
+              </div>
+              <div className="text-xs text-slate-400">
+                {error ?? "请检查后端 (/api/pipeline/status) 连接"}
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setLoadingStatus(true);
+                  void loadStatus();
+                }}
+              >
+                重试
+              </Button>
+            </div>
+          </GlassCard>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -644,7 +692,7 @@ export default function PipelineConsole() {
         </GlassCard>
       )}
 
-      {/* Reject reason confirmation (Frontend Design v3 §6 #8 — replace window.prompt) */}
+      {/* Reject reason confirmation (Frontend Design v3 §6 #8 — W1-W6 closed window.prompt; iter 107 W14 reword) */}
       {rejectingId !== null && (
         <ConfirmModal
           title={`拒绝因子 #${rejectingId}`}
