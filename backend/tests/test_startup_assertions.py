@@ -17,8 +17,6 @@ silent skip 全部规则. 卓然 -29% / 南玻 -10% 7 天 risk_event_log 0 行�
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from app.services.startup_assertions import (
@@ -27,18 +25,11 @@ from app.services.startup_assertions import (
     fetch_recent_position_modes,
 )
 
-
-def _make_mock_conn(rows: list[tuple[str, int]]):
-    """构造 mock psycopg2 conn 返回指定 rows."""
-    cursor = MagicMock()
-    cursor.fetchall.return_value = rows
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    conn = MagicMock()
-    conn.cursor.return_value = cursor
-    conn.__enter__ = MagicMock(return_value=conn)
-    conn.__exit__ = MagicMock(return_value=False)
-    return conn
+# iter 112: migrated to conftest `mock_conn` fixture (iter 110 pilot canonical).
+# Per docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A.
+# fetch_recent_position_modes uses `with conn.cursor() as cur:` — canonical
+# cursor-level __enter__/__exit__ covers; conn-level CM unnecessary (local def
+# had extra `conn.__enter__/__exit__` defensive padding, removed).
 
 
 class TestAssertExecutionModeConsistency:
@@ -135,20 +126,20 @@ class TestAssertExecutionModeConsistency:
 class TestFetchRecentPositionModes:
     """SQL 查询 helper: position_snapshot 最近 7d execution_mode 分布."""
 
-    def test_returns_dict_from_cursor_fetchall(self):
+    def test_returns_dict_from_cursor_fetchall(self, mock_conn):
         """fetchall returns [(mode, count), ...] → dict."""
-        conn = _make_mock_conn([("live", 295)])
-        result = fetch_recent_position_modes(conn)
+        mock_conn.cursor().fetchall.return_value = [("live", 295)]
+        result = fetch_recent_position_modes(mock_conn)
         assert result == {"live": 295}
 
-    def test_returns_empty_dict_when_no_rows(self):
-        conn = _make_mock_conn([])
-        result = fetch_recent_position_modes(conn)
+    def test_returns_empty_dict_when_no_rows(self, mock_conn):
+        mock_conn.cursor().fetchall.return_value = []
+        result = fetch_recent_position_modes(mock_conn)
         assert result == {}
 
-    def test_handles_multiple_modes(self):
-        conn = _make_mock_conn([("live", 200), ("paper", 50)])
-        result = fetch_recent_position_modes(conn)
+    def test_handles_multiple_modes(self, mock_conn):
+        mock_conn.cursor().fetchall.return_value = [("live", 200), ("paper", 50)]
+        result = fetch_recent_position_modes(mock_conn)
         assert result == {"live": 200, "paper": 50}
 
 
