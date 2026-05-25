@@ -126,19 +126,39 @@
 
 ---
 
+### W2-F: FRONTEND_INTEGRATION_AUDIT (added iter 135, user-driven Tier A§2)
+**Scope**: 后端 features 在前端的集成 status (user 5-26 显式 ask "后端的功能没有在前端进行集成"). Enumerate V3 风控 / Wave 4 Observability+Attribution / Approval queue + audit log / PT operator core 4 area backend surface → frontend consumer status (LIVE / DARK / PARTIAL).
+
+**Concrete questions**:
+1. V3 §S5/§S6/§S7/§S8 风控 framework backend endpoints (risk.py / approval.py / sse.py) — frontend page (RiskManagement.tsx / SafetyControlPanel.tsx) 是否消费? L4 recovery flow 完整?
+2. Wave 4 MVP 4.1 Observability + 4.2 Attribution backend (observability/* + eval/attribution.py) — UI dashboard 存在? api endpoint surface 完整?
+3. Approval queue (approval.py 6 endpoints) — frontend 有页面消费? V3 §S5/§S6/§S7/§S8 merged main 但 UI surface?
+4. PT operator (paper_trading.py / dashboard.py / portfolio.py) — NAV / positions / cash / trade log 全 wire 到 PTGraduation + Dashboard?
+
+**Effort**: 1 iter audit (iter 135 ✅ done) + 10-12 iter wire campaign (F1-F10 catalog → iter 136-147).
+**Cite**: `docs/audit/W2_F_FRONTEND_INTEGRATION_AUDIT_2026_05_26.md` (NEW iter 135) + `backend/app/api/risk.py` + `backend/app/api/approval.py` + `frontend/src/pages/*.tsx`.
+**Defer/Archive candidates surfaced** (per W2_F §4):
+- F1 Approval queue UI (V3 §S5-§S8 closure) — Tier A§2 P0 iter 136
+- F2 L4 Recovery completion — Tier A§2 P0 iter 137
+- F3 Risk event stream consumer — Tier A§2 P0 iter 138
+- F4-F10 — Tier B Wave 5 MVP 5.x candidates iter 139-147
+
+---
+
 ## §3 Selection Recommendation (§3.3 priority)
 
-Top order for iter 131+ execution:
+Top order for iter 131+ execution (**iter 135 update**: W2-F user-driven Tier A§2 surfaced, bumps to #1):
 
 | # | Audit | Tier | Effort | Priority Rationale | §4.5 rebalance value |
 |---|---|---|---|---|---|
-| 1 | **W2-A OBSERVABILITY_MVP41_RUNTIME_VERIFY** | C | 1-2 iter | §4.2 reality re-grounding **overdue** (last digest #11 closed Wave 4 batch 3.x 100% milestone, but no runtime-true verify since). 反 LL-179 STATUS_REPORT theatre. HIGH governance value. | Surfaces ≥1 defer candidate (e.g., Beat firing but consumer stall) |
-| 2 | **W2-D FACTOR_VALUES_172GB_HYPERTABLE_AUDIT** | C | 2 iter | MID-priority backlog sustained (per loop_state line 25). Touches data layer hygiene. Surfaces compression policy ADR-DRAFT candidate (paired DEFER for §4.5 rebalance). | Surfaces ≥1 defer (compression ADR) + 1 implement (SYSTEM_STATUS refresh) |
-| 3 | **W2-C OUTBOX_PUBLISHER_DRIFT** | C | 1-2 iter | Audit Step C3 1/18 long-tail per Session 50 handoff. Touches event-sourcing core. Real-time data check. | Surfaces ≥1 defer (Step C3 user portal) |
-| 4 | **W2-B L4_STAGED_EXECUTION_AUDIT** | C | 2-3 iter | ADR-027 implementation completeness. Higher friction (multi-file code-trace). Defer if Week 2 budget tight. | Surfaces 1-2 defer (跌停 fallback / state machine partial) |
-| 5 | **W2-E DEV_NOTIFICATIONS_IMPL_STATUS** | C | 1 iter | Doc-rot follow-on after Wave 4 batch 3.x 100% milestone. Low-friction. | Surfaces 1 implement (doc refresh) + 1 defer (WebSocket sustained) |
+| 1 | **W2-F FRONTEND_INTEGRATION_AUDIT** (iter 135 ✅) → **F1-F10 wire campaign** | A§2 | 1 audit + 10-12 wire iter | **User 5-26 显式 ask** "后端的功能没有在前端进行集成" + v9.6 Tier A§2 prerequisite. iter 135 audit ✅ done — 21/32 (66%) DARK or PARTIAL surfaced. F1+F2+F3 P0 unblocks PT restart gate UX. | Surfaces 10 implement (F1-F10) → strong implement-bias balanced by Tier A§2 mandate. |
+| 2 | W2-A OBSERVABILITY_MVP41_RUNTIME_VERIFY (iter 131-134 ✅ closed PR #484) | C | done | §4.2 reality re-grounding closed iter 132+134 PR #484 Wave 4 audit envelope. | Closed |
+| 3 | W2-D FACTOR_VALUES_172GB_HYPERTABLE_AUDIT | C | 2 iter | MID-priority backlog sustained. Touches data layer hygiene. Surfaces compression policy ADR-DRAFT candidate (paired DEFER for §4.5 rebalance). | Surfaces ≥1 defer (compression ADR) + 1 implement (SYSTEM_STATUS refresh) |
+| 4 | W2-C OUTBOX_PUBLISHER_DRIFT | C | 1-2 iter | Audit Step C3 1/18 long-tail per Session 50 handoff. Touches event-sourcing core. Real-time data check. | Surfaces ≥1 defer (Step C3 user portal) |
+| 5 | W2-B L4_STAGED_EXECUTION_AUDIT | C | 2-3 iter | ADR-027 implementation completeness. Higher friction (multi-file code-trace). Defer if Week 2 budget tight. | Surfaces 1-2 defer (跌停 fallback / state machine partial) |
+| 6 | W2-E DEV_NOTIFICATIONS_IMPL_STATUS | C | 1 iter | Doc-rot follow-on after Wave 4 batch 3.x 100% milestone. Low-friction. | Surfaces 1 implement (doc refresh) + 1 defer (WebSocket sustained) |
 
-**Recommended Week 2 budget**: 5-7 iter (~3 audits × 2 iter avg) covering W2-A + W2-D + W2-C. W2-B + W2-E sustained as Week 3 candidates if Week 2 budget exhausts.
+**Recommended Week 2 budget revision** (iter 135 post-W2-F): focus W2-F F1-F10 wire campaign first (Tier A§2 user-driven mandate); W2-D / W2-C / W2-B / W2-E sustained as Week 3 candidates.
 
 **Rebalance projection**: assuming Week 2 surfaces 3-5 defer + 2-3 archive candidates across 3 audits, §4.5 ratio currently ~74%+ trends back toward mid-band 65-70% by Week 2 close.
 
