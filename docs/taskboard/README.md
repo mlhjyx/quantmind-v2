@@ -139,6 +139,73 @@ status: idle | working_on_task_NNN | reviewing | compacting
 
 ---
 
+## ⚠️ CRITICAL SOP fixes (post sub1+sub2 iter 1 实证, 2026-05-25 16:50 SH)
+
+### Fix 1: Sub TIER C 直推 main 路径
+
+**问题** (sub1 iter 1 实证): sub worktree pinned to `worker/sub<N>` branch. 各 sub commit 到 own branch, 但 TIER C 要求 direct push to main. Sub 无法 checkout main (worktree 锁), 又不想走 PR 重路径.
+
+**正确 SOP**:
+```bash
+# Sub TIER C: 推 local worker/sub<N> HEAD 直接到 origin/main (跳 branch switch)
+git push origin HEAD:main
+```
+
+如果 push 被 reject (main 有新 commit since branch 起点):
+```bash
+git fetch origin main && git rebase origin/main && git push origin HEAD:main
+```
+
+`HEAD:main` 含义: source ref = current branch HEAD (e.g. worker/sub1), destination ref = origin/main.
+Push 成功后 origin/main 直接 advance 含 sub commits, **没有 PR、没有 merge commit、没有 branch switch**. Pre-push hook 仍 run (smoke 等).
+
+### Fix 2: Sub worktree .env propagation
+
+**问题** (sub1 iter 1 实证): `git worktree add` 不会拷贝 untracked files (e.g. `backend/.env` gitignored). Sub 起手 smoke / V3 §S10 schema tests 因 .env 缺失 fail.
+
+**正确 SOP** (sub 起手第 1 iter):
+```bash
+# Sub worktree 第 1 iter 起手: 拷贝 main worktree .env (内容 byte-identical)
+cp /d/quantmind-v2/backend/.env /d/quantmind-v2-sub1/backend/.env
+# 或 PowerShell: copy D:\quantmind-v2\backend\.env D:\quantmind-v2-sub1\backend\.env
+```
+
+这是 **"env enablement"** (worktree 初始化) **不是 ".env mutation"** (§5 carve-out). Content byte-identical 时不触红线.
+
+如果 main 后续 .env 改动, sub worktree .env 需手动同步 (TODO: 未来用 mklink /J symlink).
+
+### Fix 3: Sub worktree smoke 故障 escalation
+
+**问题** (sub1 iter 1 实证): `test_baostock_live_one_stock_fetch` 子进程 60s hardcoded timeout, baostock 在 fresh worktree 慢 >180s fail.
+
+**正确 SOP**:
+- Sub 首先 retry smoke 1 次 (cold-cache vs warm-cache)
+- 如仍 fail + 非 sub 自己代码引起 → STATUS_REPORT + 在 sub session 等 main decision
+- Main 决议 path:
+  - (a) 验证 main worktree smoke 通过 → 用 `git cherry-pick` 把 sub commits 拉到 main + main push (main smoke 通)
+  - (b) Authorize `--no-verify` for sub push (commit msg 显式 justify)
+  - (c) 沉淀 docs/audit/flaky_tests_by_worktree.md backlog
+
+**Sub1 iter 1 实证**: 走 (a) — main cherry-pick 2 commits + push, main smoke PASS 61/61 sustained.
+
+### Fix 4: Sub branch lag detect + rebase
+
+**问题** (sub1 iter 1 实证): Sub 起手 fetch main, 但 main 持续 push (task_002+003+004 + sub2.md), sub branch 起点 stale. Sub 完工 push 时 main 已 advance, push reject 或 cherry-pick conflict.
+
+**正确 SOP**:
+- 每 iter 起手必 `git fetch origin main && git rebase origin/main`
+- Cherry-pick conflict (directory rename false-positive) → 手动 resolve, keep 原 dir 文件 (e.g. task_002/003/004 stay in queue/, only own task move to in_progress/)
+
+---
+
+## Sediment 候选 (主脑决议)
+
+LL-XXX (next): "Multi-session worktree task lifecycle SOP — sub TIER C 直推用 HEAD:main, .env propagation 必 worktree 起手 cp, smoke fail 沉淀 worktree-specific quarantine doc"
+
+预计入 LL after sub1 + sub2 iter 2+ 实测 (sustained pattern 收集).
+
+---
+
 ## Stale task auto-reclaim (P0 #46, MVP 暂不自动)
 
 heartbeat >1h stale (sub crash / 离线) → in_progress task 卡住.
