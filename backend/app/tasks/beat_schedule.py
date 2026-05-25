@@ -446,4 +446,21 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,  # 1h within next 23h cycle
         },
     },
+    # ── daily-attribution-compute (MVP 4.2 sub-iter 7, iter 65) ──
+    # Beat entry 触发 `app.tasks.attribution_tasks.daily_attribution_compute_task`
+    # 16:30 Mon-Fri Asia/Shanghai — 在 daily-signal (16:00) + daily-execute 之后,
+    # 在 daily-moneyflow (17:30) + data-quality-check (17:45) + daily-IC schtask (18:00) 之前.
+    # 反 hard collision: 16:30 当前 SH 仅 risk-daily-check 14:30 + 16:00 daily-signal,
+    # 16:30 + 30min buffer 前后无 Beat 触发. crontab day_of_week=1-5 过滤周末.
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
+    #   (新 Beat entry + 新 task module 必须 restart Beat 才载入, restart Celery 才注册 task).
+    # 设计稿: docs/mvp/MVP_4_2_attribution.md §4 step 7 + §6 验收 box 4.
+    "daily-attribution-compute": {
+        "task": "app.tasks.attribution_tasks.daily_attribution_compute_task",
+        "schedule": crontab(hour=16, minute=30, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h within next trading day cycle
+        },
+    },
 }

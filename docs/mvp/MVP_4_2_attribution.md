@@ -1,6 +1,6 @@
 # MVP 4.2 — Performance Attribution (Wave 4 #2)
 
-**Status**: 🚧 启动 (iter 59 2026-05-25, entry skeleton shipped, multi-iter 1-2 周 campaign)
+**Status**: ✅ COMPLETED (iter 65 2026-05-25, 7/7 sub-iters shipped, multi-iter campaign closed)
 **前置**: Wave 4 MVP 4.1 batch 3.x ✅ 17/17 100% complete (iter 51-57)
 **Spec source**: [QPB v1.16](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 详细 — MVP 4.2 Performance Attribution (U5)
 
@@ -52,13 +52,13 @@ class DailyAttribution:
 
 | Sub-iter | scope | status |
 |---|---|---|
-| iter 59 (本) | dataclass skeleton + interface stub + shape tests | 🚧 |
-| iter 60+ | `compute_by_factor()` — factor return decomp via WLS regression on factor exposure | pending |
-| iter 61+ | `compute_by_sector()` — industry breakdown via SW1 mapping | pending |
-| iter 62+ | `compute_by_cost()` — trade_log cost field aggregation | pending |
-| iter 63+ | `compute_by_regime()` — HMM regime_detector integration | pending |
-| iter 64+ | `compute_residual_alert()` — threshold check + AlertRouter integration (复用 MVP 4.1 batch 3.x SDK pattern) | pending |
-| iter 65+ | Daily Beat task `daily-attribution-compute` (Sunday 04:30 OR 同 14:30 risk-check 复用) + DB row write | pending |
+| iter 59 | dataclass skeleton + interface stub + shape tests (8 tests) | ✅ |
+| iter 60 | `compute_by_factor()` — Brinson cross-sectional `portfolio_exposure × factor_return` (9 tests) | ✅ |
+| iter 61 | `compute_by_sector()` — SW1 industry breakdown (9 tests) | ✅ |
+| iter 62 | `compute_by_cost()` — trade_log 4-category aggregation (9 tests) | ✅ |
+| iter 63 | `compute_by_regime()` — HMM 3-state RegimeInfo (9 tests) | ✅ |
+| iter 64 | `fire_residual_alert()` — threshold check + AlertRouter SDK (复用 batch 3.x pattern, 10 tests) | ✅ |
+| iter 65 | `persist_attribution()` + Daily Beat task `daily-attribution-compute` 16:30 Mon-Fri SH + DB migration `daily_attribution.sql` (7 tests) | ✅ |
 
 ## §5 §6 8-trigger STOP self-check
 
@@ -72,10 +72,18 @@ ALL NEGATIVE.
 
 ## §6 验收
 
-- [ ] DailyAttribution dataclass + shape tests (iter 59 ✅)
-- [ ] PT 日报含完整归因 (iter 60+ batched)
-- [ ] 残差 > 阈值自动 flag via AlertRouter SDK (iter 64+)
-- [ ] Daily Beat task scheduled (iter 65+)
+- [x] DailyAttribution dataclass + shape tests (iter 59 ✅, 8 tests)
+- [x] PT 日报含完整归因 — by_factor/sector/cost/regime + alpha_vs_benchmark (iter 60-63 ✅, 36 tests)
+- [x] 残差 > 阈值自动 flag via AlertRouter SDK (iter 64 ✅, 10 tests)
+- [x] Daily Beat task scheduled `daily-attribution-compute` 16:30 Mon-Fri SH + DB migration (iter 65 ✅, 7 tests)
+
+**Cumulative tests**: 61/61 PASS (8+9+9+9+9+10+7 = 61, 0.13s).
+
+**铁律 44 X9 post-merge ops** (新 Beat entry + 新 task module 必须执行):
+```
+powershell -File scripts\service_manager.ps1 restart celery
+powershell -File scripts\service_manager.ps1 restart celery-beat
+```
 
 ## §7 关联
 

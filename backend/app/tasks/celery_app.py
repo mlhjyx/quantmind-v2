@@ -102,6 +102,7 @@ celery_app.conf.update(
         # dispatch but worker would never see the task. Iter 31 surfaced + fixed.
         # Sustained pattern from Plan v10 P0-10 + P0-16 sediment (same failure mode).
         "app.tasks.report_tasks",  # iter 30/31: generate_performance_report + cleanup_old_reports (PR #459 + this PR)
+        "app.tasks.attribution_tasks",  # MVP 4.2 sub-iter 7 (iter 65): daily-attribution-compute Beat (16:30 Mon-Fri) — DailyAttribution persist + residual alert
         # app.tasks.dual_write_tasks 已退役 (MVP 2.1c Sub3.5, 2026-04-18): 老 3 fetcher 退役后
         # dual-write 监控无必要, Celery Beat 条目 + task 已删
     ],

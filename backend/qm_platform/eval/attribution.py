@@ -31,6 +31,7 @@ Platform 严格隔离 (沿用 MVP 1.1 test_platform_strict_isolation):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol
@@ -522,6 +523,94 @@ def fire_residual_alert(
         return False
 
 
+# ════════════════════════════════════════════════════════════
+# MVP 4.2 sub-iter 7 (iter 65): persist_attribution — DB row write
+# 沿用 strategy_evaluations.sql + factor_registry partial UPSERT 体例 (LL-066).
+# Platform 严格隔离 sustained: DI via conn_factory, 0 import backend.app.*.
+# 铁律 17 例外 (LL-066): subset-column UPSERT 走 partial INSERT ... ON CONFLICT
+#   DO UPDATE — 全 columns 走完整 INSERT, JSONB fields serialized via json.dumps.
+# ════════════════════════════════════════════════════════════
+
+
+def persist_attribution(
+    conn_factory: Callable[[], object],
+    attribution: DailyAttribution,
+) -> int:
+    """Upsert DailyAttribution row to daily_attribution table; return row id.
+
+    INSERT INTO daily_attribution (...) VALUES (...) ON CONFLICT
+        (trade_date, strategy_id, execution_mode) DO UPDATE SET ...
+    RETURNING id
+
+    JSON serialization for dict / dataclass fields:
+      - by_factor: dict → json.dumps
+      - by_sector: dict → json.dumps
+      - by_regime: RegimeInfo dataclass → asdict + json.dumps (or NULL if None)
+      - by_cost: dict → json.dumps
+
+    Args:
+        conn_factory: zero-arg callable returning psycopg2 connection.
+            DI per platform contract (反 import backend.app.*).
+        attribution: DailyAttribution frozen dataclass with populated fields.
+
+    Returns:
+        int — row id (BIGSERIAL primary key).
+
+    Raises:
+        Any psycopg2 error propagates (caller manages transaction per 铁律 32).
+    """
+    import dataclasses
+    import json
+
+    regime_json: str | None
+    if attribution.by_regime is not None:
+        regime_json = json.dumps(dataclasses.asdict(attribution.by_regime))
+    else:
+        regime_json = None
+
+    sql = """
+    INSERT INTO daily_attribution (
+        trade_date, strategy_id, execution_mode,
+        nav_change_pct,
+        by_factor_json, by_sector_json, by_regime_json, by_cost_json,
+        alpha_vs_benchmark, unexplained_residual
+    ) VALUES (
+        %s, %s, %s,
+        %s,
+        %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+        %s, %s
+    )
+    ON CONFLICT (trade_date, strategy_id, execution_mode) DO UPDATE SET
+        nav_change_pct       = EXCLUDED.nav_change_pct,
+        by_factor_json       = EXCLUDED.by_factor_json,
+        by_sector_json       = EXCLUDED.by_sector_json,
+        by_regime_json       = EXCLUDED.by_regime_json,
+        by_cost_json         = EXCLUDED.by_cost_json,
+        alpha_vs_benchmark   = EXCLUDED.alpha_vs_benchmark,
+        unexplained_residual = EXCLUDED.unexplained_residual
+    RETURNING id
+    """
+
+    params = (
+        attribution.trade_date,
+        attribution.strategy_id,
+        attribution.execution_mode,
+        attribution.nav_change_pct,
+        json.dumps(attribution.by_factor),
+        json.dumps(attribution.by_sector),
+        regime_json,
+        json.dumps(attribution.by_cost),
+        attribution.alpha_vs_benchmark,
+        attribution.unexplained_residual,
+    )
+
+    conn = conn_factory()
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        row = cur.fetchone()
+        return int(row[0])
+
+
 __all__ = [
     "AttributionEngine",
     "DailyAttribution",
@@ -532,5 +621,6 @@ __all__ = [
     "compute_by_sector",
     "compute_unexplained_residual",
     "fire_residual_alert",
+    "persist_attribution",
     "residual_exceeds_threshold",
 ]

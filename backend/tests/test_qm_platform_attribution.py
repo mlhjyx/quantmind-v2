@@ -24,6 +24,7 @@ from backend.qm_platform.eval.attribution import (
     compute_by_sector,
     compute_unexplained_residual,
     fire_residual_alert,
+    persist_attribution,
     residual_exceeds_threshold,
 )
 
@@ -776,3 +777,147 @@ def test_fire_residual_alert_custom_threshold():
         fired_20 = fire_residual_alert(a, threshold_bps=20.0)
     assert fired_20 is False
     mock_sdk2.assert_not_called()
+
+
+# ────────────────────────────────────────────────────────────────────
+# MVP 4.2 sub-iter 7 (iter 65): persist_attribution — DB row write
+# ────────────────────────────────────────────────────────────────────
+
+
+def _make_mock_conn_factory(returned_id: int = 42):
+    """Build mock conn_factory + cursor returning row id; return (factory, mock_cursor)."""
+    mock_cursor = MagicMock()
+    mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_cursor.fetchone.return_value = (returned_id,)
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+    factory = MagicMock(return_value=mock_conn)
+    return factory, mock_cursor
+
+
+def test_persist_attribution_returns_row_id():
+    """persist_attribution returns row id from RETURNING clause."""
+    factory, _ = _make_mock_conn_factory(returned_id=42)
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="paper-strategy",
+        execution_mode="paper",
+        nav_change_pct=0.012,
+    )
+    row_id = persist_attribution(factory, a)
+    assert row_id == 42
+    factory.assert_called_once()
+
+
+def test_persist_attribution_sql_contains_upsert_clause():
+    """SQL contains ON CONFLICT DO UPDATE + RETURNING id."""
+    factory, mock_cursor = _make_mock_conn_factory()
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.0,
+    )
+    persist_attribution(factory, a)
+    sql_arg = mock_cursor.execute.call_args.args[0]
+    assert "INSERT INTO daily_attribution" in sql_arg
+    assert "ON CONFLICT (trade_date, strategy_id, execution_mode) DO UPDATE" in sql_arg
+    assert "RETURNING id" in sql_arg
+
+
+def test_persist_attribution_json_serialization_dicts():
+    """by_factor / by_sector / by_cost dicts serialize to JSON strings."""
+    import json
+
+    factory, mock_cursor = _make_mock_conn_factory()
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.01,
+        by_factor={"vol_20": 0.002, "bp_ratio": 0.003},
+        by_sector={"banking": 0.001},
+        by_cost={"commission": -0.0005, "slippage": -0.0008},
+    )
+    persist_attribution(factory, a)
+    params = mock_cursor.execute.call_args.args[1]
+    # params: (trade_date, strategy_id, execution_mode, nav_change_pct,
+    #         by_factor_json, by_sector_json, by_regime_json, by_cost_json,
+    #         alpha_vs_benchmark, unexplained_residual)
+    assert json.loads(params[4]) == {"vol_20": 0.002, "bp_ratio": 0.003}
+    assert json.loads(params[5]) == {"banking": 0.001}
+    assert json.loads(params[7]) == {"commission": -0.0005, "slippage": -0.0008}
+
+
+def test_persist_attribution_regime_info_serialization():
+    """RegimeInfo dataclass serializes to JSON via dataclasses.asdict."""
+    import json
+
+    factory, mock_cursor = _make_mock_conn_factory()
+    regime = RegimeInfo(detected="bull", expected_perf_bps=12.0, actual_perf_bps=9.5)
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.01,
+        by_regime=regime,
+    )
+    persist_attribution(factory, a)
+    params = mock_cursor.execute.call_args.args[1]
+    regime_dict = json.loads(params[6])
+    assert regime_dict == {"detected": "bull", "expected_perf_bps": 12.0, "actual_perf_bps": 9.5}
+
+
+def test_persist_attribution_regime_info_null_when_none():
+    """by_regime=None → params[6] is None (SQL NULL)."""
+    factory, mock_cursor = _make_mock_conn_factory()
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.0,
+        by_regime=None,
+    )
+    persist_attribution(factory, a)
+    params = mock_cursor.execute.call_args.args[1]
+    assert params[6] is None
+
+
+def test_persist_attribution_execution_mode_paper_vs_live():
+    """Paper and live execution_mode persist as distinct rows (composite key)."""
+    factory_paper, mock_cursor_paper = _make_mock_conn_factory(returned_id=100)
+    factory_live, mock_cursor_live = _make_mock_conn_factory(returned_id=200)
+    a_paper = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="sid",
+        execution_mode="paper",
+        nav_change_pct=0.01,
+    )
+    a_live = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="sid",
+        execution_mode="live",
+        nav_change_pct=0.01,
+    )
+    row_paper = persist_attribution(factory_paper, a_paper)
+    row_live = persist_attribution(factory_live, a_live)
+    assert row_paper == 100
+    assert row_live == 200
+    # Both calls use distinct execution_mode param value
+    assert mock_cursor_paper.execute.call_args.args[1][2] == "paper"
+    assert mock_cursor_live.execute.call_args.args[1][2] == "live"
+
+
+def test_persist_attribution_does_not_commit():
+    """persist_attribution does NOT call conn.commit() (铁律 32 — Service 不 commit)."""
+    factory, _ = _make_mock_conn_factory()
+    a = DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="x",
+        execution_mode="paper",
+        nav_change_pct=0.0,
+    )
+    persist_attribution(factory, a)
+    mock_conn = factory.return_value
+    mock_conn.commit.assert_not_called()
