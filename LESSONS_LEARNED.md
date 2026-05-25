@@ -7023,3 +7023,42 @@ Multi-CLI Claude Code sub session architecture (Pattern A) 真核心限制: sub 
 
 **Sediment trigger**: 2026-05-25 iter 99 main session pivot decision (user agreement to Pattern B). 未来 "multi-process Claude Code 协作" 需求 → default Pattern B (in-process Task spawn), 仅极少 isolation case 走 Pattern A.
 
+
+---
+
+## LL-201 — Anti-pattern guard 实证: Task agent 拒绝 fabricated cite (2026-05-25 iter 99)
+
+**Pattern essence**:
+
+Main session 给 Task agent 一个 task spec ("Refresh CLAUDE.md '113 active factors' cite"). Agent fresh grep verify — '113' NOT in CLAUDE.md anywhere. Per V3 §quantmind-v3-anti-pattern-guard skill + §quantmind-v3-cite-source-lock skill, agent **REFUSED to fabricate** a cite that doesn't exist. Returned report explaining: true cite location is SYSTEM_STATUS.md:365, recommend pivot to correct target.
+
+**真 fix** (skill enforcement 反 fabricated cite anti-pattern v1 凭空数字):
+
+Agent applied skill SOP + 返回 STOP + report 而非 obey + fabricate cite. Main session 收到 + pivot to correct target (`SYSTEM_STATUS.md:365` clarification commit `068af98`). Net iter cost: ~30 seconds agent investigation + main pivot decision.
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+任何 "refresh X in file Y" task without main 先 fresh-grep-verifying Y contains X → agent should reject + report true location. 适用范围:
+- "refresh CLAUDE.md X" / "update SYSTEM_STATUS.md X" / "edit ADR-N X" — 凡含特定 file + 特定内容 reference 的 task spec
+- Multi-CLI 或 Pattern B (in-process subagent) 都适用
+
+**Why this matters**:
+
+- 反 fabricated cite anti-pattern v1 (LL-105 SOP-6 cite SSOT format breach)
+- 反 main session 自身 cite drift — main 假设 "X 在 Y", 不 fresh verify → 派 task 错 target → agent obey → fabricated cite cascade
+- 反 spec literal-read — Task agent 不应 "服从" 错的 task spec, 应 grep verify first + report deviation
+- 沿用 LL-105 (SOP-6 cite SSOT) + LL-130 (skill SOP enforcement)
+- V3 §quantmind-v3-anti-pattern-guard + §quantmind-v3-cite-source-lock skills 存在精确为此 case
+
+**Cite source (4-element, verify 2026-05-25 17:35 SH iter 99)**:
+
+- Agent rejection report (本 session iter 99 third agent return) — 沿用 Task tool 返回 final report (无独立 file 但 session log 内沉淀)
+- `docs/audit/FACTOR_POOL_HEALTH_2026_05_25.md` §1 lines 8-12 (audit finding: 113 in SYSTEM_STATUS not CLAUDE.md)
+- `SYSTEM_STATUS.md:365` (true cite location, 4-22 Session 23 Part 2 snapshot)
+- main commit `068af98` 2026-05-25 iter 99 pivot to SYSTEM_STATUS.md clarification
+
+**Heuristic backref**: #11 Convenience-Driven Development (main session 假设 cite 位置, 不 fresh verify 即派 task), #14 Documentation Lying (assumed cite location 不存在), #15 Test-Reality Gap (task spec 与 file 真值 gap).
+
+**Cross-ref**: V3 §quantmind-v3-anti-pattern-guard + §quantmind-v3-cite-source-lock skills + LL-105 SOP-6 cite SSOT + LL-130 skill SOP enforcement + LL-196/197/198/199/200 cluster.
+
+**Sediment trigger**: 2026-05-25 iter 99 实证 — Pattern B Task agent 第一次拒绝 task premise (anti-pattern guard active enforcement). 未来 task spec authoring 时 main 须 fresh grep verify target file 含 expected content before派单 (反 assumption-driven task spec).

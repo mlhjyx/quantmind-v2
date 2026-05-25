@@ -105,3 +105,42 @@ registry.update_status(strategy_id, StrategyStatus.LIVE, reason="...")
 2. G10 LLM V2 + ADR-014.1 (Wave 4+ Observability LLM 接入后)
 3. G5/G6/G7 自动化 + Strategy G4'-G6' 扩展 (Wave 4)
 4. `evaluation_log` DB 表持久化 EvaluationReport, audit cross-compare (MVP 4.x)
+
+## §术语表 (2026-05-25 iter 99 sediment per Strategy Gate audit finding)
+
+> **背景**: docs/audit/STRATEGY_GATE_COVERAGE_2026_05_25.md §5 finding 2 — Legacy `engines/factor_gate.py` G1-G8 vs Platform `qm_platform/factor/gates/` G1-G10 编号冲突 (e.g. Legacy G3=IC胜率 vs Platform G3=paired bootstrap, same number, different semantic).
+
+### Legacy G1-G8 (engines/factor_gate.py, DEV_FACTOR_MINING.md:816-822)
+- G1: IC mean t-test (≠ Platform G1 t>2.5 严格)
+- G2: 相关性过滤
+- **G3: IC 胜率 (单调性)** ← 与 Platform G3 不同
+- G4: 衰减速率
+- G5: 模板匹配 (T1-T15)
+- G6: 成本可行性
+- G7: 冗余检测
+- G8: BH-FDR
+
+### Platform G1-G10 (qm_platform/factor/gates/, MVP 3.5 batch 1+2)
+- G1: IC 显著性 (t > 2.5, Harvey Liu Zhu 2016)
+- G2: 相关性过滤 (|corr|<0.7 + monthly<0.3)
+- **G3: Paired bootstrap (p < 0.05)** ← 与 Legacy G3 不同
+- G4: WF OOS Sharpe (≥ baseline)
+- G5/G6/G7: Wave 4+ follow-up (MVP_3_5:148, 仍未启动 per audit)
+- G8: BH-FDR (p ≤ rank/m × 0.05)
+- G9: AST Jaccard 新颖性 (< 0.7, AlphaAgent KDD 2025)
+- G10: Hypothesis 长度 (≥ 20 字 + 非占位符)
+
+### 引用规范
+
+未来引用必加 path 前缀: "Platform G3" vs "Legacy G3", 不可省略. Audit log `name` field 是契约一部分, V1 sustained.
+
+### Sunset 计划
+
+Legacy G1-G8 sunset 时 rename → L1-L8 (避免编号冲突). 触发条件: Wave 4+ Platform G5/G6/G7 全 implement + audit 0 Legacy 引用. **TBD**, 沿用 sediment trigger.
+
+### Cite source (4-element)
+
+- `docs/audit/STRATEGY_GATE_COVERAGE_2026_05_25.md` §5 finding 2 (verify 2026-05-25 17:35 SH iter 99)
+- `backend/engines/factor_gate.py` (Legacy G1-G8 真位置)
+- `backend/qm_platform/factor/gates/` (Platform G1-G10 真位置)
+- `docs/DEV_FACTOR_MINING.md:816-822` (Legacy 原描述)

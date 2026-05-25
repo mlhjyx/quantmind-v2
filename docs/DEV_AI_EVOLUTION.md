@@ -1,5 +1,12 @@
 # QuantMind V2 — AI 闭环进化设计文档
 
+> **§0 V3 Cross-ref (2026-05-25 sediment per DEV_AI V21 V3 drift audit)**
+> V3 风控 framework (`docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md`) §S5-§S8 已 merged
+> (PR #343-346) — RAG memory + Bull-Bear + sentiment + RiskReflector 实施.
+> **同名异义警示**: V2.1 "Layer 1-4" (AI 因子/策略发现) ≠ V3 "L0-L5" (实时风控).
+> 不可混淆 — V2.1 与 V3 是**正交独立 framework**.
+> 详 `docs/audit/DEV_AI_V21_V3_DRIFT_2026_05_25.md` §3 drift table.
+
 > **版本**: 2.1 | **日期**: 2026-04-16 (Session 57 2026-05-19 G1 audit addendum + Session 58+1 2026-05-19 P1-38 sediment closure)
 >
 > **Session 58+1 (2026-05-19) addendum** — Plan v8 P1-38 sediment closure (per `docs/audit/V3_AUDIT_S2_DESIGN_VS_REALITY_GAP.md` §2.2 + Master P1-38):
