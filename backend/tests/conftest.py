@@ -192,7 +192,10 @@ def mock_conn_factory_builder():
         if fetchone_queue is not None:
             cursor.fetchone = MagicMock(side_effect=list(fetchone_queue))
         if rowcounts is not None:
-            # rowcount is property-like; PropertyMock + side_effect for queue
+            # rowcount is property-like; PropertyMock + side_effect for queue.
+            # Safe: MagicMock() creates a unique class per instance (id-based name),
+            # so `type(cursor)` is per-build → no cross-build / cross-test leakage.
+            # Verified iter 110 reviewer P1 (comment-only clarification, fragile-but-correct).
             from unittest.mock import PropertyMock
 
             type(cursor).rowcount = PropertyMock(side_effect=list(rowcounts))
@@ -217,6 +220,11 @@ def _assert_no_db_writes_impl(conn: MagicMock) -> None:
     Codifies LL-198 fix point 2: SELECT-read is NOT a write side effect.
     Walks `conn.cursor().execute.call_args_list` and asserts every executed
     SQL starts with a read-only verb (SELECT / WITH / SHOW / EXPLAIN).
+
+    **Limitation** (iter 110 reviewer P2 note): does NOT detect writes inside
+    CTEs (e.g. `WITH cte AS (...) INSERT INTO ...` starts with `WITH` and would
+    pass the check silently). 2026-05-25 codebase grep confirms 0 instances of
+    this pattern in test surface — add CTE scan if future codebase adopts it.
     """
     cursor = conn.cursor.return_value
     write_prefixes = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "DROP", "ALTER")
