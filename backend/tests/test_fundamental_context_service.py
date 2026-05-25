@@ -56,13 +56,9 @@ def _make_valuation_context(
     )
 
 
-def _make_mock_conn() -> MagicMock:
-    conn = MagicMock()
-    cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    conn.cursor = MagicMock(return_value=cursor)
-    return conn
+# iter 111: migrated to conftest `mock_conn` fixture (per iter 110 pilot canonical;
+# blueprint `docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md` §6 Option A).
+# Local _make_mock_conn def removed — fixture injection replaces 5 call sites below.
 
 
 # §1 ingest() full success path
@@ -71,11 +67,11 @@ def _make_mock_conn() -> MagicMock:
 class TestFundamentalContextServiceIngest:
     """FundamentalContextService.ingest — full orchestration with mocked fetcher + conn."""
 
-    def test_ingest_valuation_upsert_success(self) -> None:
+    def test_ingest_valuation_upsert_success(self, mock_conn: MagicMock) -> None:
         ctx = _make_valuation_context()
         fetcher = MagicMock()
         fetcher.fetch = MagicMock(return_value=ctx)
-        conn = _make_mock_conn()
+        conn = mock_conn
 
         service = FundamentalContextService(fetcher=fetcher)
         stats = service.ingest(symbol_id="600519", conn=conn)
@@ -107,12 +103,12 @@ class TestFundamentalContextServiceIngest:
         assert params[3] == Decimal("0")
         assert params[4] == 15
 
-    def test_ingest_zero_conn_commit(self) -> None:
+    def test_ingest_zero_conn_commit(self, mock_conn: MagicMock) -> None:
         """Sustained 铁律 32: caller 真值 事务边界 — service NEVER calls conn.commit() / rollback()."""
         ctx = _make_valuation_context()
         fetcher = MagicMock()
         fetcher.fetch = MagicMock(return_value=ctx)
-        conn = _make_mock_conn()
+        conn = mock_conn
 
         service = FundamentalContextService(fetcher=fetcher)
         service.ingest(symbol_id="600519", conn=conn)
@@ -120,7 +116,7 @@ class TestFundamentalContextServiceIngest:
         conn.commit.assert_not_called()
         conn.rollback.assert_not_called()
 
-    def test_ingest_fetcher_error_propagates(self) -> None:
+    def test_ingest_fetcher_error_propagates(self, mock_conn: MagicMock) -> None:
         """Sustained 铁律 33 fail-loud: FundamentalFetchError propagates (反 silent skip)."""
         fetcher = MagicMock()
         fetcher.fetch = MagicMock(
@@ -129,7 +125,7 @@ class TestFundamentalContextServiceIngest:
                 message="HTTP 500 EM backend timeout",
             )
         )
-        conn = _make_mock_conn()
+        conn = mock_conn
 
         service = FundamentalContextService(fetcher=fetcher)
 
@@ -140,11 +136,11 @@ class TestFundamentalContextServiceIngest:
         cur = conn.cursor()
         cur.execute.assert_not_called()
 
-    def test_ingest_different_symbol_id(self) -> None:
+    def test_ingest_different_symbol_id(self, mock_conn: MagicMock) -> None:
         ctx = _make_valuation_context(symbol_id="000001")
         fetcher = MagicMock()
         fetcher.fetch = MagicMock(return_value=ctx)
-        conn = _make_mock_conn()
+        conn = mock_conn
 
         service = FundamentalContextService(fetcher=fetcher)
         stats = service.ingest(symbol_id="000001", conn=conn)
@@ -172,13 +168,13 @@ def test_fundamental_ingest_stats_frozen() -> None:
 # §3 SQL UPSERT preserves 7 other dimensions
 
 
-def test_upsert_only_updates_valuation_dimensions() -> None:
+def test_upsert_only_updates_valuation_dimensions(mock_conn: MagicMock) -> None:
     """Sustained ADR-022 反 silent overwrite: ON CONFLICT updates only valuation/fetch_cost/
     fetch_latency_ms/fetched_at — 7 other JSONB dimensions (growth/earnings/...) preserved."""
     ctx = _make_valuation_context()
     fetcher = MagicMock()
     fetcher.fetch = MagicMock(return_value=ctx)
-    conn = _make_mock_conn()
+    conn = mock_conn
 
     service = FundamentalContextService(fetcher=fetcher)
     service.ingest(symbol_id="600519", conn=conn)
