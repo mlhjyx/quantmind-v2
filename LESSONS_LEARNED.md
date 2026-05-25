@@ -7270,3 +7270,98 @@ canonical: `backend/app/tasks/celery_app.py:137-186` (iter 103 实施).
 **Cross-ref**: LL-203 (root cause + 该 LL closure), LL-141 (4-step ops post-merge), LL-097 (铁律 X9 Beat schedule restart 提醒), 铁律 33 (silent failure). Sustained iter 100 audit-first → iter 101 root-cause-via-Pattern-B-agent → iter 103 fix-PR 三段式 anti-silent governance workflow.
 
 **Sediment trigger**: 2026-05-25 iter 103 PR #479 merged a93f95c. LL-203 remediation 落地 + 抗 future drift canonical pattern sediment 为模板. 后续 5-29 Fri 19:00 SH 真实 first-execution observation + scheduler_task_log row verify = 完整 closure (LL-141 4-step ops post-merge).
+
+---
+
+## LL-205 — Frontend fail-loud render guard pattern: nullable state + top-level guard + retry card 替代 silent mock fallback (2026-05-25 iter 107)
+
+**Pattern essence**:
+
+iter 107 W14 (Frontend Design v3 §6 W14) 落地 frontend 端 fail-loud canonical pattern. 闭 LL-179 lineage 相邻 "silent UI lie" 集合 — UI 端 mask backend outage 行为 (前 iter 50/74 user 抱怨 / iter 76/77 silent UI hook / 等) 的 root cause = `useState<T>(MOCK_DEFAULT)` initial + catch block 只 `setError(...)` 不清 stale state. 此模式 LL-205 = canonical replacement.
+
+**Anti-pattern (要 sediment 防再现)**:
+
+```tsx
+// ❌ silent fallback masks backend outage
+const EMPTY_STATUS: PipelineStatus = { run_id: null, schedule_cron: "0 20 * * 1-5", ... };
+
+export default function Page() {
+  const [status, setStatus] = useState<PipelineStatus>(EMPTY_STATUS);
+  const loadStatus = async () => {
+    try { setStatus(await fetchStatus()); }
+    catch { setError("加载失败"); }  // ← stale EMPTY_STATUS 仍 render
+  };
+  return <div>{status.schedule_cron}</div>;  // ← user 看到 stale "0 20 * * 1-5"
+}
+```
+
+**Canonical pattern (LL-205 sediment)**:
+
+```tsx
+export default function Page() {
+  const [status, setStatus] = useState<PipelineStatus | null>(null);  // ← nullable initial
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      setStatus(await fetchStatus());
+      setError(null);
+    } catch {
+      setStatus(null);  // ← clear stale state, fail-loud
+      setError("加载失败，请检查后端连接");
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, []);
+
+  // Top-level guard — 3 branches
+  if (!status) {
+    if (loadingStatus) return <SkeletonSpinner />;
+    return <ErrorCard error={error} onRetry={() => { setLoadingStatus(true); void loadStatus(); }} />;
+  }
+
+  // 下面所有 derefs 安全 — TS 控制流分析 narrow status 非 null
+  return <div>{status.schedule_cron}</div>;
+}
+```
+
+**Null-safe deref pattern (effects/callbacks 在 guard 外)**:
+
+```tsx
+useEffect(() => {
+  if (!status?.run_id) return;          // ← optional chain
+  const ws = new WebSocket(`/ws/${status.run_id}`);  // ← TS narrow after guard
+  ...
+}, [status?.run_id]);
+
+setStatus((prev) => (prev ? { ...prev, x: 1 } : prev));  // ← nullable updater guard
+```
+
+**Reusable trigger condition (≥85% future-replay value)**:
+
+任 frontend page Edit 涉及 `useState<T>(MOCK_DEFAULT)` initial + async `fetchX()` catch block → 必走 LL-205 nullable pattern. 任 BE-FE contract 改动后 frontend page 实现 → reviewer 必 spot-check fail-loud path. Frontend Design v3 §6 W7-W15 + W14 已落地 / W7/W9/W10/W11/W12/W13/W15 future iter 沿用此 LL canonical.
+
+**Why this matters**:
+
+- 反 silent failure 铁律 33 (frontend 端 application) — backend 已有 `_write_scheduler_log_safe` envelope (LL-204); frontend 端 LL-205 = 同 spirit 实现
+- 反 silent UI lie 集合 (LL-179 lineage) — user 抱怨多次 "为什么 UI 一直显示" 当 backend 实际 down; LL-205 替代 mock fallback ensure UI 反映真实状态
+- 反 TypeScript control-flow narrow gap — top-level guard 让 status 在 JSX 中保证非 null (TS narrow), 不需 400+ deref 处加 `?.` 或 `!`; 仅 effects/callbacks 用 `status?.x` (在 guard 外)
+- Test pattern 沿用 — vitest 5 case (skeleton / fail-loud / retry / happy / cron leak verify) = canonical 反 EMPTY_STATUS leak regression guard
+- Reviewer 一致 APPROVE pattern — iter 107 reviewer 0 P0/P1, 1 MED (comment wording) + 1 LOW (test mock arg forwarding) 均非 logic 修复
+
+**Cite source (4-element, verify 2026-05-25 ~21:30 SH iter 107 closure)**:
+
+- `frontend/src/pages/PipelineConsole.tsx:50-67` §EMPTY_STATUS removal + nullable state (post iter 107)
+- `frontend/src/pages/PipelineConsole.tsx:296-333` §top-level guard 3 branches (post iter 107)
+- `frontend/src/pages/PipelineConsole.tsx:83-94` §loadStatus catch with setStatus(null) (post iter 107)
+- `frontend/src/__tests__/PipelineConsole.test.tsx:1-180` §5 vitest case canonical test pattern
+- `docs/audit/W14_PIPELINE_CONSOLE_PLAN_2026_05_25.md` §2 Changes A-E plan spec
+- `docs/audit/FRONTEND_V3_W7_W15_PLAN_2026_05_25.md` §3 W14 source spec
+- 铁律 33 (silent failure ban T1) — `IRONLAWS.md` §14 #33
+
+**Heuristic backref**: #4 Silent Failure (frontend 端 application), #15 Test-Reality Gap (vitest verify stale mock 不 leak), #2 Convenience-Driven Development (mock default = "便利但欺骗", LL-205 replacement). Anti-pattern guard: 任新 frontend page PR 含 `useState<T>(MOCK_DEFAULT)` 或 `useState<T>({...EMPTY...})` 模式 → reviewer 必 flag.
+
+**Cross-ref**: LL-179 (silent UI lie lineage, broader silent-fail family), LL-187 (Frontend Design v3 W1-W6 closure precedent that fixed window.prompt; LL-205 是 W7-W15 batch 续 sediment), LL-204 (backend audit envelope 同 spirit canonical), 铁律 33 (silent failure ban). W14 audit plan doc `docs/audit/W14_PIPELINE_CONSOLE_PLAN_2026_05_25.md` 实战 verify pattern 可执行性.
+
+**Sediment trigger**: 2026-05-25 iter 107 PR #480 merged 847e30a. iter 108 plan-closure note 落地. W14 完整 plan → impl → reviewer → merge → closure 三段式 governance cycle. 后续 W7/W9/W10/W11/W12/W13/W15 future iter 沿用 LL-205 canonical (60+ frontend page candidates 待 retrofit per Frontend Design v3 §6 scope).
