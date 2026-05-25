@@ -109,9 +109,73 @@ def residual_exceeds_threshold(
     return abs(attribution.unexplained_residual) > (threshold_bps / 10000.0)
 
 
+def compute_by_factor(
+    portfolio_weights: dict[str, float],
+    factor_exposures: dict[str, dict[str, float]],
+    factor_returns: dict[str, float],
+) -> dict[str, float]:
+    """Per-factor P&L contribution via Brinson-style cross-sectional attribution (iter 60 entry).
+
+    daily attribution (single trade_date snapshot):
+        portfolio_exposure_f = Σ_i w_i × z_f(i)
+        by_factor[f] = portfolio_exposure_f × factor_return_f
+
+    For multi-period or parameter-uncertainty attribution (iter 60+ future iter), WLS
+    regression on historical returns time-series would replace this cross-sectional
+    formula. For now, daily snapshot is the QPB MVP 4.2 §2 spec target.
+
+    沿用 fast_neutralize_batch + factor_engine convention (factor_values store
+    neutralized z-scores). 铁律 31 Engine 纯计算 — 0 DB / 0 HTTP / 0 Redis.
+
+    Args:
+        portfolio_weights: {stock_code: weight} dict. Weights typically sum to 1.0
+            but function does NOT enforce; caller handles normalization.
+        factor_exposures: {factor_name: {stock_code: z_score}} nested dict. Stocks
+            missing from a factor's exposure dict are skipped for that factor.
+        factor_returns: {factor_name: cross_sectional_return} dict (decimal,
+            0.0012 = 0.12% = 12 bps).
+
+    Returns:
+        {factor_name: contribution} dict. Empty when any input is empty.
+        Sum approximates total factor-explained portfolio return; residual
+        (vs actual portfolio return) attributed to other components (sector /
+        cost / regime) + unexplained_residual.
+
+    Examples:
+        >>> weights = {"000001.SZ": 0.5, "600000.SH": 0.5}
+        >>> exposures = {
+        ...     "turnover_mean_20": {"000001.SZ": 1.0, "600000.SH": -1.0},
+        ...     "bp_ratio": {"000001.SZ": 0.5, "600000.SH": 0.5},
+        ... }
+        >>> returns = {"turnover_mean_20": 0.001, "bp_ratio": 0.002}
+        >>> compute_by_factor(weights, exposures, returns)
+        {'turnover_mean_20': 0.0, 'bp_ratio': 0.001}
+    """
+    by_factor: dict[str, float] = {}
+    if not portfolio_weights or not factor_exposures or not factor_returns:
+        return by_factor
+
+    for factor_name, factor_ret in factor_returns.items():
+        exposure_map = factor_exposures.get(factor_name)
+        if not exposure_map:
+            continue  # silent_ok: factor with no exposure data → 0 contribution (skip)
+
+        # portfolio_exposure_f = Σ_i w_i × z_f(i), 仅 portfolio + exposure 都有的 stock
+        portfolio_exposure = sum(
+            weight * exposure_map[stock_code]
+            for stock_code, weight in portfolio_weights.items()
+            if stock_code in exposure_map
+        )
+
+        by_factor[factor_name] = portfolio_exposure * factor_ret
+
+    return by_factor
+
+
 __all__ = [
     "AttributionEngine",
     "DailyAttribution",
     "RegimeInfo",
+    "compute_by_factor",
     "residual_exceeds_threshold",
 ]
