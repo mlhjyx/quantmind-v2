@@ -189,6 +189,12 @@ def mock_conn_factory_builder():
         cursor = MagicMock(name="mock_factory_cursor")
         cursor.__enter__ = MagicMock(return_value=cursor)
         cursor.__exit__ = MagicMock(return_value=False)
+        # iter 120 enhancement (per blueprint §9.4): default fetchall=[] so factory
+        # variant tests don't fail when prod calls cur.fetchall() with no prior
+        # explicit setup. Mirrors sibling pattern from test_strategy_evaluation_required
+        # + test_strategy_registry local defs. Non-breaking addition; tests can still
+        # override via cursor.fetchall.return_value = [...] post-fixture-call.
+        cursor.fetchall = MagicMock(return_value=[])
         if fetchone_queue is not None:
             cursor.fetchone = MagicMock(side_effect=list(fetchone_queue))
         if rowcounts is not None:

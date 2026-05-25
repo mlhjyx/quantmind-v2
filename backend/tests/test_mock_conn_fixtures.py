@@ -126,6 +126,20 @@ class TestMockConnFactoryBuilder:
         cursor = conn.cursor()
         assert cursor.rowcount == 1
 
+    def test_default_fetchall_is_empty_list(self, mock_conn_factory_builder) -> None:
+        """iter 120 enhancement (blueprint §9.4): default fetchall=[] sustained.
+
+        Unblocks future migration of test_strategy_evaluation_required.py +
+        test_strategy_registry.py whose local defs set `cursor.fetchall.return_value = []`.
+        """
+        factory = mock_conn_factory_builder()
+        conn = factory()
+        cursor = conn.cursor()
+        assert cursor.fetchall() == []
+        # Override still works post-build (test can opt-in to non-empty rows)
+        cursor.fetchall.return_value = [("row1",), ("row2",)]
+        assert cursor.fetchall() == [("row1",), ("row2",)]
+
 
 # ─────────────────────────────────────────────────────────────
 # assert_no_db_writes helper tests
