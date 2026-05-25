@@ -168,3 +168,87 @@ Session continued past initial iter 113 milestone — 8 more substantive iters (
 ---
 
 **END iter 114-121 continuation**. Per §v9.4 sustained loop continues; no /compact triggered this session (sustained context within budget).
+
+---
+
+## 10. iter 122-128 final synthesis (added iter 128, 2026-05-25 ~23:50 SH)
+
+Session continued past iter 121 milestone — 7 more substantive iters (122-128):
+
+| iter | commit | TIER | scope |
+|------|--------|------|-------|
+| 122 | `e61f9ba` | C | Extend this SESSION_SUMMARY with iter 114-121 continuation |
+| 123 | `db28664` PR #482 | B | Migrate test_strategy_evaluation_required (13 sites, factory variant unblocked iter 120) |
+| 124 | `e450a5e` PR #483 | B | Migrate test_strategy_registry (17 sites, factory variant — second-stage of factory unblock) |
+| 125 | `0c95863` | C | LL-206 conftest fixture migration loop canonical sediment |
+| 126 | `76a2099` | C | Mark DEV_SCHEDULER §二 P1 patch HISTORICAL (SCHEDULER_V3_CYCLE_DRIFT §5 Rec #2) |
+| 127 | `5aa73ec` | C | Close SCHEDULER_V3 §5 Rec #3 (GapDownOpen confirmed in L1 RealtimeRiskEngine code-trace) |
+| 128 | (this doc edit) | C | Final session synthesis appended |
+
+### 10.1 Final cumulative session metrics (iter 103-127)
+
+- **25 substantive iters** (103-127, single evening 2026-05-25 ~21:00-23:50 SH)
+- **29 commits**: 5 PR merged + 24 direct main TIER B/C pushes
+- **PRs merged**: #479 (factor_lifecycle envelope) / #480 (W14 PipelineConsole) / #481 (conftest pilot) / #482 (test_strategy_evaluation_required) / #483 (test_strategy_registry)
+- **Smoke 61 PASS sustained 29/29 push cycles** — 0 fail this session window
+- **LL counter**: 203 → 206 (LL-204 / LL-205 / LL-206)
+- **Red lines 5/5 sustained** verified iter 103 + iter 106 fresh psql
+- **0 test regression**; +42 new tests via 7 conftest migrations + 16 self-tests
+- **9 audit closures cumulative**
+
+### 10.2 conftest fixture migration final state (post iter 124)
+
+| Status | Count | Files |
+|--------|-------|-------|
+| ✅ Migrated | 7 | test_fundamental_context_service (111) / test_startup_assertions (112) / test_a3_a5_a7_a10 (113) / test_announcement_processor (116) / test_factor_health_daily (117) / test_strategy_evaluation_required (123) / test_strategy_registry (124) |
+| ✅ Keep-local-with-rationale | 3 | test_dingtalk_webhook_service / test_l4_sweep_tasks / test_pt_data_service_fail_loud (SQL-prefix dispatch / 4-query domain sequence — Option B canonical pattern) |
+| 🟡 Plan mode entry | 2 | test_qm_platform_attribution (MagicMock factory contract) / test_service_smoke (LL-198 root, fetchone=(0,) implicit default) |
+| **Total scoped** | **12/12** | = 100% blueprint §1 inventory coverage; 7/12 (58%) migrated + 3 (25%) intentional keep-local = **10/12 = 83% closure** (beyond §9.5 target 9/12 = 75%) |
+
+### 10.3 Audit closures cumulative (iter 103-127)
+
+| Audit doc | Status | Closing iter |
+|-----------|--------|--------------|
+| FACTOR_LIFECYCLE_BEAT (iter 100 P0) | ✅ closed | iter 103 PR #479 |
+| FACTOR_LIFECYCLE_ROOT_CAUSE (iter 101) | ✅ closed | iter 103 PR #479 |
+| STRATEGY_GATE_COVERAGE (iter 99 §5 finding 2) | ✅ closed | iter 105 |
+| ADR_014_TERMINOLOGY_CITE (iter 100 P0 + 2 P1) | ✅ closed | iter 100 (P0) + iter 105 (P1) |
+| FACTOR_POOL_HEALTH §5 Rec #1 (iter 99) | ✅ closed | iter 106 |
+| W14_PIPELINE_CONSOLE_PLAN | ✅ closed | iter 107 PR #480 |
+| V3_SSOT_RISK_CONTROL_RETIRE | ✅ closed | iter 119 (FULL RETIRE archive) |
+| MAKE_MOCK_CONN_REFACTOR_BLUEPRINT | ✅ 83% closure | iter 110-124 (12/12 scoped) |
+| DEV_AI_V21_V3_DRIFT | ✅ closed (verified) | (already done iter 99 task_007) |
+| SCHEDULER_V3_CYCLE_DRIFT §5 Rec #1 | ✅ closed | iter 99 (V3 §9.1 sequenceDiagram refresh) |
+| SCHEDULER_V3_CYCLE_DRIFT §5 Rec #2 | ✅ closed | iter 126 |
+| SCHEDULER_V3_CYCLE_DRIFT §5 Rec #3 | ✅ closed | iter 127 |
+
+### 10.4 Open candidates for next session
+
+**HIGH (immediate)**:
+- 5-29 Fri 19:00 SH factor_lifecycle first-execution verify (post-merge LL-141 4-step)
+- 2 Plan mode entries: test_qm_platform_attribution (MagicMock factory) + test_service_smoke (LL-198 root)
+
+**MID**:
+- Frontend W7-W15 follow-on (sustained per LL-205 canonical, ~50h scope across 8 W items)
+- factor_values 172GB hypertable maintenance audit (TIER C audit-only)
+
+**DEFER**:
+- PT restart (user "不急")
+- AI Layer 3-4 (Q3-Q4 by design ADR-028)
+
+### 10.5 Sustained Pattern B observations (iter 103-127)
+
+- Single main CC session ✅ (0 sub-agent failures across 25 iters)
+- Task agent spawn for TIER A/B reviewer (3 spawns iter 103/107/110 + 1 iter 123 + sibling-pattern fast-track iter 124)
+- TIER B direct push for ≤20 LOC migrations (10+ direct main pushes this session saving PR overhead)
+- Pre-push smoke gate sustained reliable (47-61s per run, 29/29 PASS)
+- Red lines 5/5 verified iter 103 + iter 106 fresh psql
+- 1 transient SSL push fail (iter 125, retry succeeded) — 0 permanent push fail
+
+### 10.6 v9-final Pattern B entry prompt sustained
+
+Sustained from iter 99 session summary. /goal re-entry text preserved in earlier commit messages. Ready for next session paste-back if user wishes.
+
+---
+
+**END iter 122-128 synthesis**. **Session total: 25 substantive iters / 29 commits / 5 PR / 9 audit closures / 12/12 conftest scoped / smoke 29/29 green / 红线 5/5 sustained.** Per §v9.4 mandate sustained; future iter continues when user re-engages or /compact triggered.
