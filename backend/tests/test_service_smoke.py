@@ -405,9 +405,13 @@ class TestNotificationServiceSync:
         return svc
 
     def test_send_sync_p3_does_not_write_db(self):
-        """P3通知不写入 DB，cursor.execute 不被调用。"""
+        """P3通知不写入 DB (no INSERT/UPDATE/DELETE) — prefs SELECT 是 read-only side effect."""
         svc = self._get_service()
         conn = _make_mock_conn()
+        # _get_preferences_sync(conn) → cursor.fetchone(); 默认 (0,) 1-tuple 会被
+        # _prefs_row_to_dict 拿 row[1] 时 IndexError. None → 走 if-row-else-None →
+        # _DISPATCH_PREF_DEFAULTS 兜底 (production-semantic equivalent for empty prefs row).
+        conn.cursor().fetchone.return_value = None
         svc.send_sync(
             conn=conn,
             level="P3",
@@ -415,13 +419,20 @@ class TestNotificationServiceSync:
             title="调试消息",
             content="调试内容",
         )
-        # P3不写DB，execute不应被调用
-        conn.cursor().execute.assert_not_called()
+        # P3 不写 DB = 不允许 INSERT/UPDATE/DELETE. prefs SELECT 是 read-only side effect 容忍.
+        # startswith check 避免 'updated_at' 之类 column name 触发 substring 误报.
+        for call in conn.cursor().execute.call_args_list:
+            sql = call.args[0].lstrip().upper() if call.args else ""
+            assert not sql.startswith(
+                ("INSERT", "UPDATE", "DELETE")
+            ), f"P3 不应触发写操作, 但发现: {sql[:80]}..."
 
     def test_send_sync_p2_throttled_after_repeat(self):
         """P2短时间内重复发送应被节流（第二次不写DB）。"""
         svc = self._get_service()
         conn = _make_mock_conn()
+        # 同 test_send_sync_p3: prefs fetchone=None → _DISPATCH_PREF_DEFAULTS 兜底
+        conn.cursor().fetchone.return_value = None
 
         # 第一次发送P2
         svc.send_sync(
