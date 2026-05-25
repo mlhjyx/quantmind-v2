@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 // Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
 import apiClient from "@/api/client";
-import { Shield, AlertTriangle } from "lucide-react";
+import { Shield, AlertTriangle, History, TrendingUp, ArrowDown, ArrowUp, Activity } from "lucide-react";
+// iter 140 W2-F F5 — getPaperStrategyId for real UUID (sibling iter 137 P0 fix)
+import { getPaperStrategyId } from "@/api/system";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -128,6 +131,228 @@ function LiveRiskEventsPanel() {
   );
 }
 
+// ───────────────────────────────────────────────────────────────
+// iter 140 W2-F F5 — Status History + Summary panel
+// ───────────────────────────────────────────────────────────────
+// Closes W2-F audit A2 (`GET /api/risk/history/{strategy_id}`, risk.py:146)
+// + A3 (`GET /api/risk/summary/{strategy_id}`, risk.py:187) both DARK pre-iter
+// 140 despite backend service existing. UUID strategy_id via getPaperStrategyId
+// (iter 137 P0 fix canonical pattern).
+
+interface RiskTransition {
+  trade_date: string;
+  prev_level: number;
+  new_level: number;
+  transition_type: string;
+  reason: string | null;
+  metrics: Record<string, number> | null;
+}
+
+interface RiskSummaryResponse {
+  current_level?: number;
+  current_level_name?: string;
+  days_in_current_state?: number;
+  total_escalations?: number;
+  total_recoveries?: number;
+  last_transition_date?: string | null;
+  max_level_30d?: number;
+  // 后端 schema 容错 — 实际字段可能扩展
+  [k: string]: unknown;
+}
+
+function formatTransitionType(t: string): { label: string; color: string; icon: typeof ArrowUp } {
+  switch (t) {
+    case "escalate":
+      return { label: "升级", color: C.up, icon: ArrowUp };
+    case "recover":
+      return { label: "恢复", color: C.down, icon: ArrowDown };
+    case "manual_reset":
+      return { label: "强制重置", color: C.warn, icon: Activity };
+    case "force_close":
+      return { label: "强制平仓", color: "#dc2626", icon: Activity };
+    default:
+      return { label: t, color: C.text3, icon: Activity };
+  }
+}
+
+function RiskStatusHistoryPanel() {
+  // Fetch real paper_strategy_id UUID (iter 137 P0 fix canonical)
+  const { data: paperSid } = useQuery({
+    queryKey: ["system-paper-strategy-id"],
+    queryFn: () => getPaperStrategyId(),
+    staleTime: 60 * 60 * 1000,
+  });
+  const strategyId =
+    paperSid?.configured && paperSid.paper_strategy_id ? paperSid.paper_strategy_id : null;
+
+  const historyQ = useQuery({
+    queryKey: ["risk-history", strategyId],
+    queryFn: async () => {
+      if (!strategyId) return [] as RiskTransition[];
+      const { data } = await apiClient.get<RiskTransition[]>(`/risk/history/${strategyId}`, {
+        params: { execution_mode: "paper", limit: 50 },
+      });
+      return data;
+    },
+    enabled: strategyId != null,
+    staleTime: 30_000,
+  });
+
+  const summaryQ = useQuery({
+    queryKey: ["risk-summary", strategyId],
+    queryFn: async () => {
+      if (!strategyId) return null;
+      const { data } = await apiClient.get<RiskSummaryResponse>(`/risk/summary/${strategyId}`, {
+        params: { execution_mode: "paper" },
+      });
+      return data;
+    },
+    enabled: strategyId != null,
+    staleTime: 30_000,
+  });
+
+  if (!strategyId) {
+    return (
+      <Card>
+        <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>
+          <AlertTriangle size={24} color={C.warn} className="mx-auto mb-2" />
+          <div>PAPER_STRATEGY_ID 未配置 — 历史/概览不可用</div>
+          <div style={{ marginTop: 4 }}>请配置 backend/.env 后刷新</div>
+        </div>
+      </Card>
+    );
+  }
+
+  const summary = summaryQ.data;
+  const transitions = historyQ.data ?? [];
+
+  return (
+    <div className="space-y-3">
+      {/* Summary 概览卡片 */}
+      <Card>
+        <CardHeader title="风控概览" titleEn="Risk Summary" />
+        <div className="p-4">
+          {summaryQ.isLoading ? (
+            <div style={{ fontSize: 12, color: C.text4 }}>加载中...</div>
+          ) : summaryQ.isError ? (
+            <div style={{ fontSize: 12, color: C.up }}>
+              概览加载失败: {summaryQ.error instanceof Error ? summaryQ.error.message : "未知错误"}
+            </div>
+          ) : !summary ? (
+            <div style={{ fontSize: 12, color: C.text4 }}>暂无概览数据</div>
+          ) : (
+            <div className="grid grid-cols-4 gap-3">
+              <div className="rounded-lg p-3" style={{ background: C.bg2, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.text4, marginBottom: 4 }}>当前等级</div>
+                <div style={{ fontSize: 18, color: C.text1, fontWeight: 600, fontFamily: C.mono }}>
+                  L{summary.current_level ?? "—"}{" "}
+                  <span style={{ fontSize: 11, color: C.text3, fontFamily: C.font }}>
+                    {summary.current_level_name ?? ""}
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: C.bg2, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.text4, marginBottom: 4 }}>当前等级保持</div>
+                <div style={{ fontSize: 18, color: C.text1, fontWeight: 600 }}>
+                  {summary.days_in_current_state ?? "—"} <span style={{ fontSize: 11, color: C.text3 }}>天</span>
+                </div>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: C.bg2, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.text4, marginBottom: 4 }}>累计升级</div>
+                <div style={{ fontSize: 18, color: C.up, fontWeight: 600 }}>
+                  {summary.total_escalations ?? "—"}
+                </div>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: C.bg2, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.text4, marginBottom: 4 }}>累计恢复</div>
+                <div style={{ fontSize: 18, color: C.down, fontWeight: 600 }}>
+                  {summary.total_recoveries ?? "—"}
+                </div>
+              </div>
+            </div>
+          )}
+          {summary?.last_transition_date && (
+            <div className="mt-3" style={{ fontSize: 11, color: C.text3 }}>
+              最近一次状态变更: <span style={{ color: C.text2 }}>{summary.last_transition_date}</span>
+              {summary.max_level_30d != null && (
+                <>
+                  {" · "}30 天最高等级: <span style={{ color: C.up, fontFamily: C.mono }}>L{summary.max_level_30d}</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* History 状态变更历史 */}
+      <Card>
+        <CardHeader
+          title="状态变更历史"
+          titleEn="Transition History"
+          right={
+            <span style={{ fontSize: 10, color: C.text4 }}>
+              <History size={11} className="inline" /> 最近 {transitions.length} 条
+            </span>
+          }
+        />
+        <div className="p-4">
+          {historyQ.isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: C.bg2 }} />
+              ))}
+            </div>
+          ) : historyQ.isError ? (
+            <div style={{ fontSize: 12, color: C.up }}>
+              历史加载失败: {historyQ.error instanceof Error ? historyQ.error.message : "未知错误"}
+            </div>
+          ) : transitions.length === 0 ? (
+            <div className="text-center py-6" style={{ fontSize: 12, color: C.text4 }}>
+              <TrendingUp size={20} color={C.down} className="mx-auto mb-2" />
+              暂无状态变更记录 (策略稳定运行)
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {transitions.map((t, i) => {
+                const cfg = formatTransitionType(t.transition_type);
+                const IconCmp = cfg.icon;
+                return (
+                  <div
+                    key={`${t.trade_date}-${i}`}
+                    className="rounded-lg px-3 py-2"
+                    style={{ background: `${cfg.color}08`, border: `1px solid ${cfg.color}25` }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <IconCmp size={14} color={cfg.color} />
+                      <span
+                        className="px-2 py-0.5 rounded"
+                        style={{ fontSize: 9, color: cfg.color, fontWeight: 700, fontFamily: C.mono, background: `${cfg.color}12` }}
+                      >
+                        {cfg.label}
+                      </span>
+                      <span style={{ fontSize: 11, color: C.text2, fontFamily: C.mono }}>
+                        L{t.prev_level} → L{t.new_level}
+                      </span>
+                      <span className="ml-auto" style={{ fontSize: 10, color: C.text4, fontFamily: C.mono }}>
+                        {t.trade_date}
+                      </span>
+                    </div>
+                    {t.reason && (
+                      <div style={{ fontSize: 11, color: C.text3, marginTop: 4, paddingLeft: 22 }}>
+                        {t.reason}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function usageColor(usage: number) {
   if (usage >= 90) return C.down;
   if (usage >= 70) return C.warn;
@@ -241,7 +466,7 @@ export default function RiskManagement() {
     <>
       <PageHeader title="风控管理" titleEn="Risk Management">
         <TabButtons
-          tabs={["风控总览", "压力测试", "限额监控", "紧急控制", "实时事件"]}
+          tabs={["风控总览", "状态历史", "压力测试", "限额监控", "紧急控制", "实时事件"]}
           active={tab}
           onChange={setTab}
         />
@@ -384,6 +609,9 @@ export default function RiskManagement() {
         )}
 
         {tab === "紧急控制" && <SafetyControlPanel />}
+
+        {/* iter 140 W2-F F5 closure — status history + summary surface */}
+        {tab === "状态历史" && <RiskStatusHistoryPanel />}
 
         {tab === "实时事件" && <LiveRiskEventsPanel />}
 
