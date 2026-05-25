@@ -583,7 +583,7 @@ export default function ApprovalQueue() {
 
   const detailQuery = useQuery({
     queryKey: ["approval-detail", detailId],
-    queryFn: () => (detailId == null ? Promise.reject(new Error("no id")) : getApprovalDetail(detailId)),
+    queryFn: () => getApprovalDetail(detailId!),
     enabled: detailId != null,
   });
 
