@@ -251,7 +251,8 @@ export default function PipelineConsole() {
     }
   };
 
-  // Frontend Design v3 §6 #8 — replace window.prompt → ConfirmModal HIGH-tier
+  // Frontend Design v3 §6 #8 — reject reason capture (W1-W6 closed window.prompt;
+  // iter 107 W14 reword per plan §2 Change E, LL audit trail sustained)
   const [rejectingId, setRejectingId] = useState<number | null>(null);
 
   const handleCandidateReject = (factorId: number) => {
@@ -691,7 +692,7 @@ export default function PipelineConsole() {
         </GlassCard>
       )}
 
-      {/* Reject reason confirmation (Frontend Design v3 §6 #8 — replace window.prompt) */}
+      {/* Reject reason confirmation (Frontend Design v3 §6 #8 — W1-W6 closed window.prompt; iter 107 W14 reword) */}
       {rejectingId !== null && (
         <ConfirmModal
           title={`拒绝因子 #${rejectingId}`}
