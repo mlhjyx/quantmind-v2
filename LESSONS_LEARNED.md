@@ -6818,3 +6818,51 @@ When a major Wave/Phase/MVP completes (≥3 MVP cumulative or single MVP with cr
 **ADR backref**: 候选 future ADR (post-closure cascade sweep SOP formal codification).
 
 **Sediment trigger**: 2026-05-25 L4+R loop iter 76-84 8-iter Wave 4 closeout cascade (commits `4711242` → `5616b61` → `3f1518b` → `66fea1a` → `e3f79f8` → `9d34878` → `f93bbf9` → `a9b1644` → iter 84 本 LL append commit). Future Wave 5 / AI Layer 3-4 / V3 sprint closures must apply this SOP.
+
+---
+
+## LL-196 — Silent-UI hook reconciles with stdout-asserting tests via JSON `hookSpecificOutput.additionalContext` (Claude Code hook contract, 2026-05-25 iter 77)
+
+**Pattern essence** (iter 77 `verify_completion.py:178-188` 静默化 + 6 test reconciliation):
+
+User directive 要求 hook 输出对 UI 静默 (不暴露内部检查清单 / 不打断用户阅读), BUT 既有 tests assert `stdout` 含 checklist substrings (e.g. "回归测试", "测试输出", "类型检查"). 朴素静默 (`_ = checklist; sys.exit(0)` 全 suppress) → 6 tests 同时 fail → backtrack 损失.
+
+**真 fix**: 用 Claude Code hook 协议的 `hookSpecificOutput.additionalContext` channel — emit JSON 到 stdout, 内容 = 原 checklist 文本. UI 端只渲染 `systemMessage` 字段 (drop 该字段 → UI silent); test 端 assert `stdout` substring → JSON 中 `additionalContext` 字段含 checklist 全文 → substring match succeeds.
+
+```python
+# verify_completion.py:178-188 (iter 77 silent-UI 体例)
+payload = {
+    "hookSpecificOutput": {
+        "hookEventName": "Stop",
+        "additionalContext": checklist,  # 含 test assert 的所有 substring, UI 不渲染
+    },
+    # 不发 "systemMessage" → UI silent
+}
+sys.stdout.write(json.dumps(payload))
+sys.exit(0)
+```
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+任何 hook 改造遇到 "user 要求 UI 静默 + 既有 test assert stdout content" 双约束 → 用 `hookSpecificOutput.additionalContext` 注入. 适用 PreToolUse / PostToolUse / Stop / SubagentStop / UserPromptSubmit 所有 hook event (Claude Code hook protocol 共享 `hookSpecificOutput` schema).
+
+**Why this matters**:
+
+- 反 v8 实证 "silence" 路径错误 — 朴素 `sys.exit(0)` w/o stdout 把所有契约信息 suppress, test fail cascade.
+- 反 test-vs-prod 二选一陷阱 — 用协议字段分层 (UI 看 systemMessage, test 看 stdout JSON), 两端契约同时满足.
+- 反复制粘贴 fix-test-not-prod anti-pattern (LL-085 类) — 此处 prod 是真 silent, test 也真 assert content, 不是 patch test.
+
+**Cite source (4-element, verify 2026-05-25 16:30 SH iter 77)**:
+- `.claude/hooks/verify_completion.py:178-188` §main() Stop event silent-UI mode
+- `backend/tests/test_verify_completion_hook.py:33-50` §_run_hook + 6 hookSpecificOutput tests
+- commit `80aa815` iter 77 silent-UI reconciliation
+- Plan v8 G2 audit `ll_unique_ids=178` (此 LL-196 是 sediment 续, taskboard task_001 验证 lifecycle)
+
+**Heuristic backref**: #15 Test-Reality Gap, #12 Surface Treatment vs Root Cause, #14 Documentation Lying (test assertion is "documentation of expected behavior" — 改 test = 改 docs, 不动 prod).
+
+**Cross-ref**: 沿用 Claude Code hooks reference (hook event JSON schema) + LL-085 (patch-test-not-prod anti-pattern, 此为 inverse 正例 — prod 真改, test 真 assert, 用协议字段 reconcile).
+
+**ADR backref**: 候选 future ADR (hook silent-UI + test-assert 协议 reconcile SOP formal codification).
+
+**Sediment trigger**: 2026-05-25 taskboard POC task_001 (sub1 worker session iter 1) — multi-session lifecycle 验证产物. 未来 hook 改造遇 silent-UI + test-assert 双约束 → apply 本 LL pattern.
+

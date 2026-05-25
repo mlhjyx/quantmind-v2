@@ -73,3 +73,30 @@ This reconciliation pattern has zero existing LL sediment. Without recording, fu
 This is **first POC task**. Acceptance loose (TIER C, no PR). 目的: 验证 sub1 atomic claim → execute → handoff → done 全 lifecycle 流转 + git race detection + heartbeat 更新.
 
 后续 task 会升 TIER B/A (PR + reviewer 闭环) 真实测 §v9.1/§v9.2.
+
+---
+
+## Result (sub1 iter 1, 2026-05-25 16:35 SH)
+
+- **LL-196 appended** to `LESSONS_LEARNED.md` (after LL-195, latest grep verify 2026-05-25 16:30 SH).
+  - Title: "Silent-UI hook reconciles with stdout-asserting tests via JSON `hookSpecificOutput.additionalContext` (Claude Code hook contract, 2026-05-25 iter 77)"
+  - 4-element cite: verify_completion.py:178-188 + test_verify_completion_hook.py:33-50 + commit 80aa815 + Plan v8 G2 audit ll_unique_ids=178
+- **Local commit chain on `worker/sub1` branch** (NOT pushed — see Block below):
+  - `1e082c6` claim(taskboard): sub1 claims task_001 (LL-196 iter 77 silent-UI sediment) — already committed local pre-block
+  - LL-196 sediment + result section + heartbeat — committed in same final iter-1-close commit (this commit)
+- **Lifecycle**: task file remains in `in_progress/` (NOT moved to `done/`) because TIER C "merged" status requires push to main; smoke pre-push hook blocked (see Block).
+
+## Block (Push held — §v9.19 修不动 → STATUS_REPORT + STOP)
+
+`pytest -m "smoke and not live_tushare"` 4 fail → 1 fail after `.env` provision (env borrowed from main worktree D:/quantmind-v2/backend/.env, identical content, NOT mutation):
+
+- `backend/tests/smoke/test_mvp_2_1b_baostock_live.py::test_baostock_live_one_stock_fetch` — `subprocess.TimeoutExpired` at hardcoded `timeout=60` (line 72) in test code. Baostock socket reaches host within 5s (skip-guard passes), then library fetch hangs/slow on cold-start workspace. Standalone retry with outer 180s timeout also exited 143 (SIGTERM) — fetch genuinely exceeds 180s on this worktree, not a simple timeout bump.
+
+This is `backend/tests/**` TIER B scope (≤1 file ≤20 lines + single root cause = direct main allowed per §v9.1) but sub1 prompt says "不自找候选, 只领 docs/taskboard/queue/ 任务做" — fixing baostock subprocess timeout would be a self-found candidate.
+
+Recommended unblock paths for main session:
+1. Create TIER B task: bump `test_mvp_2_1b_baostock_live.py:72` from `timeout=60` to `timeout=240` (or add retry-with-backoff), justify worktree cold-start variance.
+2. OR main session merges sub1's local work to main directly with `git push --no-verify` + explicit justify in commit message (LL-196 is doc-only, zero red-line, zero code path risk).
+3. OR investigate baostock library cold-start on this worktree (possible concurrent network throttle from main worktree CC session — `D:\quantmind-v2` git worktree list confirms both active).
+
+STATUS_REPORT: `docs/audit/STATUS_REPORT_2026_05_25_sub1_iter1_smoke_block.md`
