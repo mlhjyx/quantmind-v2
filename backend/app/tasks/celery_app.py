@@ -176,7 +176,10 @@ def _verify_beat_task_registration(*_args, **_kwargs) -> None:
             "[BeatRegistration] missing tasks (worker/beat 启动 abort): %s",
             sorted(missing),
         )
-        raise RuntimeError(f"Beat task(s) not registered at worker/beat init: {sorted(missing)}")
+        missing_sorted = sorted(missing)
+        raise RuntimeError(
+            f"Beat task(s) not registered at worker/beat init: {missing_sorted}"
+        )
     logger.info("[BeatRegistration] all %d Beat-scheduled tasks registered", len(expected))
 
 

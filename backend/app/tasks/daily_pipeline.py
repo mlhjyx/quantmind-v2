@@ -1134,6 +1134,10 @@ def factor_lifecycle_task(self) -> dict:
         return _audit_summary
     except Exception as e:
         logger.exception(f"[FactorLifecycle] 失败: {e}")
+        # iter 103 reviewer P2: 镜像 risk_daily_check L463-469 体例 — 此 guard 在
+        # factor_lifecycle 无 self.retry() 路径下 always-true (skipped/success 都
+        # early return). 保 guard 以维持 sibling task pattern 一致性 (未来 retry
+        # path 加入时无 break risk).
         if _audit_status == "error":
             _audit_summary = {
                 "status": "error",
