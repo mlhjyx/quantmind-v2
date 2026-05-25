@@ -7364,4 +7364,106 @@ setStatus((prev) => (prev ? { ...prev, x: 1 } : prev));  // ← nullable updater
 
 **Cross-ref**: LL-179 (silent UI lie lineage, broader silent-fail family), LL-187 (Frontend Design v3 W1-W6 closure precedent that fixed window.prompt; LL-205 是 W7-W15 batch 续 sediment), LL-204 (backend audit envelope 同 spirit canonical), 铁律 33 (silent failure ban). W14 audit plan doc `docs/audit/W14_PIPELINE_CONSOLE_PLAN_2026_05_25.md` 实战 verify pattern 可执行性.
 
-**Sediment trigger**: 2026-05-25 iter 107 PR #480 merged 847e30a. iter 108 plan-closure note 落地. W14 完整 plan → impl → reviewer → merge → closure 三段式 governance cycle. 后续 W7/W9/W10/W11/W12/W13/W15 future iter 沿用 LL-205 canonical (60+ frontend page candidates 待 retrofit per Frontend Design v3 §6 scope).
+**Sediment trigger**: 2026-05-25 iter 107 PR #480 merged 847e30a. iter 108 plan-closure note 落地. W14 完整 plan → impl → reviewer → merge → closure 三段式 governance cycle. 后续 W7/W9/W10/W11/W12/W13/W15 future iter 沿用 LL-205 canonical (60+ frontend page candidates 待 retrofit per Frontend Design v3 SS6 scope).
+
+---
+
+## LL-206 — conftest fixture migration loop canonical: incremental + per-shape adaptation + canonical enhancement triggered Plan-mode-equivalent unblock (2026-05-25 iter 110-124)
+
+**Pattern essence**:
+
+iter 110-124 落地 docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md §6 Option A pilot + 7/12 file migration cycle. 沉淀的 canonical pattern 适用于 future test fixture migration / 移除 12+ 文件 duplicated boilerplate / 沿用 canonical fixture 替代 module-local def 体例.
+
+**iter 110-124 实证 metrics (single evening 2026-05-25)**:
+- iter 110 PR #481: 3 canonical fixtures + 16 self-tests (infrastructure pilot)
+- iter 111-117 5 直接 migrations + iter 116/117 also direct (TIER B ≤20 LOC each)
+- iter 118-121 blueprint updates + 4 Plan mode entries identified
+- iter 120 canonical enhancement (fetchall=[] default, non-breaking) unblocked 2 of 4 deferred
+- iter 123 PR #482 + iter 124 PR #483: 2 factory variant migrations (post enhancement)
+- 7/12 migrated + 3 keep-local = 10/12 = 83% closure (beyond §9.5 75% target)
+- 0 test regression / smoke 22/22 push cycles green
+
+**Anti-pattern (要 sediment 防再现)**:
+
+```python
+# ❌ module-local mock helper duplicated across 12+ test files
+def _make_mock_conn(...) -> MagicMock:
+    conn = MagicMock()
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (0,)  # ← LL-198 root B1 trap
+    ...
+    return conn
+
+# Each test file's helper has subtle behavior drift:
+# - Some return (conn, cur) tuple
+# - Some return MagicMock factory with assert_called_once
+# - Some implement SQL-prefix dispatch
+# - Some set default fetchone=(0,) vs None vs raises
+```
+
+**Canonical pattern (LL-206 sediment)**:
+
+```python
+# 1. Single conftest.py fixture set (DRY)
+@pytest.fixture
+def mock_conn() -> MagicMock:
+    """Fresh MagicMock psycopg2-like per test, no implicit defaults."""
+    conn = MagicMock(name="mock_conn")
+    cursor = MagicMock(name="mock_cursor")
+    cursor.__enter__ = MagicMock(return_value=cursor)
+    cursor.__exit__ = MagicMock(return_value=False)
+    conn.cursor = MagicMock(return_value=cursor)
+    return conn  # NO default fetchone return — test must opt-in
+
+@pytest.fixture
+def mock_conn_factory_builder():
+    """For prod code taking conn_factory callable."""
+    def _build(fetchone_queue=None, rowcounts=None):
+        # ... builds factory with _conn/_cursor attrs ...
+    return _build
+
+@pytest.fixture
+def assert_no_db_writes():
+    """LL-198 fix point 2 codified: SELECT NOT a write side effect."""
+    return _assert_no_db_writes_impl
+
+# 2. Test files inject fixture, set per-test responses explicitly
+def test_xyz(mock_conn):
+    mock_conn.cursor().fetchone.return_value = ("draft",)  # opt-in
+    # ... test ...
+```
+
+**Migration playbook (validated iter 111-124)**:
+
+1. **infrastructure pilot first** — land canonical fixtures + self-tests BEFORE any migration. Iter 110 = +321 LOC infra, 0 existing test touched. Zero risk pivot point.
+2. **incremental file-by-file** — TIER B direct push for ≤20 LOC migrations (iter 111-113), TIER B PR-flow for ≥30 LOC (iter 123/124). Each file is independent; bisect-safe.
+3. **shape-adapt local helpers when needed** — `_set_announcement_id_seq` (iter 116) / `_set_factor_health_responses` (iter 117) preserve domain semantic while delegating MagicMock construction to canonical. Don't force canonical to absorb every variant.
+4. **keep-local-with-rationale for 3 files** (iter 115 §9.2 analysis) — SQL-prefix dispatch + complex domain helpers stay local. Canonical is for COMMON cases; specialized helpers appropriate for specialized prod query patterns. Per blueprint Option B "Per-test explicit builder pattern".
+5. **canonical enhancement unblocks deferred candidates** (iter 120) — adding `cursor.fetchall.return_value = []` default to factory variant fixture unblocked 2 of 4 Plan mode entries. Non-breaking optional behavior addition. Verified via 17/17 self-test PASS.
+6. **per-test audit before mechanical migration** — fetchone overflow semantics differ (lambda→None vs StopIteration). Per-test verification of prod fetchone call counts vs queue length proves overflow unreachable. Reviewer (iter 123) verified 16/16 + iter 124 reviewer-deferred via sibling pattern precedent.
+
+**Reusable trigger condition (≥85% future-replay value)**:
+
+任 multi-file test refactor with module-local helper duplication (12+ instances) → 必走 LL-206 canonical playbook. 任 conftest fixture API enhancement (e.g. add optional param) → infrastructure-first PR before consumer migration. 任 fixture variant migration (factory / tuple-return / SQL-dispatch) → blueprint §9.2 recommendation matrix template applies.
+
+**Why this matters**:
+
+- Replaces 12+ duplicated boilerplate helpers with 3 canonical fixtures (eliminates B1+B3+B4+B5 brittleness per blueprint §3)
+- Validates "无 default fetchone" semantic that directly addresses LL-198 root cause (cures default (0,) tuple silent misclassification)
+- Demonstrates incremental refactor methodology: pilot infra → file-by-file consumer → measure post-batch → enhance + unblock → continue
+- Each step bisect-safe: 0 large bang migration. iter 111 1 file → iter 113 3 files → iter 117 5 files → iter 124 7 files. Smoke 22/22 push cycles sustained throughout.
+- Reviewer pattern for sibling migrations (iter 123 APPROVE 0 issues → iter 124 fast-track with cite of precedent + sibling pattern). Saves reviewer agent overhead while preserving quality bar.
+
+**Cite source (4-element, verify 2026-05-25 ~23:25 SH iter 125 sediment)**:
+
+- `docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md` (full blueprint, §1-§9 + iter sediment §9.7-§9.10)
+- `backend/tests/conftest.py:108-227` (canonical fixtures, iter 110 + 120 enhanced)
+- `backend/tests/test_mock_conn_fixtures.py:1-180` (17 self-tests)
+- iter 110-124 commits: `0eec31d` PR #481 / `2333ad9` / `e81a879` / `f8e89bb` / `5c7a189` / `e78add1` / `905a0e4` / `db28664` PR #482 / `e450a5e` PR #483
+- LL-198 (`LESSONS_LEARNED.md` LL-198 entry) — root cause that triggered the refactor
+
+**Heuristic backref**: #11 Convenience-Driven Development (module-local helper duplication = "convenient but creates drift") / #14 Documentation Lying (helper docstrings claim consistency but reality diverged 12 ways) / #4 Silent Failure (LL-198 root B1 default value misclassification) / #15 Test-Reality Gap (per-test audit caught fetchone overflow semantic difference before merge).
+
+**Cross-ref**: LL-198 (factory default fetchone=(0,) root cause), LL-199 (sibling iter 80 test reconciliation cluster context), LL-204 (Celery Beat 双层防护 — same fail-loud spirit, audit envelope), LL-205 (Frontend fail-loud render guard — same canonical replacement spirit, mock vs nullable state), 铁律 23 (单一职责), 铁律 24 (设计文档按抽象层级聚焦 — Blueprint §9 sediment trigger).
+
+**Sediment trigger**: 2026-05-25 iter 110-124 conftest migration loop closure. 0 deferred-without-rationale — 12/12 scoped (7 migrated + 3 keep-local + 2 Plan mode user-aligned). Pattern validated across 7 disparate shapes (bare / fetchall override / tuple-return method / id-iter / 2-query setup / factory + fetchall=[] / factory + rowcounts). 未来 fixture refactor / multi-file mock helper consolidation 任务沿用本 LL canonical.
