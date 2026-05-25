@@ -1,8 +1,15 @@
 # W14 — PipelineConsole window.prompt 残修 + EMPTY_STATUS fail-loud Plan (2026-05-25)
 
-> **Status**: Plan-only sediment. NOT for immediate execution. Awaits user trigger per X1-X5 boundary.
+> **Status**: ✅ **CLOSED iter 107** (PR #480 merged `847e30a`, 2026-05-25 ~21:18 SH). Plan delivered as specified.
 > **Source**: FRONTEND_V3_W7_W15_PLAN_2026_05_25.md §3 W14 (~4h solo-safe quick win).
 > **Scope**: Pure frontend, 0 backend dep.
+> **Iter 107 closure summary** (verify 2026-05-25 ~21:35 SH post-merge):
+>   - Plan §2 Changes A-E all applied (EMPTY_STATUS delete / nullable state / fail-loud guard / setStatus(null) on catch / W1-W6 comment reword)
+>   - Plan §3 file footprint actual: +238 / -24 LOC across 2 files (vs plan ~25 net LOC + ~120 test LOC → actual aligned)
+>   - Plan §4 test plan: 5/5 vitest PASS T1-T5 (1.23s initial run + 0.87s post-reviewer-fix run)
+>   - Plan §5 effort: ~2h actual (vs 4h plan budget) — Plan A-E mechanical + tests + reviewer + 2 cleanup commits
+>   - Plan §6 risks: 0 materialized; reviewer APPROVE 0 P0/P1 + 1 MED (comment wording, fixed in cleanup commit) + 1 LOW (test mock arg forwarding, fixed)
+>   - Post-merge ops: 0 required (frontend pure, no Servy restart, no Beat reschedule)
 
 ---
 
@@ -118,4 +125,4 @@ Overall risk: **LOW** (pure frontend, well-scoped, single file, existing pattern
 
 ---
 
-**End W14 plan.** Plan-only sediment. 0 code change in this iteration. Awaits user trigger.
+**End W14 plan.** ✅ Closed iter 107 PR #480 merged `847e30a`. See iter 107 closure summary in §0 header.
