@@ -30,7 +30,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 4 | `memory/project_sprint_state.md` 顶部 handoff | 上 session 收束点 + 本 session 入口 |
 | 5 | `docs/V3_IMPLEMENTATION_CONSTITUTION.md` | V3 治理宪法 (Tier A/B/横切 + Gate 链 + 决议链) |
 | 6 | `docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md` | V3 skill/hook/agent 调用映射 |
-| 7 | `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` | V3 风控设计 spec (当前 SSOT, 非旧 RISK_CONTROL_SERVICE_DESIGN.md) |
+| 7 | `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` | V3 风控设计 spec (当前 SSOT; 旧 RISK_CONTROL_SERVICE_DESIGN.md iter 119 已物理 archive → docs/archive/RISK_CONTROL_SERVICE_DESIGN_2026_05_25_archived.md) |
 | 8 | `docs/adr/REGISTRY.md` | ADR 索引 (LL-105 SOP-6 SSOT, 71 ADR cite source) |
 
 **MVP 启动追加**: 对应 `docs/mvp/MVP_X_Y_*.md` 设计稿 (若存在) + QPB v1.16 Part 0+1 (Application Usage Patterns + 双角色切换表).
@@ -500,7 +500,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 写前端页面 | docs/DEV_FRONTEND_UI.md |
 | 写调度任务 | docs/DEV_SCHEDULER.md |
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
-| 写风控 (V3 风控框架, 当前 SSOT) | docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md (L0-L5 实时风控, Tier A/B 已实现). 旧 docs/RISK_CONTROL_SERVICE_DESIGN.md 已 PARTIALLY DEPRECATED, 勿作当前设计 |
+| 写风控 (V3 风控框架, 当前 SSOT) | docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md (L0-L5 实时风控, Tier A/B 已实现). 旧 docs/RISK_CONTROL_SERVICE_DESIGN.md **iter 119 已物理 archive** → docs/archive/RISK_CONTROL_SERVICE_DESIGN_2026_05_25_archived.md; 原 path 留 redirect stub. 详 docs/audit/V3_SSOT_RISK_CONTROL_RETIRE_2026_05_25.md §4 |
 | 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 650行). **实施进度**: Layer 1=~95% / Layer 2=~60% / Layer 3-4=0% (Q3-Q4 trigger per ADR-028). V3 §S5/S6/S7/S8 ✅ merged main (PR #343-346, ~330 tests). |
 | 写外汇模块(⏳ deferred Phase 2+) | **已 archive** 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, A股稳态前不启动) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |

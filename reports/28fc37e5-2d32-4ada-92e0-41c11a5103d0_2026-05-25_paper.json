@@ -1,0 +1,193 @@
+{
+  "generated_at_utc": "2026-05-25T07:25:05.715492+00:00",
+  "strategy_id": "28fc37e5-2d32-4ada-92e0-41c11a5103d0",
+  "execution_mode": "paper",
+  "target_date_shanghai": "2026-05-25",
+  "data_available": false,
+  "summary": null,
+  "latest_nav": null,
+  "recent_trades": [
+    {
+      "trade_date": "2026-04-16",
+      "code": "000012.SZ",
+      "direction": "buy",
+      "quantity": 10700,
+      "fill_price": 4.4919,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "000333.SZ",
+      "direction": "buy",
+      "quantity": 500,
+      "fill_price": 77.9844,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "002282.SZ",
+      "direction": "buy",
+      "quantity": 6900,
+      "fill_price": 6.9824,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "002623.SZ",
+      "direction": "buy",
+      "quantity": 2100,
+      "fill_price": 21.8011,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "300750.SZ",
+      "direction": "buy",
+      "quantity": 100,
+      "fill_price": 446.4855,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "300833.SZ",
+      "direction": "buy",
+      "quantity": 1400,
+      "fill_price": 33.4314,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "301581.SZ",
+      "direction": "buy",
+      "quantity": 900,
+      "fill_price": 46.3636,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "600028.SH",
+      "direction": "buy",
+      "quantity": 8400,
+      "fill_price": 5.6858,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "600051.SH",
+      "direction": "buy",
+      "quantity": 6500,
+      "fill_price": 7.2613,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "600067.SH",
+      "direction": "buy",
+      "quantity": 11800,
+      "fill_price": 4.0764,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "600900.SH",
+      "direction": "buy",
+      "quantity": 1700,
+      "fill_price": 26.5902,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "600941.SH",
+      "direction": "buy",
+      "quantity": 400,
+      "fill_price": 93.801,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "601065.SH",
+      "direction": "buy",
+      "quantity": 5700,
+      "fill_price": 8.376,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "601138.SH",
+      "direction": "buy",
+      "quantity": 800,
+      "fill_price": 58.1253,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "601857.SH",
+      "direction": "buy",
+      "quantity": 4000,
+      "fill_price": 11.7309,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "603035.SH",
+      "direction": "buy",
+      "quantity": 3300,
+      "fill_price": 14.2631,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "603167.SH",
+      "direction": "buy",
+      "quantity": 5200,
+      "fill_price": 9.2422,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "688391.SH",
+      "direction": "buy",
+      "quantity": 1500,
+      "fill_price": 30.8299,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "688739.SH",
+      "direction": "buy",
+      "quantity": 1800,
+      "fill_price": 24.859,
+      "signal_price": null,
+      "reject_reason": null
+    },
+    {
+      "trade_date": "2026-04-16",
+      "code": "688981.SH",
+      "direction": "buy",
+      "quantity": 400,
+      "fill_price": 103.7969,
+      "signal_price": null,
+      "reject_reason": null
+    }
+  ],
+  "trades_count": 20,
+  "schema_version": "1.0"
+}
