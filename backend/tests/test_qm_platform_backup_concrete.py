@@ -72,12 +72,15 @@ def test_db_spec_frozen():
 def test_db_pg_dump_success(tmp_path):
     """pg_dump rc=0 + artifact present → passed=True, bytes_written>0."""
     spec = DBBackupSpec(database="quantmind_v2", artifact_dir=tmp_path)
-    fake_runner = MagicMock(
-        side_effect=lambda cmd, _t: (
-            # Side effect: create artifact file before returning
-            Path(cmd[-1]).write_bytes(b"FAKE_PG_DUMP_BYTES" * 100) or _mk_completed(returncode=0)
-        )
-    )
+
+    def runner_with_artifact(cmd, _t):
+        # Fix iter 76 (test debt verify): Path.write_bytes returns int (bytes
+        # written), not None — lambda `or` short-circuited to int → runner
+        # returned int instead of CompletedProcess. Use def + return statement.
+        Path(cmd[-1]).write_bytes(b"FAKE_PG_DUMP_BYTES" * 100)
+        return _mk_completed(returncode=0)
+
+    fake_runner = MagicMock(side_effect=runner_with_artifact)
     fake_checksum = MagicMock(return_value="abc123sha256")
     orch = DBBackupOrchestrator(spec=spec, runner=fake_runner, checksum_fn=fake_checksum)
     result = orch.run_target(BackupTarget.DB)
