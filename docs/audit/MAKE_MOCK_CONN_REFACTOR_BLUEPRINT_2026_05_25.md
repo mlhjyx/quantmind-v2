@@ -128,3 +128,76 @@ There is **no single canonical `_make_mock_conn`**. The helper is **redefined mo
 ---
 
 **End of blueprint**. No code changed. Awaiting user / main agent decision to proceed with Option A implementation PR.
+
+---
+
+## §9 Migration progress + remaining-file analysis (iter 110-115 sediment, 2026-05-25 ~22:30 SH)
+
+### §9.1 Migrations delivered
+
+| iter | commit | file | call sites | LOC delta | pattern |
+|------|--------|------|------------|-----------|---------|
+| 110 | `0eec31d` PR #481 | (infrastructure) | — | +321 (conftest +120, test_mock_conn_fixtures +180, lint +21) | 3 fixtures + 16 self-tests landed |
+| 111 | `2333ad9` | test_fundamental_context_service.py | 5 (4 class methods + 1 module-level) | +13/-17 | bare `() -> MagicMock` → `mock_conn` direct injection |
+| 112 | `e81a879` | test_startup_assertions.py | 3 | +14/-23 | `(rows:list)` → `mock_conn` + fetchall override per-test |
+| 113 | `f8e89bb` | test_a3_a5_a7_a10.py | 3 (method on class TestA7UnrealizedPnl) | +20/-18 | tuple-return method → `mock_conn` + explicit fetchone.side_effect |
+
+**Net so far**: 3/12 files migrated, **+47 / -58 net (-11 LOC)** across migrated files. Net delta is small per-file (saving deletions ≈ new explicit setup), but **architecturally** the migration:
+- Replaces 3 distinct local helper styles with 1 canonical fixture (cures B1+B3+B4+B5 per blueprint §3)
+- Removes 30 LOC of duplicate boilerplate across the 3 files
+- Validates `mock_conn` fixture works in real production-adjacent test scenarios (across 3 disparate prod modules)
+
+### §9.2 Remaining 9 files — recommendation matrix
+
+Migration analysis after iter 113 (2026-05-25 ~22:00 SH fresh re-read of each remaining file):
+
+| File | Sites | Local helper signature | Recommendation | Reason |
+|------|-------|------------------------|----------------|--------|
+| test_announcement_processor.py | 8 | `(announcement_id_seq: list[int])` + RETURNING-id iter | **MIGRATE** (medium effort, ~25 LOC diff) | bare → mock_conn + per-test fetchone.side_effect setup with id iter — same shape as test_a3_a5_a7_a10 iter 113 |
+| test_dingtalk_webhook_service.py | 12 | `(*, resolve_rows, update_rowcount, column_names)` SQL-prefix dispatch | **KEEP LOCAL** | Domain-specific SELECT-vs-UPDATE dispatcher (44 LOC of well-named logic); inline migration would 5x explode boilerplate across 12 sites |
+| test_factor_health_daily.py | tuple-return `(conn, cursor)` | **MIGRATE** with adapter | `conn = mock_conn; cur = conn.cursor()` destructure pattern proven iter 113; ~15 LOC diff |
+| test_l4_sweep_tasks.py | 13 | `(*, select_rows, update_rowcounts)` SQL-prefix dispatch returns tuple | **KEEP LOCAL** | Same reason as test_dingtalk_webhook_service: SQL-prefix dispatch is a well-encapsulated domain pattern, migration would 5-8x the LOC |
+| test_pt_data_service_fail_loud.py | 5 | `(max_status_date, prev_trading_day, lag_days, status_count=5000)` conditional fetchone responses | **KEEP LOCAL** | Domain semantic (4-call SQL sequence with conditional lag-day branch); the helper IS the canonical builder for this prod helper's 4-query pattern |
+| test_qm_platform_attribution.py | factory `(returned_id: int = 42)` | **MIGRATE** to `mock_conn_factory_builder` | Factory shape matches canonical; ~10 LOC diff if RETURNING-id semantic preserved via fetchone_queue=[(42,)] |
+| test_service_smoke.py | 10 | bare with default `cursor.fetchone.return_value = (0,)` | **MIGRATE LAST** (highest risk) | Some tests rely on the (0,) default implicitly per LL-198 — need careful per-test audit to set explicit (0,) override OR refactor to None default |
+| test_strategy_evaluation_required.py | 10 | `_make_mock_conn_factory(fetchone_queue)` with `cursor.fetchall.return_value = []` default | **MIGRATE** with fetchall override per-test | Factory shape matches canonical; the `fetchall.return_value=[]` default needs explicit per-test setup (or canonical fixture enhancement — see §9.4) |
+| test_strategy_registry.py | 17 | `_make_mock_conn_factory(fetchone_queue, rowcounts)` | **MIGRATE** to `mock_conn_factory_builder` | Canonical fixture matches signature exactly; ~30 LOC diff, validates factory variant pattern across all factory tests |
+
+### §9.3 Practical migration target = ~6/12 (not 12/12)
+
+After iter 113 analysis, **3 files are explicitly OUT-OF-SCOPE for canonical fixture migration**:
+- test_dingtalk_webhook_service.py (SQL-prefix dispatch)
+- test_l4_sweep_tasks.py (SQL-prefix dispatch, returns tuple)
+- test_pt_data_service_fail_loud.py (4-query domain sequence)
+
+These keep their local domain-specific helpers. Rationale: canonical fixture is for COMMON cases; specialized helpers are appropriate for specialized prod query patterns. Per blueprint Option B sustained "Per-test explicit builder pattern" applies here.
+
+**Realistic 100% target = 6 files migrated + 3 files kept-local-with-rationale = 9/12 closure**. The remaining 3 (factor_health_daily + service_smoke + strategy_registry + strategy_evaluation_required + attribution) total ~6 files for future iter migrations.
+
+### §9.4 Canonical fixture enhancement candidate (deferred, Plan mode entry)
+
+If migration of `test_strategy_evaluation_required` / `test_strategy_registry` proceeds, canonical `mock_conn_factory_builder` should add `cursor.fetchall.return_value = []` as default (per blueprint §3 local def behavior). This is an API contract addition (not breaking), so:
+- §v9.17 Plan mode trigger applies (API contract change)
+- Defer to dedicated iter with user / reviewer pre-alignment
+- Alternative: keep canonical strict (no defaults), have each test set `mock_conn.cursor().fetchall.return_value = []` explicitly per-test (verbose but consistent with B1 cure principle)
+
+### §9.5 Acceptance criteria update (super-set of §7)
+
+Beyond §7's strict "12 module-local defs deleted", revised target after iter 113:
+1. ✅ 3 files migrated (iter 111/112/113) — fixture validated across 3 distinct shapes
+2. **Target 6/12 next iter window**: migrate test_announcement_processor + test_factor_health_daily + test_qm_platform_attribution + test_strategy_evaluation_required + test_strategy_registry + test_service_smoke
+3. **3 files kept-local with rationale**: test_dingtalk_webhook_service + test_l4_sweep_tasks + test_pt_data_service_fail_loud (domain-specific dispatch helpers; documented in this §9 sediment)
+4. **§9.4 canonical fixture enhancement** if factory-variant migrations need fetchall default (Plan mode entry)
+5. **Net LOC reduction goal**: ~50-80 LOC reduction across 6 migrated files (blueprint §5 estimated +80/-200 across 12 files; revised target ~+50/-130 across 6 files = -80 net)
+
+### §9.6 Cite source (4-element)
+
+| Claim | path | line# | section | verify timestamp |
+|-------|------|-------|---------|------------------|
+| iter 111 migration | `backend/tests/test_fundamental_context_service.py` | full file | post-iter 111 | 2026-05-25 ~21:30 SH |
+| iter 112 migration | `backend/tests/test_startup_assertions.py` | full file | post-iter 112 | 2026-05-25 ~21:45 SH |
+| iter 113 migration | `backend/tests/test_a3_a5_a7_a10.py:182-265` | TestA7UnrealizedPnl class | post-iter 113 | 2026-05-25 ~22:00 SH |
+| Canonical fixture | `backend/tests/conftest.py:108-227` | new fixtures | post-iter 110 | 2026-05-25 ~20:00 SH |
+| Domain-helper rationale (3 keep-local) | `backend/tests/test_dingtalk_webhook_service.py:36-73` + `test_l4_sweep_tasks.py:32-63` + `test_pt_data_service_fail_loud.py:72-91` | local _make_mock_conn defs | 2026-05-25 ~22:15 SH iter 115 re-read |
+| LL-204 backend audit envelope canonical | `LESSONS_LEARNED.md` LL-204 | sediment block | 2026-05-25 ~20:30 SH iter 104 |
+| LL-205 frontend fail-loud canonical | `LESSONS_LEARNED.md` LL-205 | sediment block | 2026-05-25 ~21:30 SH iter 109 |
