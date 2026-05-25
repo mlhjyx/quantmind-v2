@@ -90,8 +90,9 @@ class TestBruteforceMiningTask:
         with patch("app.tasks.mining_tasks._mark_run_failed") as mock_mark:
             mock_mark.return_value = None
 
-            # mock asyncio.run以避免真实DB调用
-            with patch("asyncio.run"):
+            # mock asyncio.run 避免真实 DB; return_value=None → pause gate 走 not-paused 分支
+            # (D1 O3 PN-003 iter 12 后 asyncio.run 被调 2 次: _is_pipeline_paused + _mark_run_failed)
+            with patch("asyncio.run", return_value=None):
                 # 直接调用底层函数（绕过Celery装饰器）
                 result = run_bruteforce_mining.__wrapped__(
                     run_id="bf_test_001",
@@ -103,13 +104,14 @@ class TestBruteforceMiningTask:
 
     def test_bruteforce_calls_mark_failed(self) -> None:
         """run_bruteforce_mining 应调用 _mark_run_failed 标记任务失败。"""
-        with patch("asyncio.run") as mock_run:
+        with patch("asyncio.run", return_value=None) as mock_run:
             run_bruteforce_mining.__wrapped__(
                 run_id="bf_fail_001",
                 config={},
             )
-            # asyncio.run 应被调用（用于 _mark_run_failed）
-            mock_run.assert_called_once()
+            # asyncio.run 被调 2 次: pause gate (_is_pipeline_paused) + _mark_run_failed
+            # (D1 O3 PN-003 iter 12 pause gate-at-entry sediment)
+            assert mock_run.call_count == 2
 
 
 # ---------------------------------------------------------------------------
