@@ -130,9 +130,34 @@ registry.update_status(strategy_id, StrategyStatus.LIVE, reason="...")
 - G9: AST Jaccard 新颖性 (< 0.7, AlphaAgent KDD 2025)
 - G10: Hypothesis 长度 (≥ 20 字 + 非占位符)
 
+### Strategy G1'-G3' (qm_platform/eval/strategy_gates.py, MVP 3.5 batch 3)
+
+> **2026-05-25 iter 105 sediment** — 闭 `docs/audit/ADR_014_TERMINOLOGY_CITE_2026_05_25.md` §3 P1 finding #1 (Strategy gate path 缺 §术语表 explicit cite). 完整 §术语表 inventory symmetry.
+
+- G1': Strategy Sharpe paired bootstrap (p < 0.05 vs baseline)
+- G2': Strategy Max DD (≥ -30% default, `ctx.extra["max_dd_threshold"]` override)
+- G3': Strategy regression (max_diff = 0 vs old PT, 铁律 15)
+
+apostrophe ('-suffix) disambiguates Strategy gates from Factor gates — 0 numbering collision risk. 引用 sustained "G3'" (with apostrophe) sufficient; 不需 path prefix.
+
+### Risk V3 TIER0_REGISTRY G1/G2 disambiguation note (token collision warning)
+
+> **2026-05-25 iter 105 sediment** — 闭 `docs/audit/ADR_014_TERMINOLOGY_CITE_2026_05_25.md` §3 P1 finding #2 (Risk Framework V3 G1/G2 token-level collision with Factor Gate G1/G2).
+
+`docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` 中 `G1`/`G2` (e.g. §15.6 / T0-12 / TIER0_REGISTRY) 指 **workitem IDs**, **NOT** Factor Gate G1/G2 (本 ADR Platform pipeline) 也 NOT Legacy G1/G2 (engines/factor_gate.py).
+
+- **Risk V3 G1/G2**: 沿 `TIER0_REGISTRY.md` audit workitem 编号 (e.g. "T0-12 G2" = T0-12 决议链中 G2 子项)
+- **Factor Gate G1/G2**: Legacy / Platform 评估 Gate (本 ADR §术语表 above)
+
+**引用规范**: 任 cross-doc grep `G1`/`G2` 时, 必看 context — 若 source = `QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` 或 `TIER0_REGISTRY.md` 则是 workitem ID; 若 source = `qm_platform/eval/` / `engines/factor_gate.py` / `ADR-014` / `DEV_FACTOR_MINING.md` / `MVP_3_5*` 则是 Factor Gate. 写新 doc 引用 Risk V3 workitem 必加 `TIER0_REGISTRY` 前缀 (e.g. `TIER0_REGISTRY G1`).
+
 ### 引用规范
 
 未来引用必加 path 前缀: "Platform G3" vs "Legacy G3", 不可省略. Audit log `name` field 是契约一部分, V1 sustained.
+
+**Strategy gate**: 沿用 apostrophe 后缀 (G1' / G2' / G3') 即足, 0 collision risk, 不需 path prefix.
+
+**Risk V3 workitem ID**: 任跨域引用 `G1`/`G2` 必加 `TIER0_REGISTRY` 前缀 (see Risk V3 disambiguation note above).
 
 ### Sunset 计划
 
@@ -143,4 +168,7 @@ Legacy G1-G8 sunset 时 rename → L1-L8 (避免编号冲突). 触发条件: Wav
 - `docs/audit/STRATEGY_GATE_COVERAGE_2026_05_25.md` §5 finding 2 (verify 2026-05-25 17:35 SH iter 99)
 - `backend/engines/factor_gate.py` (Legacy G1-G8 路径)
 - `backend/qm_platform/eval/gates/` (Platform G1-G10 路径)
+- `backend/qm_platform/eval/strategy_gates.py` (Strategy G1'-G3' 路径, iter 105 sediment)
 - `docs/DEV_FACTOR_MINING.md:816-822` (Legacy 原描述)
+- `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md:1574,1758,1787,1854` (Risk V3 workitem G1/G2 token collision, iter 105 sediment)
+- `docs/audit/ADR_014_TERMINOLOGY_CITE_2026_05_25.md` §3 P1 #1 + #2 (iter 100 audit input for iter 105 closure, verify 2026-05-25 ~21:00 SH)
