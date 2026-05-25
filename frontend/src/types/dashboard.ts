@@ -54,3 +54,19 @@ export interface CircuitBreakerState {
 
 /** NAV 时间筛选周期 */
 export type NAVPeriod = "1m" | "3m" | "6m" | "1y" | "all";
+
+/** iter 141 W2-F F7 — paper trade record (D5 wire).
+ *  Backend SSOT: backend/app/repositories/trade_repository.py:14 get_trades + api/paper_trading.py:243 */
+export interface Trade {
+  id: string;
+  code: string;
+  trade_date: string; // ISO date
+  direction: "BUY" | "SELL" | string;
+  quantity: number;
+  fill_price: number;
+  slippage_bps: number;
+  commission: number;
+  stamp_tax: number | null;
+  total_cost: number | null;
+  reject_reason: string | null;
+}
