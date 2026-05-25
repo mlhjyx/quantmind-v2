@@ -6939,7 +6939,9 @@ shared mock fixture (`_make_mock_conn` / `make_mock_session` / `_make_mock_redis
 
 **Cross-ref**: 沿用 LL-197 (同 batch test fix cluster) + LL-085 (inverse 正例 — prod 真 schema, test 默认 stale).
 
-**Sediment trigger**: 2026-05-25 iter 79 taskboard task_006 sediment (22 fail → 20 fail 2-test fix). 未来 shared mock fixture caller fight default → per-test override + write-only assertion.
+**Iter 110-124 closure update (2026-05-25 LL-206)**: LL-198 root B1 sediment 沉淀 iter 100 audit → iter 110 conftest fixture pilot + iter 111-124 7-file migration cycle. Canonical fixture `mock_conn` 显式 NO default fetchone (cures B1) + `assert_no_db_writes` helper codifies write-only assertion (cures fixed-point 2). See LL-206 §canonical pattern + blueprint `docs/audit/MAKE_MOCK_CONN_REFACTOR_BLUEPRINT_2026_05_25.md` §9 for the migration loop details. **LL-198 root cause architecturally resolved** via canonical fixture; 12/12 scoped (7 migrated + 3 keep-local + 2 Plan mode entry).
+
+**Sediment trigger**: 2026-05-25 iter 79 taskboard task_006 sediment (22 fail → 20 fail 2-test fix). 未来 shared mock fixture caller fight default → per-test override + write-only assertion. **Iter 110-124 institutionalized this fix via LL-206 canonical playbook**.
 
 ---
 
