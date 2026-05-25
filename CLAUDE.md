@@ -543,7 +543,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 
 - **Sprint 治理基础设施 5 块基石** (2026-04-30, Step 6-6.3a): IRONLAWS.md / ADR-021 / 第 19 条 memory 铁律 / X10+LL-098+pre-push hook / §23 双口径
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
-- **测试基线** (iter 80 fresh verify 2026-05-25, 铁律 40 baseline 保持): **6714 collected / 0 collection error** (vs 5-20 实测 6251 = +463 / +7.4% Wave 4 iter 51-75 ~226 unit tests cumulative + iter 76-82 0 production code; vs Session 9 实测 2864 pass / 24 fail, ~1.5 月增量 +3850 tests / +134%) + **smoke 61 PASS** (sustained iter 76-82 pre-push hook 7/7 green; vs Session 9 28 stale) + regression 5yr+12yr max_diff=0 (baseline 2026-04-28, 27d stale, 待 Phase B-2 post 5-27 refresh)
+- **测试基线** (iter 80 fresh verify 2026-05-25, 铁律 40 baseline 保持): **6714 collected / 0 collection error** (vs 5-20 实测 6251 = +463 / +7.4% Wave 4 iter 51-75 ~226 unit tests cumulative + iter 76-82 0 production code; vs Session 9 实测 2864 pass / 24 fail, ~1.5 月增量 +3850 tests / +134%) + **fail baseline 2 fail** (sustained 24 fail 8+ months → iter 76-80 session 22 fails closed / 91.7% reduction: backup_concrete ×1 / verify_completion_hook ×6 / gp_pipeline Bruteforce ×2 / NotificationSync ×2 / batched stale-vs-prod ×4; 残 2 fail: test_factor_determinism flaky-in-sweep + 1 unknown sweep) + **smoke 61 PASS** (sustained iter 76-82 pre-push hook 7/7 green; vs Session 9 28 stale) + regression 5yr+12yr max_diff=0 (baseline 2026-04-28, 27d stale, 待 Phase B-2 post 5-27 refresh)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
 
