@@ -204,16 +204,30 @@ Delivered:
 - 3 kept-local-with-rationale ✅ (test_dingtalk_webhook_service / test_l4_sweep_tasks / test_pt_data_service_fail_loud per §9.2)
 - **Subtotal: 8/12 = 67% closure** vs §9.5 target 9/12 = 75%
 
-### §9.8 Remaining 4 candidates — Plan mode entry required (deferred)
+### §9.8 Remaining 4 candidates — Plan mode entry required (deferred; iter 121 update)
 
 Migration of the final 4 files needs canonical fixture enhancement OR per-test re-architecture:
 
-| File | Blocker | Plan mode entry needed |
-|------|---------|------------------------|
-| test_qm_platform_attribution.py | Local def returns `MagicMock(return_value=mock_conn)` for `factory.assert_called_once()` semantic; canonical `mock_conn_factory_builder` returns plain function (no `.assert_called_once()` method) | Canonical enhancement: add `as_mock=True` optional param to wrap factory as MagicMock OR refactor 8 test sites to skip the assertion |
-| test_strategy_evaluation_required.py | Local factory sets `cursor.fetchall.return_value = []` default; tests rely on this default | Canonical enhancement: add `fetchall_default=[]` param OR per-test explicit `cur.fetchall.return_value = []` setup (10 sites) |
-| test_strategy_registry.py | Local factory sets `cursor.fetchall.return_value = []` default + 17 sites = highest complexity | Same as above; 17 site migration is high effort |
-| test_service_smoke.py | Local def sets `cursor.fetchone.return_value = (0,)` default; ~5 tests rely on implicit (0,) tuple sentinel per LL-198 root | Per-test audit: each test's reliance on (0,) default must be verified; some may need explicit override |
+| File | Blocker | Status |
+|------|---------|--------|
+| test_qm_platform_attribution.py | Local def returns `MagicMock(return_value=mock_conn)` for `factory.assert_called_once()` semantic; canonical `mock_conn_factory_builder` returns plain function (no `.assert_called_once()` method) | **Plan mode** — canonical enhancement (`as_mock=True` optional param) OR refactor 8 test sites to skip the assertion |
+| test_strategy_evaluation_required.py | Local factory sets `cursor.fetchall.return_value = []` default | **UNBLOCKED iter 120** (`905a0e4`) — canonical now sets fetchall=[] default per §9.4 enhancement. Migration becomes mechanical 10-site replacement. Remaining minor differences: `conn.closed = 0` (unused per grep, can drop) + fetchone overflow lambda→None (canonical uses MagicMock side_effect list which raises StopIteration on overflow; per-test audit needed if any tests exceed queue length). |
+| test_strategy_registry.py | Local factory sets `cursor.fetchall.return_value = []` default + rowcounts queue (17 sites, highest complexity) | **UNBLOCKED iter 120** — canonical has fetchall=[] (post iter 120) + rowcounts (pre-iter-120). Migration mechanical 17-site replacement. Same minor differences as above. |
+| test_service_smoke.py | Local def sets `cursor.fetchone.return_value = (0,)` default; ~5 tests rely on implicit (0,) tuple sentinel per LL-198 root | **Plan mode sustained** — per-test audit needed: each test's reliance on (0,) default must be verified; some may need explicit override. High risk migration (LL-198 was the root cause failure). |
+
+### §9.10 iter 120-121 closure status
+
+**Delivered iter 120-121**:
+- iter 120 (`905a0e4`) — canonical `mock_conn_factory_builder` fetchall=[] default + 1 new self-test (17/17 PASS)
+- iter 121 (this doc update) — §9.8 status refresh
+
+**Closure scoring post-iter-121**:
+- 5 migrated ✅ (iter 111/112/113/116/117)
+- 3 kept-local-with-rationale ✅
+- 2 **unblocked** for migration (test_strategy_evaluation_required + test_strategy_registry) — future iter mechanical execution
+- 2 **still Plan mode** (test_qm_platform_attribution MagicMock factory contract + test_service_smoke LL-198 root)
+
+**Closure: 8/12 actionable now + 2 unblocked + 2 Plan mode = 12/12 scoped.**
 
 **Recommendation**: defer 4 remaining migrations to next dedicated iter (after Plan mode user-alignment if canonical fixture enhancement is approved). Current 8/12 (67%) closure validates Option A pattern across 5 disparate shapes (bare / fetchall override / tuple-return method / id-iter / 2-query setup). Pattern proven; remaining work is finite + scope-bounded.
 
