@@ -138,8 +138,12 @@ def daily_attribution_compute_task(self, trade_date_str: str | None = None) -> d
         {error, trade_date} on failure (fail-soft per 铁律 33 BLE001 annotation).
     """
     # iter 132: scheduler_task_log audit envelope (LL-204 canonical sibling pattern).
+    # _audit_status default = "error" covers the fail-soft path (inner except swallows
+    # + returns error dict, never re-raises) and also covers any unexpected escape
+    # past the inner except. Success path explicitly sets "success" (L218-219); error
+    # path explicitly sets "error" at the top of the inner except (L223 below).
     _audit_start = datetime.now(UTC)
-    _audit_status = "error"  # default if exception escapes (inner except sets per-path)
+    _audit_status = "error"
     _audit_summary: dict = {}
     try:
         try:
@@ -189,23 +193,33 @@ def daily_attribution_compute_task(self, trade_date_str: str | None = None) -> d
                 unexplained_residual=residual,
             )
 
-            # ── Persist row (DI conn_factory: lazy import to keep Platform isolation) ──
-            # iter 132: fix phantom `app.core.db.get_pg_connection` (W2-A F7 latent bug,
-            # surfaced by test_wave4_audit_envelope.test_writes_success_row_on_clean_compute).
-            # `app/core/db.py` doesn't exist (0 grep hits, 0 callers other than this line);
-            # canonical sync conn factory = `app.services.db.get_sync_conn` (used by sibling
-            # meta_monitor + daily_pipeline). Keep local name `get_pg_connection` for
-            # persist_attribution's conn_factory DI contract.
-            from app.services.db import get_sync_conn as get_pg_connection  # noqa: PLC0415
+            # ── Persist row (open conn once, lambda factory for same-conn DI) ──
+            # iter 132 fix F7 (phantom `app.core.db.get_pg_connection`) — `app/core/db.py`
+            # doesn't exist (0 grep hits, 0 callers other than this line); canonical sync
+            # conn factory = `app.services.db.get_sync_conn` (sibling meta_monitor +
+            # daily_pipeline).
+            #
+            # iter 132 fix F8 P0 (PR #484 reviewer cycle 1) — single-conn lifecycle
+            # eliminates double-open leak. Old pattern passed `get_pg_connection` as
+            # factory → persist_attribution opens conn #1 + INSERT (no commit, per Engine
+            # contract); caller then opens *separate* conn #2 + commits conn #2 → conn #1
+            # garbage-collected with uncommitted INSERT (Postgres autorollback) → since
+            # iter 65 MVP 4.2 first run (24+ days), every persist attempt silently rolled
+            # back. Fix: open conn once + `lambda: conn` factory always returns the same
+            # already-open conn + commit same conn after persist returns + close in finally.
+            # Preserves persist_attribution's conn_factory DI contract + honors 铁律 32
+            # transaction-owner-is-caller semantics.
+            from app.services.db import get_sync_conn  # noqa: PLC0415
 
-            row_id = persist_attribution(get_pg_connection, attribution_final)
+            conn = get_sync_conn()
+            try:
+                row_id = persist_attribution(lambda: conn, attribution_final)
+                conn.commit()  # 铁律 32 — caller owns commit, same conn as persist INSERT
 
-            # Commit (铁律 32 — Celery task = transaction owner)
-            conn = get_pg_connection()
-            conn.commit()
-
-            # ── Fire residual alert (fail-soft 沿用 fire_residual_alert tier 1+2) ──
-            alert_fired = fire_residual_alert(attribution_final, threshold_bps=20.0)
+                # ── Fire residual alert (fail-soft 沿用 fire_residual_alert tier 1+2) ──
+                alert_fired = fire_residual_alert(attribution_final, threshold_bps=20.0)
+            finally:
+                conn.close()
 
             result = {
                 "trade_date": str(trade_date),
@@ -223,6 +237,10 @@ def daily_attribution_compute_task(self, trade_date_str: str | None = None) -> d
             logger.error(
                 "[Attribution] daily_attribution_compute_task failed: %s", e, exc_info=True
             )
+            # iter 132 PR #484 reviewer P1: explicit _audit_status set for clarity (matches
+            # factor_lifecycle_task canonical iter 103 sibling pattern). Default at L142 also
+            # covers, but explicit set + comment makes the audit-envelope contract obvious.
+            _audit_status = "error"
             error_result = {"error": str(e), "trade_date": trade_date_str or "today"}
             _audit_summary = {
                 **error_result,  # adds trade_date + str(e) error first

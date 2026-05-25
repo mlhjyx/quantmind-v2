@@ -175,6 +175,44 @@ class TestAttributionAuditEnvelope:
         assert result["strategy_id"] == "paper-strategy-default"
         assert result["row_id"] == 999
 
+        # iter 132 PR #484 reviewer P2: single-conn lifecycle regression guard.
+        # Production bug (W2-A F8 P0): factory `get_pg_connection` passed to
+        # persist_attribution → Engine invokes factory (conn #1) + caller invokes
+        # factory separately (conn #2). Only conn #2 committed; conn #1 GC'd with
+        # uncommitted INSERT → 24+ days silent rollback since iter 65.
+        #
+        # Two complementary assertions:
+        #   (1) `fake_get_pg.call_count == 1` — task body opens conn ONCE in source.
+        #       (Narrow: under mocked persist_attribution this only catches accidental
+        #       dual-explicit calls; does NOT catch the original factory-bug because
+        #       the mock doesn't invoke its first arg. Still useful as forward guard.)
+        #   (2) Factory-arg inspection — `persist_attribution(factory, ...)`'s first arg
+        #       must be a callable that returns the SAME conn opened by the task body,
+        #       not a fresh-conn factory. This catches the actual bug pattern (factory
+        #       passed in lieu of `lambda: conn`).
+        assert fake_get_pg.call_count == 1, (
+            f"Expected single get_sync_conn() call (single-conn lifecycle, "
+            f"PR #484 fix), got {fake_get_pg.call_count} — double-open regression?"
+        )
+
+        # Inspect what was passed to persist_attribution as the conn_factory arg
+        persist_call_args = fake_attribution_module.persist_attribution.call_args
+        passed_factory = persist_call_args[0][0]
+        # The factory must be a same-conn-returning lambda, NOT the fresh-conn factory
+        # itself. Calling it must NOT call get_sync_conn (the lambda captures the
+        # already-opened conn) AND must return the SAME conn object.
+        get_conn_call_count_before = fake_get_pg.call_count
+        factory_returned_conn = passed_factory()
+        assert fake_get_pg.call_count == get_conn_call_count_before, (
+            "passed factory must NOT call get_sync_conn (must be `lambda: conn`, "
+            "not the raw factory) — invoking it bumped call_count, indicating "
+            "factory-bug regression (W2-A F8 P0)"
+        )
+        assert factory_returned_conn is fake_conn, (
+            "passed factory must return the SAME conn opened by the task body "
+            "(single-conn lifecycle), not a fresh conn"
+        )
+
         mock_audit.assert_called_once()
         call_args = mock_audit.call_args
         assert call_args[0][0] == "daily_attribution_compute"
