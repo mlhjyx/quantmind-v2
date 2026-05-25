@@ -81,13 +81,18 @@ def test_v1_sustained_checklist_items() -> None:
 
 
 def test_stop_event_handled() -> None:
-    """Stop event payload structure correct."""
+    """Stop event payload structure correct (iter 100: schema-compliant systemMessage).
+
+    Claude Code Stop hook schema does not permit hookSpecificOutput.hookEventName == "Stop"
+    (only PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch). Hook now uses
+    top-level systemMessage (schema-valid). Test updated to match.
+    """
     payload = {"session_id": "test", "stop_hook_active": False}
     rc, stdout, _ = _run_hook(payload)
     assert rc == 0
     parsed = json.loads(stdout)
-    assert parsed["hookSpecificOutput"]["hookEventName"] == "Stop"
-    assert "additionalContext" in parsed["hookSpecificOutput"]
+    assert "systemMessage" in parsed, "Stop hook output must contain top-level systemMessage"
+    assert "COMPLETION CHECKLIST" in parsed["systemMessage"], "checklist must be in systemMessage"
 
 
 def test_malformed_json_fail_soft() -> None:

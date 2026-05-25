@@ -175,17 +175,14 @@ def main():
         f"{cite_source_lock_reminder()}\n"
     )
 
-    # Stop hook silent-UI mode (iter 53a 2026-05-25 user directive "自己判断啊", iter 77 reconciled):
-    # systemMessage suppressed → UI stays silent (no nag, X10/LL-098 anti-pattern reject).
-    # hookSpecificOutput.additionalContext retained → governance reminder still available to CC
-    # turn context (Claude Code hook contract: additionalContext is silent-injection, not UI-popup).
-    # Tests sustained: stdout JSON contains checklist substrings via additionalContext field.
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "additionalContext": checklist,
-        }
-    }
+    # Stop hook schema-compliant output (iter 100 fix per harness validation error):
+    # Claude Code Stop hook schema does NOT permit hookSpecificOutput.hookEventName == "Stop"
+    # (only PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch allowed). iter 77's
+    # hookSpecificOutput-based silent-injection was harness-invalid → every Stop event echoed
+    # "Hook JSON output validation failed". Use top-level systemMessage (schema-valid) so the
+    # checklist reaches CC's next turn while remaining harness-conformant. Tests sustained:
+    # stdout JSON substring assertions still PASS via systemMessage payload.
+    output = {"systemMessage": checklist}
     print(json.dumps(output, ensure_ascii=False))
     sys.exit(0)
 

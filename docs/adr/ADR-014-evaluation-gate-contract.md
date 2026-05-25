@@ -108,7 +108,7 @@ registry.update_status(strategy_id, StrategyStatus.LIVE, reason="...")
 
 ## §术语表 (2026-05-25 iter 99 sediment per Strategy Gate audit finding)
 
-> **背景**: docs/audit/STRATEGY_GATE_COVERAGE_2026_05_25.md §5 finding 2 — Legacy `engines/factor_gate.py` G1-G8 vs Platform `qm_platform/factor/gates/` G1-G10 编号冲突 (e.g. Legacy G3=IC胜率 vs Platform G3=paired bootstrap, same number, different semantic).
+> **背景**: docs/audit/STRATEGY_GATE_COVERAGE_2026_05_25.md §5 finding 2 — Legacy `engines/factor_gate.py` G1-G8 vs Platform `qm_platform/eval/gates/` G1-G10 编号冲突 (e.g. Legacy G3=IC胜率 vs Platform G3=paired bootstrap, same number, different semantic).
 
 ### Legacy G1-G8 (engines/factor_gate.py, DEV_FACTOR_MINING.md:816-822)
 - G1: IC mean t-test (≠ Platform G1 t>2.5 严格)
@@ -120,7 +120,7 @@ registry.update_status(strategy_id, StrategyStatus.LIVE, reason="...")
 - G7: 冗余检测
 - G8: BH-FDR
 
-### Platform G1-G10 (qm_platform/factor/gates/, MVP 3.5 batch 1+2)
+### Platform G1-G10 (qm_platform/eval/gates/, MVP 3.5 batch 1+2)
 - G1: IC 显著性 (t > 2.5, Harvey Liu Zhu 2016)
 - G2: 相关性过滤 (|corr|<0.7 + monthly<0.3)
 - **G3: Paired bootstrap (p < 0.05)** ← 与 Legacy G3 不同
@@ -141,6 +141,6 @@ Legacy G1-G8 sunset 时 rename → L1-L8 (避免编号冲突). 触发条件: Wav
 ### Cite source (4-element)
 
 - `docs/audit/STRATEGY_GATE_COVERAGE_2026_05_25.md` §5 finding 2 (verify 2026-05-25 17:35 SH iter 99)
-- `backend/engines/factor_gate.py` (Legacy G1-G8 真位置)
-- `backend/qm_platform/factor/gates/` (Platform G1-G10 真位置)
+- `backend/engines/factor_gate.py` (Legacy G1-G8 路径)
+- `backend/qm_platform/eval/gates/` (Platform G1-G10 路径)
 - `docs/DEV_FACTOR_MINING.md:816-822` (Legacy 原描述)
