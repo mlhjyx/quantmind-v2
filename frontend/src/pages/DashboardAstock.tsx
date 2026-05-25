@@ -7,8 +7,9 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { fetchSummary, fetchNAVSeries } from "@/api/dashboard";
-import type { DashboardSummary, NAVPoint } from "@/types/dashboard";
+import { fetchSummary, fetchNAVSeries, fetchPendingActions } from "@/api/dashboard";
+import type { DashboardSummary, NAVPoint, PendingAction } from "@/types/dashboard";
+import { useQuery } from "@tanstack/react-query";
 
 const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 
@@ -483,6 +484,92 @@ function AIStatusAndActions() {
 }
 
 // ─────────────────────────────────────────────
+// iter 139 W2-F F8 — Pending Actions Panel (D8 wire)
+// Backend SSOT: backend/app/api/dashboard.py:67 GET /api/dashboard/pending-actions
+// Returns: PendingAction[] {type, severity, message, time} from熔断/健康/管道 sources
+// ─────────────────────────────────────────────
+export function PendingActionsPanel() {
+  const { data, isLoading, error, refetch } = useQuery<PendingAction[]>({
+    queryKey: ["dashboard-pending-actions"],
+    queryFn: fetchPendingActions,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+
+  const severityColor = (sev: PendingAction["severity"]): string => {
+    if (sev === "critical") return "#ef4444";
+    if (sev === "warning") return "#fb923c";
+    return "#22c55e";
+  };
+
+  const typeLabel = (t: PendingAction["type"]): string => {
+    if (t === "health") return "健康";
+    if (t === "circuit_breaker") return "熔断";
+    return "管道";
+  };
+
+  if (isLoading) {
+    return (
+      <GlassCard className="mb-4">
+        <div className="text-xs text-slate-400 mb-3">待处理事项</div>
+        <div className="h-16 bg-white/5 rounded animate-pulse" />
+      </GlassCard>
+    );
+  }
+
+  if (error) {
+    return (
+      <GlassCard className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-slate-400">待处理事项</div>
+          <button onClick={() => void refetch()} className="text-xs text-orange-400 hover:text-orange-300">重试</button>
+        </div>
+        <div className="text-xs text-red-400">加载失败: {error instanceof Error ? error.message : "未知错误"}</div>
+      </GlassCard>
+    );
+  }
+
+  const items = data ?? [];
+
+  return (
+    <GlassCard className="mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs text-slate-400">
+          待处理事项 <span className="text-slate-500">({items.length})</span>
+        </div>
+        <button onClick={() => void refetch()} className="text-[10px] text-slate-500 hover:text-slate-300">刷新</button>
+      </div>
+      {items.length === 0 ? (
+        <div className="text-xs text-slate-500 py-4 text-center">✓ 无待处理事项</div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((it, i) => (
+            <div
+              key={`${it.type}-${i}`}
+              className="flex items-start gap-3 px-3 py-2 rounded"
+              style={{ background: `${severityColor(it.severity)}10`, border: `1px solid ${severityColor(it.severity)}30` }}
+            >
+              <span
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+                style={{ background: severityColor(it.severity), color: "white" }}
+              >
+                {typeLabel(it.type)}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-slate-200 break-words">{it.message}</div>
+                {it.time && (
+                  <div className="text-[10px] text-slate-500 font-mono mt-1">{it.time}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
+// ─────────────────────────────────────────────
 // Main DashboardAstock
 // ─────────────────────────────────────────────
 export default function DashboardAstock() {
@@ -615,8 +702,11 @@ export default function DashboardAstock() {
       {/* Layer 5: AI status + quick actions */}
       <AIStatusAndActions />
 
+      {/* Layer 6: Pending actions (iter 139 W2-F F8 — D8 wire) */}
+      <PendingActionsPanel />
+
       <p className="text-xs text-slate-600 mt-4 text-center">
-        数据来源: /api/paper-trading/positions · /api/dashboard/summary · /api/factors
+        数据来源: /api/paper-trading/positions · /api/dashboard/summary · /api/factors · /api/dashboard/pending-actions
       </p>
     </div>
   );
