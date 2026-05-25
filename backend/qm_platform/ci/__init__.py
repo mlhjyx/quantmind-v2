@@ -40,6 +40,13 @@ from .prepush import (
     default_subprocess_checks,
     x10_scan,
 )
+from .regression import (
+    MAX_DIFF_THRESHOLD,
+    RegressionOrchestrator,
+    RegressionPair,
+    compute_max_diff,
+    default_pairs,
+)
 
 __all__ = [
     "CIMatrixOrchestrator",
@@ -51,18 +58,23 @@ __all__ = [
     "DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS",
     "DEFAULT_SMOKE_TIMEOUT_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
+    "MAX_DIFF_THRESHOLD",
     "MatrixCell",
     "PreCommitCheck",
     "PreCommitOrchestrator",
     "PrePushCheck",
     "PrePushOrchestrator",
+    "RegressionOrchestrator",
+    "RegressionPair",
     "SmokeTestSuite",
     "TestRunner",
     "TestSummary",
     "X10_HARD_PATTERNS",
     "all_phases_passed",
+    "compute_max_diff",
     "default_checks",
     "default_matrix",
+    "default_pairs",
     "default_subprocess_checks",
     "phases_in_canonical_order",
     "total_duration_ms",
