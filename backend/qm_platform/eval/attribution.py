@@ -378,6 +378,150 @@ def compute_by_cost(
     return {field_name: -total / nav for field_name, total in totals.items()}
 
 
+# ════════════════════════════════════════════════════════════
+# MVP 4.2 sub-iter 6 (iter 64): residual alert via AlertRouter SDK
+# 复用 Wave 4 MVP 4.1 batch 3.x SDK pattern (e.g. scripts/llm_cost_daily_report.py
+# _send_alert_via_platform_sdk). 铁律 33 fail-soft 2-tier (AlertDispatchError + top-level Exception).
+# ════════════════════════════════════════════════════════════
+
+
+def compute_unexplained_residual(attribution: DailyAttribution) -> float:
+    """Compute unexplained residual P&L (铁律 31 — pure compute, 0 IO).
+
+    residual = nav_change_pct - Σ(by_factor) - Σ(by_sector) - Σ(by_cost) - alpha_vs_benchmark
+
+    Components covered:
+      - by_factor: per-factor Brinson contributions (iter 60 compute_by_factor)
+      - by_sector: per-sector industry contributions (iter 61 compute_by_sector)
+      - by_cost: per-cost-category contributions (iter 62 compute_by_cost, negative values)
+      - alpha_vs_benchmark: excess return vs CSI300/CSI500/等权 benchmark
+
+    A non-zero residual indicates model-unexplained variance. abs(residual) > 20 bps
+    is the default alert threshold (per QPB v1.16 §Wave 4 MVP 4.2 spec).
+
+    Args:
+        attribution: DailyAttribution payload (immutable dataclass).
+
+    Returns:
+        float — residual as decimal fraction (e.g. 0.002 = 20 bps = 0.20%).
+    """
+    sum_factor = sum(attribution.by_factor.values())
+    sum_sector = sum(attribution.by_sector.values())
+    sum_cost = sum(attribution.by_cost.values())
+    return (
+        attribution.nav_change_pct
+        - sum_factor
+        - sum_sector
+        - sum_cost
+        - attribution.alpha_vs_benchmark
+    )
+
+
+def _fire_residual_alert_via_platform_sdk(
+    attribution: DailyAttribution,
+    residual: float,
+    threshold_bps: float,
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.2 sub-iter 6, iter 64).
+
+    Daily cadence (沿用 batch 3.10 llm_cost_daily_report 体例):
+      - kind="attribution_residual"
+      - dedup_key="attribution:residual:{trade_date}"
+      - suppress_minutes=60 (intra-day duplicate suppression)
+      - severity=P1 (model-unexplained variance, 需 human review)
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 fire_residual_alert 顶层 try/except 包裹.
+    """
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    trade_date_str = str(attribution.trade_date)
+    residual_bps = residual * 10000.0
+
+    details: dict[str, str] = {
+        "trade_date": trade_date_str,
+        "strategy_id": attribution.strategy_id,
+        "execution_mode": attribution.execution_mode,
+        "residual_bps": f"{residual_bps:.2f}",
+        "threshold_bps": f"{threshold_bps:.2f}",
+        "nav_change_pct": f"{attribution.nav_change_pct:.6f}",
+        "kind": "attribution_residual",
+    }
+
+    alert = Alert(
+        title=f"[P1] Attribution residual exceeds threshold ({residual_bps:+.2f} bps)",
+        severity=Severity.P1,
+        source="qm_platform.eval.attribution",
+        details=details,
+        trade_date=trade_date_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    dedup_key = f"attribution:residual:{trade_date_str}"
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=60)
+
+
+def fire_residual_alert(
+    attribution: DailyAttribution,
+    threshold_bps: float = 20.0,
+) -> bool:
+    """Fire AlertRouter alert if attribution residual exceeds threshold.
+
+    铁律 33 fail-soft 2-tier (沿用 batch 3.x send_alert 体例):
+      - Tier 1: AlertDispatchError → swallow + log + return False
+      - Tier 2: 顶层 generic Exception → swallow + log + return False
+
+    Threshold below threshold → no-op + return False (no alert needed).
+
+    Args:
+        attribution: DailyAttribution payload (must have populated by_factor/sector/cost
+            + alpha_vs_benchmark + nav_change_pct).
+        threshold_bps: alert threshold in basis points (default 20 = 0.20%).
+
+    Returns:
+        bool — True if alert fired successfully, False otherwise (suppress / below
+        threshold / dispatch fail).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    residual = compute_unexplained_residual(attribution)
+    threshold_decimal = threshold_bps / 10000.0
+
+    if abs(residual) <= threshold_decimal:
+        # Below threshold → no alert (silent_ok: expected normal path)
+        return False
+
+    try:
+        _fire_residual_alert_via_platform_sdk(attribution, residual, threshold_bps)
+        return True
+    except Exception as e:  # noqa: BLE001 — fail-soft 顶层 catch (铁律 33)
+        # Tier 1: AlertDispatchError (from qm_platform.observability) caught here
+        # Tier 2: generic Exception (e.g. import / network / settings) also caught
+        # We intentionally do not import AlertDispatchError at top-level — sustains
+        # backend.app.* / backend.engines.* 零依赖 (Platform 严格隔离 per MVP 1.1).
+        try:
+            from qm_platform.observability import AlertDispatchError
+
+            if isinstance(e, AlertDispatchError):
+                logger.error(
+                    "[Attribution] AlertDispatchError sink failed: %s (fail-soft tier 1)", e
+                )
+                return False
+        except ImportError:
+            pass
+        logger.error(
+            "[Attribution] residual alert dispatch failed (fail-soft tier 2): %s",
+            e,
+            exc_info=True,
+        )
+        return False
+
+
 __all__ = [
     "AttributionEngine",
     "DailyAttribution",
@@ -386,5 +530,7 @@ __all__ = [
     "compute_by_factor",
     "compute_by_regime",
     "compute_by_sector",
+    "compute_unexplained_residual",
+    "fire_residual_alert",
     "residual_exceeds_threshold",
 ]

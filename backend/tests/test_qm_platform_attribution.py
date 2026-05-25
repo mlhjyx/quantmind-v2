@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,6 +22,8 @@ from backend.qm_platform.eval.attribution import (
     compute_by_factor,
     compute_by_regime,
     compute_by_sector,
+    compute_unexplained_residual,
+    fire_residual_alert,
     residual_exceeds_threshold,
 )
 
@@ -596,3 +599,180 @@ def test_attribution_engine_protocol_structural_typing():
     result = engine.compute(date(2026, 5, 25), "stub-sid")
     assert isinstance(result, DailyAttribution)
     assert result.trade_date == date(2026, 5, 25)
+
+
+# ────────────────────────────────────────────────────────────────────
+# MVP 4.2 sub-iter 6 (iter 64): compute_unexplained_residual + fire_residual_alert
+# ────────────────────────────────────────────────────────────────────
+
+
+def _make_attribution(
+    nav_change_pct: float = 0.012,
+    by_factor: dict[str, float] | None = None,
+    by_sector: dict[str, float] | None = None,
+    by_cost: dict[str, float] | None = None,
+    alpha_vs_benchmark: float = 0.0,
+) -> DailyAttribution:
+    """Test helper — build DailyAttribution with overrides."""
+    return DailyAttribution(
+        trade_date=date(2026, 5, 25),
+        strategy_id="test-strategy",
+        execution_mode="paper",
+        nav_change_pct=nav_change_pct,
+        by_factor=by_factor or {},
+        by_sector=by_sector or {},
+        by_cost=by_cost or {},
+        alpha_vs_benchmark=alpha_vs_benchmark,
+    )
+
+
+def test_compute_unexplained_residual_zero_when_components_match_nav():
+    """residual = 0 when nav fully explained by components."""
+    a = _make_attribution(
+        nav_change_pct=0.010,
+        by_factor={"vol_20": 0.004, "bp": 0.003},
+        by_sector={"electronics": 0.001, "banking": 0.001},
+        by_cost={"commission": -0.0001, "slippage": -0.0001},
+        alpha_vs_benchmark=0.0012,
+    )
+    # residual = 0.010 - (0.004+0.003) - (0.001+0.001) - (-0.0001-0.0001) - 0.0012
+    #         = 0.010 - 0.007 - 0.002 - (-0.0002) - 0.0012
+    #         = 0.010 - 0.007 - 0.002 + 0.0002 - 0.0012 = 0.0000
+    residual = compute_unexplained_residual(a)
+    assert residual == pytest.approx(0.0, abs=1e-9)
+
+
+def test_compute_unexplained_residual_nonzero():
+    """residual != 0 when nav not fully explained."""
+    a = _make_attribution(
+        nav_change_pct=0.010,
+        by_factor={"vol_20": 0.003},
+        by_sector={"banking": 0.001},
+        by_cost={"commission": -0.0002},
+        alpha_vs_benchmark=0.002,
+    )
+    # residual = 0.010 - 0.003 - 0.001 - (-0.0002) - 0.002 = 0.0042
+    residual = compute_unexplained_residual(a)
+    assert residual == pytest.approx(0.0042)
+
+
+def test_compute_unexplained_residual_empty_components():
+    """Empty dicts → residual = nav_change_pct - alpha."""
+    a = _make_attribution(nav_change_pct=0.005, alpha_vs_benchmark=0.001)
+    residual = compute_unexplained_residual(a)
+    assert residual == pytest.approx(0.004)
+
+
+def test_fire_residual_alert_below_threshold_no_fire():
+    """abs(residual) ≤ threshold → no alert dispatch."""
+    # residual = 0.001 = 10 bps, threshold = 20 bps → below
+    a = _make_attribution(nav_change_pct=0.001)
+    with patch(
+        "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk"
+    ) as mock_sdk:
+        fired = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired is False
+    mock_sdk.assert_not_called()
+
+
+def test_fire_residual_alert_above_threshold_fires_once():
+    """abs(residual) > threshold → SDK called once + returns True."""
+    # residual = 0.0030 = 30 bps, threshold = 20 bps → fires
+    a = _make_attribution(nav_change_pct=0.003)
+    with patch(
+        "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk"
+    ) as mock_sdk:
+        fired = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired is True
+    mock_sdk.assert_called_once()
+    # Verify args: (attribution, residual, threshold_bps)
+    call_args = mock_sdk.call_args.args
+    assert call_args[0] is a
+    assert call_args[1] == pytest.approx(0.003)
+    assert call_args[2] == 20.0
+
+
+def test_fire_residual_alert_negative_residual_above_threshold():
+    """Negative residual exceeding threshold also fires (abs check)."""
+    # residual = -0.0035 = -35 bps, threshold = 20 bps → fires
+    a = _make_attribution(nav_change_pct=-0.0035)
+    with patch(
+        "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk"
+    ) as mock_sdk:
+        fired = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired is True
+    mock_sdk.assert_called_once()
+
+
+def test_fire_residual_alert_sdk_dedup_key_shape():
+    """SDK path dedup_key = attribution:residual:{trade_date}; suppress_minutes=60."""
+    a = _make_attribution(nav_change_pct=0.005)  # 50 bps → above 20 bps
+    fake_router = MagicMock()
+    with patch.dict(
+        "sys.modules",
+        {
+            "qm_platform._types": MagicMock(
+                Severity=MagicMock(P1="P1", side_effect=lambda x: x.lower())
+            ),
+            "qm_platform.observability": MagicMock(
+                Alert=MagicMock(side_effect=lambda **kw: kw),
+                get_alert_router=MagicMock(return_value=fake_router),
+            ),
+        },
+    ):
+        fired = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired is True
+    fake_router.fire.assert_called_once()
+    kwargs = fake_router.fire.call_args.kwargs
+    assert kwargs["dedup_key"] == "attribution:residual:2026-05-25"
+    assert kwargs["suppress_minutes"] == 60
+
+
+def test_fire_residual_alert_swallows_alert_dispatch_error():
+    """AlertDispatchError → fail-soft tier 1 (铁律 33), returns False."""
+    fake_dispatch_error = type("AlertDispatchError", (Exception,), {})
+    a = _make_attribution(nav_change_pct=0.005)
+    with (
+        patch.dict(
+            "sys.modules",
+            {
+                "qm_platform.observability": MagicMock(AlertDispatchError=fake_dispatch_error),
+            },
+        ),
+        patch(
+            "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk",
+            side_effect=fake_dispatch_error("sink fail"),
+        ),
+    ):
+        fired = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired is False
+
+
+def test_fire_residual_alert_swallows_generic_exception():
+    """Generic Exception → fail-soft tier 2, returns False."""
+    a = _make_attribution(nav_change_pct=0.005)
+    with patch(
+        "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk",
+        side_effect=RuntimeError("unexpected"),
+    ):
+        fired = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired is False
+
+
+def test_fire_residual_alert_custom_threshold():
+    """Custom threshold_bps overrides default 20 bps."""
+    # residual = 0.0015 = 15 bps; threshold=10 bps → fires; threshold=20 bps → no fire
+    a = _make_attribution(nav_change_pct=0.0015)
+    with patch(
+        "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk"
+    ) as mock_sdk:
+        fired_10 = fire_residual_alert(a, threshold_bps=10.0)
+    assert fired_10 is True
+    mock_sdk.assert_called_once()
+
+    with patch(
+        "backend.qm_platform.eval.attribution._fire_residual_alert_via_platform_sdk"
+    ) as mock_sdk2:
+        fired_20 = fire_residual_alert(a, threshold_bps=20.0)
+    assert fired_20 is False
+    mock_sdk2.assert_not_called()
