@@ -1,6 +1,6 @@
 # MVP 4.3 — CI/CD Orchestration (Wave 4 #3)
 
-**Status**: 🚧 启动 (iter 66 2026-05-25, entry skeleton shipped, multi-iter 1-2 周 campaign)
+**Status**: ✅ COMPLETED (iter 72 2026-05-25, 7/7 sub-iters shipped in single-day campaign)
 **前置**: Wave 4 MVP 4.2 Performance Attribution ✅ 7/7 = 100% (iter 59-65 完结)
 **Spec source**: [QPB v1.16](../QUANTMIND_PLATFORM_BLUEPRINT.md) §Wave 4 详细 — MVP 4.3 CI/CD Orchestration
 
@@ -56,7 +56,7 @@ class CIOrchestrator(Protocol):
 | iter 69 | CI matrix runner (multi-version Python × PostgreSQL cell iteration, 13 tests) | ✅ |
 | iter 70 | Regression baseline gate (max_diff=0 per 铁律 15, 17 tests with compute_max_diff helper) | ✅ |
 | iter 71 | PR review automation (reviewer findings → gh PR comments, severity gating P0/P1 block, 17 tests) | ✅ |
-| iter 72+ | GitHub Actions yaml + .github/workflows/ wire | pending |
+| iter 72 | GitHub Actions yaml (`.github/workflows/ci.yml`) + entry script (`scripts/ci_run_phase.py`) + 8 dispatcher tests | ✅ |
 
 ## §5 §6 8-trigger STOP self-check
 
@@ -70,10 +70,18 @@ ALL NEGATIVE.
 
 ## §6 验收
 
-- [ ] CIPhase enum + CIResult dataclass + Protocol skeleton (iter 66 ✅)
-- [ ] pre-commit + pre-push orchestrator (iter 67-68)
-- [ ] CI matrix + regression gate (iter 69-70)
-- [ ] Reviewer automation + GH Actions wire (iter 71-72)
+- [x] CIPhase enum + CIResult dataclass + Protocol skeleton (iter 66 ✅, 14 tests)
+- [x] pre-commit + pre-push orchestrator (iter 67-68 ✅, 15+16 = 31 tests)
+- [x] CI matrix + regression gate (iter 69-70 ✅, 13+17 = 30 tests)
+- [x] Reviewer automation + GH Actions wire (iter 71-72 ✅, 17+8 = 25 tests)
+
+**Cumulative tests**: 100/100 PASS (14+15+16+13+17+17+8 = 100, 单日 multi-iter campaign).
+
+**MVP 4.3 closeout (iter 72)**:
+- `.github/workflows/ci.yml` 4 jobs (pre_commit / pre_push / regression / ci_matrix)
+- `scripts/ci_run_phase.py` single CLI dispatcher (lazy-imports per phase)
+- regression + ci_matrix jobs marked `continue-on-error` until baseline files +
+  self-hosted runners ship (advisory mode for initial activation)
 
 ## §7 关联
 
