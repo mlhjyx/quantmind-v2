@@ -6866,3 +6866,115 @@ sys.exit(0)
 
 **Sediment trigger**: 2026-05-25 taskboard POC task_001 (sub1 worker session iter 1) — multi-session lifecycle 验证产物. 未来 hook 改造遇 silent-UI + test-assert 双约束 → apply 本 LL pattern.
 
+---
+
+## LL-197 — Pause-gate retrofit broke test mock assumption — patch test default mock return + assertion call_count rather than rewrite gate (2026-05-25 iter 78)
+
+**Pattern essence** (iter 78 `gp_pipeline.py` 2-test pause-gate reconciliation):
+
+D1 O3 (PN-003 iter 12) pause gate 在既有 `_mark_run_failed` 调用前插入新 `asyncio.run(_is_pipeline_paused())` 调用. Tests 用 `patch("asyncio.run")` 默认 MagicMock 返回值 → pause check 拿到 MagicMock truthy → pause 分支 unpack tuple → TypeError. 同时 test assert `asyncio.run.call_count == 1` (旧基线) → 新增 1 call 后 call_count=2 → assertion fail.
+
+**真 fix**: test 层修补两点 — (1) `patch("asyncio.run", return_value=None)` 明确 mock 返回 None (pause check 短路 → 走原 flow); (2) `assert asyncio.run.call_count == 2` 反映 pause-check + _mark_run_failed 两次 asyncio.run 调用. 不动 prod gate 设计.
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+任何 prod 在 pre-existing async/sync call 之前插入新 gate (rate-limit / pause / circuit-breaker / feature-flag) → tests 用 generic mock patch 必失败两类:
+1. **Mock 默认返回 truthy** → gate 分支误触发, 走错路径 unpack error
+2. **call_count assertion 基线漂移** → 旧 == N 失败, 应改 == N+1
+
+→ test 层 explicit `return_value=` + 更新 call_count 期望; prod 层不动 (gate 是 intentional sediment).
+
+**Why this matters**:
+
+- 反 LL-085 patch-test-not-prod anti-pattern inverse — 此处 prod 是真 sediment (D1 O3 PN-003 决议), test 是真 assumption stale, 真改对象是 test 不是 prod.
+- 反 mock 默认值黑洞 — `patch("asyncio.run")` 不带 `return_value` 时 MagicMock 自动 truthy, 任何 boolean gate 误踩.
+- 反 call_count brittleness — 旧 assertion 锁定具体 N, prod 增 call 必同步.
+
+**Cite source (4-element, verify 2026-05-25 14:01 SH iter 78)**:
+- `backend/tests/test_gp_pipeline.py:88-112` §TestBruteforceMiningTask 2-test fix (mock return_value + call_count assertion)
+- `backend/services/gp_pipeline.py` (D1 O3 PN-003 iter 12 pause gate sediment)
+- commit `ebc32c9` 2026-05-25 14:01:09 +0800 iter 78 gp_pipeline TestBruteforceMiningTask 2-test pause-gate fix
+- D1 O3 PN-003 iter 12 ADR (pause gate intentional sediment, prod 真改 reference)
+
+**Heuristic backref**: #15 Test-Reality Gap (test mock assumption stale vs prod gate sediment), #12 Surface Treatment vs Root Cause (真 root cause = test assumption stale, 不是 gate 设计错).
+
+**Cross-ref**: 沿用 LL-085 (inverse 正例 — prod 真改, test 真 stale) + LL-196 (silent-UI test reconciliation 同类思路).
+
+**Sediment trigger**: 2026-05-25 iter 78 taskboard task_006 sediment (24 fail → 22 fail 2-test fix). 未来 prod 加 pre-existing-call gate → apply 本 LL pattern 修 test.
+
+---
+
+## LL-198 — Test mock fixture brittleness — prefer per-test mock override over shared fixture default; SELECT side effects need write-only assertion (2026-05-25 iter 79)
+
+**Pattern essence** (iter 79 NotificationSync `test_service_smoke.py` 2-test fix):
+
+`_make_mock_conn()` shared fixture 默认 `cursor.fetchone()=(0,)` 1-tuple. Production `_prefs_row_to_dict` 期望 multi-column row → `row[1]` IndexError. 第二处: `execute.assert_not_called()` 过严 — 实际 SELECT 是合法 read 调用, 不该和 INSERT/UPDATE/DELETE write 一起 ban. 旧 assertion 把 SELECT 误判为副作用.
+
+**真 fix** (两点 test 层 patch):
+1. **Per-test mock override**: `conn.cursor().fetchone.return_value = None` 显式覆盖 fixture 默认, 信号 "this test 不需要 row data"
+2. **Write-only assertion**: 改 `execute.assert_not_called()` → 遍历 `execute.call_args_list` 检查 `sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))`, 允许 SELECT (read 不算副作用)
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+shared mock fixture (`_make_mock_conn` / `make_mock_session` / `_make_mock_redis`) 跨多 test 累积默认值 → 后续 caller 必 fight default:
+1. **fetchone() 默认 tuple** vs callers expect `None` / dict / namedtuple → IndexError / AttributeError
+2. **execute.assert_not_called()** 过严 — SELECT read 是合法, 应 write-only assertion
+3. **side_effect 队列默认空** → StopIteration
+
+→ per-test explicit override > 改 fixture default (避免连锁影响其他 callers); 副作用 assertion 必区分 read vs write.
+
+**Why this matters**:
+
+- 反 shared fixture sprawl — fixture 默认值 N 个 caller 不一致, 改 default 破其他 caller, 改 caller 是 contained scope.
+- 反 over-strict assertion — `assert_not_called()` 把所有 execute 一刀切, SELECT-read 是 prod 合法 path 不该 ban.
+- 反 LL-085 patch-test-not-prod inverse — prod `_prefs_row_to_dict` 是真 multi-column read, test fixture 默认值是真 stale.
+
+**Cite source (4-element, verify 2026-05-25 14:05 SH iter 79)**:
+- `backend/tests/test_service_smoke.py:407-441` §NotificationSync 2-test prefs row mock + write-only assertion fix
+- `backend/services/notification_sync.py` §_prefs_row_to_dict (prod multi-column read reference)
+- commit `db7b158` 2026-05-25 14:05:18 +0800 iter 79 NotificationSync 2-test prefs row mock + write-only assertion
+- LL-197 sibling (同 batch test reconciliation cluster, iter 78-80 cumulative)
+
+**Heuristic backref**: #15 Test-Reality Gap (fixture default vs prod expectation), #11 Convenience-Driven Development (shared fixture 累积 default 是 convenience trap).
+
+**Cross-ref**: 沿用 LL-197 (同 batch test fix cluster) + LL-085 (inverse 正例 — prod 真 schema, test 默认 stale).
+
+**Sediment trigger**: 2026-05-25 iter 79 taskboard task_006 sediment (22 fail → 20 fail 2-test fix). 未来 shared mock fixture caller fight default → per-test override + write-only assertion.
+
+---
+
+## LL-199 — Patch test when prod intentionally changed enum — verify code intent via cite source then update test allowlist; avoid reverting prod (2026-05-25 iter 80)
+
+**Pattern essence** (iter 80 batched 4-test stale-vs-prod-changed alignment):
+
+4 tests assert stale enum / status values — `'pending'` (backtest_api), `'queued'` / `'accepted'` (sprint123_apis). Production 已 intentionally 返 `'deferred'` (DEFER ADR row sediment) 和 `'dispatched'` (Sprint 1.24 Celery dispatch wire). Test stale assertion → fail. 朴素 revert prod 会破坏 sediment'd intentional change.
+
+**真 fix**: test 层更新 allowlist 包含新 values, 同时验证 prod intent — (1) `grep` 找 enum 定义源, (2) `git blame` 找 sediment commit + ADR row, (3) cite ADR / sprint number 在 test comment 注明 "why this allowlist". 不动 prod.
+
+**Reusable trigger condition** (≥80% future-replay value):
+
+production code 走 sediment'd intentional enum / status / response shape change (via ADR row / sprint wire / DEFER decision) → tests 旧 assertion 必 stale:
+1. **Status enum 扩展** (`'pending'` → `'deferred'` / `'expired'` 等新分支)
+2. **Action verb 改名** (`'queued'` → `'dispatched'` / `'accepted'` → `'received'`)
+3. **Response field 重命名** (`task_id` → `dispatch_id`)
+
+→ 必验证 prod intent (grep + git blame + ADR / sprint cite) → 更新 test allowlist + comment 注明 sediment source; **禁** 反向 revert prod (破坏 sediment'd 决议).
+
+**Why this matters**:
+
+- 反 LL-085 patch-test-not-prod anti-pattern inverse — 此处 prod 是真 intentional (ADR / sprint sediment), test stale 才是真 root cause.
+- 反 silent enum drift — 加新 allowlist 必 cite ADR / sprint, 防未来 reader 不知 "why 此处接受 dispatched".
+- 反 batched fix 不分类 — 4-test 同 batch 但分两 cluster (backtest 1 + sprint123 3), 必分类 cite.
+
+**Cite source (4-element, verify 2026-05-25 15:25 SH iter 80)**:
+- `backend/tests/test_backtest_api.py:801-815` §`'pending'` → `'deferred'` allowlist (DEFER ADR row sediment)
+- `backend/tests/test_sprint123_apis.py:359-369` §`'queued'` / `'accepted'` → `'dispatched'` allowlist (Sprint 1.24 Celery dispatch wire)
+- commit `708fc9d` 2026-05-25 15:25:27 +0800 iter 80 batched 4-test stale-vs-prod-changed alignment
+- LL-197 + LL-198 siblings (同 cluster test reconciliation cumulative, iter 78-80)
+
+**Heuristic backref**: #15 Test-Reality Gap (test stale vs prod sediment'd intent), #14 Documentation Lying (test assertion = "expected behavior doc", 改 test = update docs to reflect sediment'd prod).
+
+**Cross-ref**: 沿用 LL-197 / LL-198 (同 iter 78-80 test reconciliation cluster) + LL-085 (inverse 正例 — prod 真改 sediment'd, test stale).
+
+**Sediment trigger**: 2026-05-25 iter 80 taskboard task_006 sediment (20 fail → 16 fail 4-test fix; 累计 iter 78-80 24 fail → 16 fail 33% reduction). 未来 prod sediment'd enum / status / shape change → apply 本 LL pattern 更新 test allowlist + cite ADR / sprint.
+
