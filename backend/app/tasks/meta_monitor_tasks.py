@@ -54,6 +54,65 @@ def _get_service() -> MetaMonitorService:
     return _service
 
 
+# ════════════════════════════════════════════════════════════
+# scheduler_task_log helper (iter 132 — Wave 4 audit envelope, LL-204 canonical)
+# ════════════════════════════════════════════════════════════
+# 镜像 daily_pipeline.py:_write_scheduler_log_safe (Session 44 Phase 2 Step C, iter 103
+# PR #479 LL-204 sediment). Module-local copy per LL-206 sibling pattern; iter 134+
+# promotion candidate to shared service when 5+ callers established (meta_monitor +
+# attribution + 2x backup + report + factor_lifecycle/risk_daily_check/intraday).
+# 铁律 33(c) 读路径 audit 失败 fail-silent + logger.warning, 不阻塞主流程.
+# iter 132 (2026-05-26): W2-A F1 P0 closure — silent dispatch gap (0 scheduler_task_log
+# row past 7d for meta-monitor-tick despite Beat firing /5min sustained).
+
+
+def _write_scheduler_log_safe(
+    task_name: str,
+    start_time: datetime,
+    status: str,
+    result_json: dict | None,
+) -> None:
+    """Best-effort scheduler_task_log INSERT (silent_ok on failure).
+
+    Args:
+        task_name: Beat schedule entry name (e.g. "meta_monitor")
+        start_time: task 进入 timestamp (UTC, 上游捕获)
+        status: 'success' | 'skipped' | 'disabled' | 'error' | 'retry'
+        result_json: task summary dict (or {"error": str} on exception)
+    """
+    import psycopg2.extras  # noqa: PLC0415
+
+    from app.services.db import get_sync_conn  # noqa: PLC0415
+
+    end_time = datetime.now(UTC)
+    duration_sec = int((end_time - start_time).total_seconds())
+    try:
+        with get_sync_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, end_time,
+                    duration_sec, status, result_json)
+                   VALUES (%s, 'astock', %s, %s, %s, %s, %s, %s)""",
+                (
+                    task_name,
+                    start_time,  # schedule_time ≈ start_time (Beat 触发时刻)
+                    start_time,
+                    end_time,
+                    duration_sec,
+                    status,
+                    psycopg2.extras.Json(result_json or {}),
+                ),
+            )
+    except Exception as e:  # noqa: BLE001
+        # silent_ok: scheduler_task_log 失败不阻断主流程 audit/alert action 已完成.
+        logger.warning(
+            "[scheduler_task_log] write failed task=%s: %s: %s",
+            task_name,
+            type(e).__name__,
+            e,
+        )
+
+
 @celery_app.task(
     name="app.tasks.meta_monitor_tasks.meta_monitor_tick",
     soft_time_limit=90,  # 2 DB queries + ≤5 DingTalk push (httpx 5s × retry 3)
@@ -66,6 +125,11 @@ def meta_monitor_tick() -> dict[str, Any]:
     the full collect → evaluate → push cycle (send_with_dedup's alert_dedup
     write joins this transaction via the injected conn).
 
+    iter 132 (2026-05-26): wrapped with scheduler_task_log audit envelope per W2-A F1
+    P0 closure (sibling daily_pipeline.py factor_lifecycle_task iter 103 LL-204
+    canonical). Envelope ensures EVERY tick leaves a proof-of-life row, eliminating
+    silent dispatch gap (0 row in 7d audit despite Beat firing 2728+ times sustained).
+
     Returns:
         Task result dict (ok / evaluated / triggered / pushed / triggered_rules / at).
 
@@ -76,29 +140,50 @@ def meta_monitor_tick() -> dict[str, Any]:
             (主 DingTalk → 备 email → 极端 log-P0), so a channel-down does not
             crash the tick — only a borked DB transaction does.
     """
-    from app.services.db import get_sync_conn  # noqa: PLC0415
-
-    service = _get_service()
-    now = datetime.now(UTC)
-    conn = get_sync_conn()
+    # iter 132: scheduler_task_log audit envelope (LL-204 canonical sibling pattern).
+    _audit_start = datetime.now(UTC)
+    _audit_status = "error"  # default if exception escapes try
+    _audit_summary: dict = {}
     try:
-        alerts = service.collect_and_evaluate(conn, now=now)
-        push_results = service.push_triggered(alerts, conn=conn)
-        conn.commit()
-    except Exception:
-        conn.rollback()
+        from app.services.db import get_sync_conn  # noqa: PLC0415
+
+        service = _get_service()
+        now = datetime.now(UTC)
+        conn = get_sync_conn()
+        try:
+            alerts = service.collect_and_evaluate(conn, now=now)
+            push_results = service.push_triggered(alerts, conn=conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+        triggered = [a for a in alerts if a.triggered]
+        result: dict[str, Any] = {
+            "ok": True,
+            "evaluated": len(alerts),
+            "triggered": len(triggered),
+            "pushed": len(push_results),
+            "triggered_rules": [a.rule_id.value for a in triggered],
+            "at": now.isoformat(),
+        }
+        logger.info("[meta-monitor-beat] tick complete: %s", result)
+        _audit_summary = result
+        _audit_status = "success"
+        return result
+    except Exception as e:
+        if _audit_status == "error":
+            _audit_summary = {
+                "status": "error",
+                "error": f"{type(e).__name__}: {e}",
+            }
         raise
     finally:
-        conn.close()
-
-    triggered = [a for a in alerts if a.triggered]
-    result: dict[str, Any] = {
-        "ok": True,
-        "evaluated": len(alerts),
-        "triggered": len(triggered),
-        "pushed": len(push_results),
-        "triggered_rules": [a.rule_id.value for a in triggered],
-        "at": now.isoformat(),
-    }
-    logger.info("[meta-monitor-beat] tick complete: %s", result)
-    return result
+        _write_scheduler_log_safe(
+            "meta_monitor",
+            _audit_start,
+            _audit_status,
+            _audit_summary,
+        )
