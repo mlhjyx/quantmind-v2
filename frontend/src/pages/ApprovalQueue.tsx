@@ -23,7 +23,7 @@
  * 5. Action modal (ConfirmModal tier per action)
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -150,6 +150,18 @@ function DetailDrawer({
   onClose: () => void;
 }) {
   const gateReport = detail.gate_report ?? {};
+
+  // iter 136d reviewer M2 — Escape key dismissal for a11y (role="dialog" +
+  // aria-modal="true" WAI-ARIA contract). Sibling ConfirmModal handles its
+  // own Escape; this drawer was missing the listener.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-40 flex justify-end"
@@ -496,8 +508,11 @@ function HistoryTab({ onSelectDetail }: { onSelectDetail: (id: number) => void }
       ) : (
         <>
           <div style={{ fontSize: 11, color: C.text3 }}>
-            共 <span style={{ color: C.text1, fontWeight: 600 }}>{data?.total ?? 0}</span> 条历史 ·
-            当前 {offset + 1} - {Math.min(offset + limit, data?.total ?? 0)}
+            共 <span style={{ color: C.text1, fontWeight: 600 }}>{data?.total ?? 0}</span> 条历史
+            {/* iter 136d reviewer L1 — hide "当前 1 - 0" UX bug when total=0. */}
+            {(data?.total ?? 0) > 0 && (
+              <> · 当前 {offset + 1} - {Math.min(offset + limit, data?.total ?? 0)}</>
+            )}
           </div>
 
           {(data?.items ?? []).length === 0 ? (
