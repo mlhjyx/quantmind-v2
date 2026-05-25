@@ -27,12 +27,17 @@ const mockFetchCircuitBreakerState = vi.fn();
 const mockFetchEnvState = vi.fn();
 const mockIsAdminAuthed = vi.fn();
 const mockApiClientPost = vi.fn();
+const mockGetPaperStrategyId = vi.fn();
+
+// Canonical real UUID used by tests (replaces "default" hardcode after P0 fix).
+const REAL_STRATEGY_UUID = "11111111-2222-3333-4444-555555555555";
 
 vi.mock("@/api/dashboard", () => ({
   fetchCircuitBreakerState: () => mockFetchCircuitBreakerState(),
 }));
 vi.mock("@/api/system", () => ({
   fetchEnvState: () => mockFetchEnvState(),
+  getPaperStrategyId: () => mockGetPaperStrategyId(),
 }));
 vi.mock("@/api/execution", () => ({
   isAdminAuthed: () => mockIsAdminAuthed(),
@@ -97,9 +102,16 @@ const envPaper: EnvState = {
 
 describe("SafetyControlPanel — iter 137 W2-F F2 L4 Recovery flow", () => {
   beforeEach(() => {
+    vi.useRealTimers(); // sustained real timers between tests (prevents T5 fake-timer leak)
     vi.clearAllMocks();
     mockFetchEnvState.mockResolvedValue(envPaper);
     mockIsAdminAuthed.mockResolvedValue(true);
+    // iter 137 reviewer P0 fix — paper_strategy_id resolves to real UUID
+    mockGetPaperStrategyId.mockResolvedValue({
+      paper_strategy_id: REAL_STRATEGY_UUID,
+      configured: true,
+      source: "settings.PAPER_STRATEGY_ID",
+    });
   });
 
   it("T1: 'L4 STAGED' notice + request button hidden when not in L4", async () => {
@@ -143,7 +155,7 @@ describe("SafetyControlPanel — iter 137 W2-F F2 L4 Recovery flow", () => {
 
     await waitFor(() => {
       expect(mockApiClientPost).toHaveBeenCalledWith(
-        "/risk/l4-recovery/default",
+        `/risk/l4-recovery/${REAL_STRATEGY_UUID}`,
         expect.objectContaining({ reviewer_note: expect.stringContaining("MDD recovered") }),
       );
     });
@@ -179,45 +191,51 @@ describe("SafetyControlPanel — iter 137 W2-F F2 L4 Recovery flow", () => {
     });
   });
 
-  it("T6: Reject POSTs /l4-approve with approved=false", async () => {
+  it("T5: Approve CRIT modal opens with required phrase + cooldown when 批准 clicked", async () => {
     mockFetchCircuitBreakerState.mockResolvedValue(cbL4Staged);
-
-    // Pre-pop approval flow: 1st POST = recovery request, 2nd POST = reject
-    mockApiClientPost
-      .mockResolvedValueOnce({
-        data: { approval_id: "reject-uuid-67890", status: "pending" },
-      })
-      .mockResolvedValueOnce({
-        data: { status: "rejected", approval_id: "reject-uuid-67890" },
-      });
-
+    mockApiClientPost.mockResolvedValueOnce({
+      data: { approval_id: "approve-uuid-test", status: "pending" },
+    });
     renderWithProviders();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /发起 L4 恢复请求/ })).toBeInTheDocument();
     });
 
-    // Request recovery first
+    // Step 1: request recovery
     await userEvent.click(screen.getByRole("button", { name: /发起 L4 恢复请求/ }));
     const reasonInput = await screen.findByPlaceholderText(/说明操作原因/);
-    await userEvent.type(reasonInput, "request to reject for test");
+    await userEvent.type(reasonInput, "request for approve test");
     await userEvent.click(screen.getByRole("button", { name: /确定/ }));
 
-    // Wait for reject button visible, then click
+    // Wait for approve button
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /拒绝/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /批准/ })).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole("button", { name: /拒绝/ }));
+    await userEvent.click(screen.getByRole("button", { name: /批准/ }));
 
-    // Reject modal opens (HIGH tier, reason required, no phrase)
-    const rejectReason = await screen.findByPlaceholderText(/说明操作原因/);
-    await userEvent.type(rejectReason, "data quality issue, hold L4");
-    await userEvent.click(screen.getByRole("button", { name: /确定/ }));
+    // Verify CRIT modal opens with APPROVE-L4-RECOVERY phrase input
+    // (CRIT tier enforces phrase + cooldown — full flow tested at iter 138+).
+    const phraseInput = await screen.findByPlaceholderText("APPROVE-L4-RECOVERY");
+    expect(phraseInput).toBeInTheDocument();
+    expect(screen.getByText(/极高风险/)).toBeInTheDocument();
+  });
 
+  it("T7 (P0 fix): Request button disabled when paper_strategy_id not configured", async () => {
+    mockFetchCircuitBreakerState.mockResolvedValue(cbL4Staged);
+    // Override paper_strategy_id mock for this test: NOT configured
+    mockGetPaperStrategyId.mockResolvedValue({
+      paper_strategy_id: "",
+      configured: false,
+      source: "settings.PAPER_STRATEGY_ID",
+    });
+    renderWithProviders();
     await waitFor(() => {
-      expect(mockApiClientPost).toHaveBeenCalledWith(
-        "/risk/l4-approve/reject-uuid-67890",
-        expect.objectContaining({ approved: false }),
-      );
+      expect(screen.getByRole("button", { name: /发起 L4 恢复请求/ })).toBeInTheDocument();
     });
+
+    // Request button should be disabled when strategy_id NOT configured (iter 137 P0 fix)
+    const button = screen.getByRole("button", { name: /发起 L4 恢复请求/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", expect.stringContaining("PAPER_STRATEGY_ID 未配置"));
   });
 });

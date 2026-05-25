@@ -20,7 +20,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import apiClient from "@/api/client";
 import type { CircuitBreakerState } from "@/types/dashboard";
 import { fetchCircuitBreakerState } from "@/api/dashboard";
-import { fetchEnvState, type EnvState } from "@/api/system";
+import { fetchEnvState, type EnvState, getPaperStrategyId } from "@/api/system";
 import { isAdminAuthed } from "@/api/execution";
 
 // iter 137 W2-F F2 closure — L4 Recovery + Approve flow wiring.
@@ -29,8 +29,11 @@ import { isAdminAuthed } from "@/api/execution";
 //     L4 recovery → service creates approval_queue row → returns {approval_id, status}
 //   - POST /api/risk/l4-approve/{approval_id} (line 239): reviewer approves/rejects
 //     → returns new state (approved) or status='rejected'
-// strategy_id "default" canonical (sustained Frontend Design v3 § PT-strategy).
-const DEFAULT_STRATEGY_ID = "default";
+//
+// iter 137 reviewer P0 fix — DEFAULT_STRATEGY_ID="default" 不是 UUID, backend
+// `risk.py:229` `_parse_uuid("default", ...)` 必 raise ValueError → HTTP 400.
+// Use real UUID via GET /api/system/settings/paper-strategy-id (iter 39 pattern,
+// canonical sibling = ReportCenter.tsx:101-113).
 
 interface SafetyPanelData {
   cb: CircuitBreakerState | null;
@@ -83,6 +86,17 @@ export function SafetyControlPanel() {
     staleTime: 5_000,
   });
 
+  // iter 137 reviewer P0 fix — fetch real paper_strategy_id UUID for L4 recovery
+  // POST path (replaces "default" hardcoded which failed backend _parse_uuid).
+  // Sibling pattern: ReportCenter.tsx:101-113 (iter 39 canonical).
+  const { data: paperSid } = useQuery({
+    queryKey: ["system-paper-strategy-id"],
+    queryFn: () => getPaperStrategyId(),
+    staleTime: 60 * 60 * 1000, // strategy_id rarely changes; 1h cache OK
+  });
+  const strategyId =
+    paperSid?.configured && paperSid.paper_strategy_id ? paperSid.paper_strategy_id : null;
+
   const state = data?.cb ?? null;
   const envState = data?.env ?? null;
   const adminAuthed = data?.adminAuthed ?? null;
@@ -109,14 +123,26 @@ export function SafetyControlPanel() {
   // → returns {approval_id, status: "pending"}. Frontend stores approval_id in
   // component state for the subsequent approve/reject step. Pre-condition:
   // currentLevel === 4 (backend raises 400 ValueError if not L4_STOPPED).
+  //
+  // iter 137 reviewer M3 fix — modal close moved INSIDE try after success
+  // (sibling PR #485 M1 / iter 136e canonical). On error, modal stays open
+  // with reason text intact for retry.
   const handleRequestRecovery = async (meta: { reason?: string }) => {
-    setShowRequestRecovery(false);
+    if (!strategyId) {
+      setActionMsg({
+        ok: false,
+        text: "无法获取策略ID (PAPER_STRATEGY_ID 未配置, 请检查 .env 或后端 settings)",
+      });
+      setTimeout(() => setActionMsg(null), 8000);
+      return;
+    }
     try {
       const res = await apiClient.post<{ approval_id: string; status: string }>(
-        `/risk/l4-recovery/${DEFAULT_STRATEGY_ID}`,
+        `/risk/l4-recovery/${strategyId}`,
         { reviewer_note: meta.reason ?? "L4 recovery request from operator UI" },
       );
       setPendingApprovalId(res.data.approval_id);
+      setShowRequestRecovery(false); // close modal only on success
       setActionMsg({
         ok: true,
         text: `L4 恢复请求已创建: ${res.data.approval_id.slice(0, 8)}… (待 admin 审批)`,
@@ -134,10 +160,13 @@ export function SafetyControlPanel() {
   // → on approved=true returns new_state; on approved=false returns status='rejected'.
   // Reverse-decision-权 enforced at backend service layer (ADR-027); admin token
   // required (verify_admin_token Depends, risk.py:243-244).
+  //
+  // iter 137 reviewer M3 fix — modal close moved INSIDE try after success
+  // (sibling PR #485 M1 / iter 136e canonical). On error, modal stays open
+  // with reason text intact for retry.
   const handleApproveRecovery = async (meta: { reason?: string }) => {
     if (!pendingApprovalId || !showApproveRecovery) return;
     const approved = showApproveRecovery === "approve";
-    setShowApproveRecovery(null);
     try {
       const res = await apiClient.post<{ status: string; new_state?: { level: number } }>(
         `/risk/l4-approve/${pendingApprovalId}`,
@@ -150,6 +179,7 @@ export function SafetyControlPanel() {
         text: `L4 恢复${verdict}${newLvl != null ? ` (新状态: L${newLvl})` : ""}`,
       });
       setPendingApprovalId(null);
+      setShowApproveRecovery(null); // close modal only on success
       void load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "请求失败";
@@ -380,22 +410,33 @@ export function SafetyControlPanel() {
                 {!pendingApprovalId && (
                   <button
                     onClick={() => setShowRequestRecovery(true)}
-                    disabled={adminAuthed === false || currentLevel !== 4}
+                    disabled={adminAuthed === false || currentLevel !== 4 || !strategyId}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer"
                     style={{
-                      background: adminAuthed === false || currentLevel !== 4 ? C.bg3 : `${C.info}20`,
-                      border: `1px solid ${adminAuthed === false || currentLevel !== 4 ? C.border : `${C.info}50`}`,
+                      background:
+                        adminAuthed === false || currentLevel !== 4 || !strategyId ? C.bg3 : `${C.info}20`,
+                      border: `1px solid ${
+                        adminAuthed === false || currentLevel !== 4 || !strategyId
+                          ? C.border
+                          : `${C.info}50`
+                      }`,
                       fontSize: 11,
-                      color: adminAuthed === false || currentLevel !== 4 ? C.text4 : C.info,
+                      color:
+                        adminAuthed === false || currentLevel !== 4 || !strategyId ? C.text4 : C.info,
                       fontWeight: 500,
-                      cursor: adminAuthed === false || currentLevel !== 4 ? "not-allowed" : "pointer",
+                      cursor:
+                        adminAuthed === false || currentLevel !== 4 || !strategyId
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                     title={
                       adminAuthed === false
                         ? "需先设置 Admin Token"
                         : currentLevel !== 4
                           ? "仅 L4_LIQUIDATE 可发起恢复"
-                          : "发起 L4 恢复请求 (需 reviewer_note)"
+                          : !strategyId
+                            ? "PAPER_STRATEGY_ID 未配置, 无法发起请求"
+                            : "发起 L4 恢复请求 (需 reviewer_note)"
                     }
                   >
                     <ShieldCheck size={13} />
