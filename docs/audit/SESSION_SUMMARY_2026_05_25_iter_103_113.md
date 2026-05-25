@@ -100,4 +100,71 @@ Sustained from iter 99 session summary. /goal re-entry text in commit messages o
 
 ---
 
-**END iter 103-113 session summary**. Future iter 114+ continues per §v9.4 mandate. Migration loop (iter 110→ ongoing) targets 9 remaining test files per blueprint §7 closure criteria.
+**END iter 103-113 session summary** — see §9 below for iter 114-121 continuation.
+
+---
+
+## 9. iter 114-121 continuation (added iter 122, 2026-05-25 ~23:00 SH)
+
+Session continued past initial iter 113 milestone — 8 more substantive iters (114-121):
+
+| iter | commit | TIER | scope |
+|------|--------|------|-------|
+| 114 | `41cd142` | C | This SESSION_SUMMARY initial sediment (iter 103-113 coverage) |
+| 115 | `4d23392` | C | Blueprint §9 iter 110-113 findings + remaining 9-file analysis |
+| 116 | `5c7a189` | B-direct | Migrate test_announcement_processor.py (8 sites, bare + id-iter) |
+| 117 | `e78add1` | B-direct | Migrate test_factor_health_daily.py (8 sites, tuple-return) |
+| 118 | `120bfc9` | C | Blueprint §9.7-§9.9 closure status (8/12 = 67%) |
+| 119 | `2caadeb` | C | RISK_CONTROL_SERVICE_DESIGN FULL RETIRE (archive + stub + CLAUDE.md cite) |
+| 120 | `905a0e4` | B-direct | Canonical mock_conn_factory_builder fetchall=[] default (unblocks 2 deferred) |
+| 121 | `c8d00f0` | C | Blueprint §9.8 status refresh (2 of 4 deferred unblocked) |
+
+### 9.1 Cumulative session metrics (iter 103-121)
+
+- **19 substantive iters** (103-121, all 2026-05-25 evening UTC+8 ~21:00-23:00 SH)
+- **23 commits** (3 PR merged + 20 direct main)
+- **3 PRs merged**: #479 + #480 + #481
+- **Smoke 61 PASS sustained 22/22 push cycles** — 0 fail this session window
+- **LL counter**: 203 → 205 (+LL-204 + LL-205)
+- **Red lines 5/5 sustained** verified iter 103 + iter 106 fresh psql
+
+### 9.2 conftest fixture migration final state (post iter 121)
+
+- **5 migrated** ✅: test_fundamental_context_service (111) / test_startup_assertions (112) / test_a3_a5_a7_a10 (113) / test_announcement_processor (116) / test_factor_health_daily (117)
+- **3 kept-local-with-rationale** ✅: test_dingtalk_webhook_service / test_l4_sweep_tasks / test_pt_data_service_fail_loud
+- **2 unblocked iter 120**: test_strategy_evaluation_required + test_strategy_registry (mechanical execution next iter)
+- **2 Plan mode sustained**: test_qm_platform_attribution (MagicMock factory contract) + test_service_smoke (LL-198 root)
+- **12/12 scoped** ✅ — full coverage of blueprint §1 inventory
+
+### 9.3 Audit closures cumulative
+
+| Audit doc | Closure |
+|-----------|---------|
+| FACTOR_LIFECYCLE_BEAT + ROOT_CAUSE (iter 100/101) | ✅ iter 103 PR #479 |
+| STRATEGY_GATE_COVERAGE + ADR_014_TERMINOLOGY (iter 99/100) | ✅ iter 105 |
+| FACTOR_POOL_HEALTH §5 Rec #1 | ✅ iter 106 |
+| W14_PIPELINE_CONSOLE_PLAN | ✅ iter 107 PR #480 |
+| **MAKE_MOCK_CONN_REFACTOR_BLUEPRINT** | ✅ iter 110-121 (Option A pilot landed + 5 migrations + canonical enhancement) |
+| **V3_SSOT_RISK_CONTROL_RETIRE** | ✅ iter 119 (FULL RETIRE archive) |
+| DEV_AI_V21_V3_DRIFT | ✅ verified (§0 cross-ref header already in place from earlier iter 99 task_007) |
+
+### 9.4 Sustained Pattern B observations (iter 103-121)
+
+- Single main CC session ✅ (0 sub-agent failures)
+- Task agent spawn for TIER A/B reviewer (3 spawns this session, all returned actionable findings)
+- TIER B direct push for ≤20 LOC migrations (10 direct main pushes this session saving PR overhead)
+- Pre-push smoke gate sustained reliable (47-61s per run, 22/22 PASS)
+- Red lines 5/5 verified iter 103 + iter 106 fresh psql
+- /goal §当前断点 sustained throughout
+
+### 9.5 Open next-iter candidates
+
+- HIGH: 5-29 Fri 19:00 SH factor_lifecycle first-execution verify (Beat boot self-check + scheduler_task_log row) — Friday post-merge LL-141 4-step
+- HIGH: test_strategy_evaluation_required + test_strategy_registry mechanical migrations (unblocked iter 120)
+- MID: 2 Plan mode entries (test_qm_platform_attribution + test_service_smoke)
+- MID: W7/W9/W10/W11/W12/W13/W15 frontend follow-on per LL-205 canonical (~50h scope)
+- LOW: factor_values 172GB audit / other docs
+
+---
+
+**END iter 114-121 continuation**. Per §v9.4 sustained loop continues; no /compact triggered this session (sustained context within budget).
