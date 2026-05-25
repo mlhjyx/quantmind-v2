@@ -1075,35 +1075,49 @@ def factor_lifecycle_task(self) -> dict:
     铁律 23/24: 独立可执行 MVP. 铁律 32: task 负责 commit.
 
     非交易日快速跳过 (Plan 1 — DEV_SCHEDULER §6.12 Phase I).
+
+    iter 103 (2026-05-25): 加 scheduler_task_log audit 包络 (镜像 risk_daily_check
+    L262-477 pattern). 闭 iter 100/101 P0 — 5-cycle silent dispatch (4-24/5-01/5-08/
+    5-15/5-22) 0 scheduler_task_log + 0 factor_lifecycle row + 0 worker stderr 可见性
+    gap; envelope ensure 任 trigger 都留 row (success/skipped/error). Sustained
+    LL-202 (silent worker registration) + LL-203 防御.
     """
-    # Calendar gate: 周五 19:00 cron 可落在法定节假日的周五 — 跳过避免对未计算的
-    # IC 数据做生命周期转换 (反 LL-181 节假日空跑; calendar SSOT 4-layer fallback).
-    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
-
-    if not is_trading_day_today_or_skip(logger=logger):
-        return {"status": "skipped", "reason": "non_trading_day"}
-
-    import sys
-    from pathlib import Path
-
-    # 复用 scripts/factor_lifecycle_monitor.py 的 run() 函数 (纯 Python 调用)
-    # __file__ = backend/app/tasks/daily_pipeline.py → parents[3] = quantmind-v2 root
-    project_root = Path(__file__).resolve().parents[3]
-    scripts_dir = project_root / "scripts"
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-
-    from factor_lifecycle_monitor import run as run_lifecycle
-
-    # Phase 2 (PR #129 reviewer P1): 显式声明 composite_mode 防 library default 漂移.
-    # 默认 G1_ONLY 来源 PR #128 实证 (12 周回放 g1-only=550 demotes, 0 hypothesis 噪音).
-    # 实战 dry-run 14 demotes / 0 CORE 受影响.
-    backend_dir = project_root / "backend"
-    if str(backend_dir) not in sys.path:
-        sys.path.insert(0, str(backend_dir))
-    from engines.factor_lifecycle import CompositeMode
-
+    # iter 103: scheduler_task_log audit 包络 — 镜像 risk_daily_check L262-477.
+    # try/finally 确保所有路径 (含 calendar skip / except raise) 都写一行;
+    # 闭 5-cycle silent dispatch P0 (FACTOR_LIFECYCLE_BEAT_2026_05_25.md §6a).
+    _audit_start = datetime.now(UTC)
+    _audit_status = "error"  # default if exception escapes try
+    _audit_summary: dict = {}
     try:
+        # Calendar gate: 周五 19:00 cron 可落在法定节假日的周五 — 跳过避免对未计算的
+        # IC 数据做生命周期转换 (反 LL-181 节假日空跑; calendar SSOT 4-layer fallback).
+        from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+        if not is_trading_day_today_or_skip(logger=logger):
+            _audit_summary = {"status": "skipped", "reason": "non_trading_day"}
+            _audit_status = "skipped"
+            return _audit_summary
+
+        import sys
+        from pathlib import Path
+
+        # 复用 scripts/factor_lifecycle_monitor.py 的 run() 函数 (纯 Python 调用)
+        # __file__ = backend/app/tasks/daily_pipeline.py → parents[3] = quantmind-v2 root
+        project_root = Path(__file__).resolve().parents[3]
+        scripts_dir = project_root / "scripts"
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+
+        from factor_lifecycle_monitor import run as run_lifecycle
+
+        # Phase 2 (PR #129 reviewer P1): 显式声明 composite_mode 防 library default 漂移.
+        # 默认 G1_ONLY 来源 PR #128 实证 (12 周回放 g1-only=550 demotes, 0 hypothesis 噪音).
+        # 实战 dry-run 14 demotes / 0 CORE 受影响.
+        backend_dir = project_root / "backend"
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        from engines.factor_lifecycle import CompositeMode
+
         result = run_lifecycle(
             dry_run=False,
             factor_filter=None,
@@ -1115,7 +1129,21 @@ def factor_lifecycle_task(self) -> dict:
             f"composite={result.get('composite_mode', 'off')} "
             f"synthesized={len(result.get('composite_synthesized', []))}"
         )
-        return {"status": "ok", **result}
+        _audit_summary = {"status": "ok", **result}
+        _audit_status = "success"
+        return _audit_summary
     except Exception as e:
         logger.exception(f"[FactorLifecycle] 失败: {e}")
+        if _audit_status == "error":
+            _audit_summary = {
+                "status": "error",
+                "error": f"{type(e).__name__}: {e}",
+            }
         raise
+    finally:
+        _write_scheduler_log_safe(
+            "factor_lifecycle",
+            _audit_start,
+            _audit_status,
+            _audit_summary,
+        )

@@ -43,6 +43,7 @@ Sprint 1.1: 激活 Beat 调度，替换 crontab。
   5-19 Session 58+1 sediment driver).
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -54,6 +55,8 @@ if _backend_dir not in sys.path:
 from celery import Celery
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "quantmind",
@@ -129,3 +132,53 @@ celery_app.conf.beat_schedule = CELERY_BEAT_SCHEDULE
 from app.core.platform_bootstrap import bootstrap_platform_deps  # noqa: E402
 
 bootstrap_platform_deps()
+
+
+# iter 103: Beat task registration self-check via worker_init / beat_init signal.
+# 闭 LL-202 (silent worker registration) + 5-cycle factor_lifecycle silent dispatch
+# audit P0 (FACTOR_LIFECYCLE_BEAT_2026_05_25.md §6b). 早 fail-loud > silent 5-cycle 漂移.
+#
+# 设计: signal-based 而非 module-top-level — celery `imports` 配置在 worker/beat
+# finalize 时才处理, module 加载时 celery_app.tasks 还是空集. signal 在 imports
+# 处理完触发, registered set 已完整可对比.
+from celery.signals import beat_init, worker_init  # noqa: E402
+
+
+def _verify_beat_task_registration(*_args, **_kwargs) -> None:
+    """Fail-loud if any Beat-scheduled task name 未注册到 celery_app.tasks.
+
+    背景 (iter 100/101 audit): factor_lifecycle 5 连续 Fri 19:00 dispatch (4-24,
+    5-01, 5-08, 5-15, 5-22) 0 row 0 worker stderr — H2 worker-side registration
+    miss 假设. 此 check 启动早期拦截, 替代 5-cycle silent drift.
+
+    触发: celery worker_init + beat_init signal (imports 已处理完).
+    Fail-loud: raise RuntimeError 阻止 worker/beat 上线, DingTalk 由上层 Servy
+    crash-loop notifier 兜底.
+
+    实施 detail: 函数 self-sufficient — 显式 import_default_modules() 强制处理
+    `imports=[...]` 配置. 工作产线 signal time imports 已完成时此 call 幂等;
+    pytest invoke 时手动 trigger imports (反 worker race / lazy load drift).
+    """
+    # 显式 force imports — 即便 signal 先于 worker 真正 finalize 触发也可 trust.
+    # Celery import_default_modules() 幂等, 已 imported 模块不重复.
+    try:
+        celery_app.loader.import_default_modules()
+    except Exception as e:  # noqa: BLE001
+        # silent_ok: 这里 fail 通常意味着代码层 import error, raise 让下面 missing
+        # check 捕到并 fail-loud (raise RuntimeError 详细信息).
+        logger.warning("[BeatRegistration] import_default_modules raised: %s", e)
+
+    expected = {entry["task"] for entry in CELERY_BEAT_SCHEDULE.values()}
+    registered = set(celery_app.tasks.keys())
+    missing = expected - registered
+    if missing:
+        logger.error(
+            "[BeatRegistration] missing tasks (worker/beat 启动 abort): %s",
+            sorted(missing),
+        )
+        raise RuntimeError(f"Beat task(s) not registered at worker/beat init: {sorted(missing)}")
+    logger.info("[BeatRegistration] all %d Beat-scheduled tasks registered", len(expected))
+
+
+worker_init.connect(_verify_beat_task_registration)
+beat_init.connect(_verify_beat_task_registration)
