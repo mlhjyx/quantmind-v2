@@ -175,13 +175,18 @@ def main():
         f"{cite_source_lock_reminder()}\n"
     )
 
-    # Stop hook silent mode (iter 53a 2026-05-25 per user directive "自己判断啊"):
-    # Pre-fix emitted systemMessage on every Stop event, polluting UI.
-    # CC should autonomously action ruff/tests/CLAUDE.md per /goal §-1 + cite source
-    # lock per Constitution §L5.1 — UI nag is X10/LL-098 anti-pattern (forward-progress
-    # offer). Sustained audit value preserved via exit code + audit_log.py PostToolUse
-    # hook (Edit/Write events still tracked). systemMessage suppressed.
-    _ = checklist  # silent_ok: governance reminder content retained for future re-enable
+    # Stop hook silent-UI mode (iter 53a 2026-05-25 user directive "自己判断啊", iter 77 reconciled):
+    # systemMessage suppressed → UI stays silent (no nag, X10/LL-098 anti-pattern reject).
+    # hookSpecificOutput.additionalContext retained → governance reminder still available to CC
+    # turn context (Claude Code hook contract: additionalContext is silent-injection, not UI-popup).
+    # Tests sustained: stdout JSON contains checklist substrings via additionalContext field.
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "Stop",
+            "additionalContext": checklist,
+        }
+    }
+    print(json.dumps(output, ensure_ascii=False))
     sys.exit(0)
 
 
