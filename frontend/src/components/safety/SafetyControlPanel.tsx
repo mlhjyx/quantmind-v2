@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Shield, AlertCircle, Zap, RefreshCw, History } from "lucide-react";
+import { Shield, AlertCircle, Zap, RefreshCw, History, ShieldCheck, ShieldX } from "lucide-react";
 import { C } from "@/theme";
 import { Card, CardHeader } from "@/components/shared";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -22,6 +22,15 @@ import type { CircuitBreakerState } from "@/types/dashboard";
 import { fetchCircuitBreakerState } from "@/api/dashboard";
 import { fetchEnvState, type EnvState } from "@/api/system";
 import { isAdminAuthed } from "@/api/execution";
+
+// iter 137 W2-F F2 closure — L4 Recovery + Approve flow wiring.
+// Backend SSOT: backend/app/api/risk.py
+//   - POST /api/risk/l4-recovery/{strategy_id} (line 206): operator requests
+//     L4 recovery → service creates approval_queue row → returns {approval_id, status}
+//   - POST /api/risk/l4-approve/{approval_id} (line 239): reviewer approves/rejects
+//     → returns new state (approved) or status='rejected'
+// strategy_id "default" canonical (sustained Frontend Design v3 § PT-strategy).
+const DEFAULT_STRATEGY_ID = "default";
 
 interface SafetyPanelData {
   cb: CircuitBreakerState | null;
@@ -47,6 +56,11 @@ const LEVEL_LADDER: LevelDef[] = [
 export function SafetyControlPanel() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // iter 137 W2-F F2: L4 recovery + approve state
+  const [showRequestRecovery, setShowRequestRecovery] = useState(false);
+  const [showApproveRecovery, setShowApproveRecovery] = useState<"approve" | "reject" | null>(null);
+  const [pendingApprovalId, setPendingApprovalId] = useState<string | null>(null);
 
   // Session 58 round-4 ADR-084 Phase 1: setInterval → react-query (uniform lifecycle).
   // 反 manual setInterval + 4 useState dance. react-query handles:
@@ -88,6 +102,60 @@ export function SafetyControlPanel() {
       setActionMsg({ ok: false, text: `Force-reset 失败: ${msg}` });
     }
     setTimeout(() => setActionMsg(null), 5000);
+  };
+
+  // iter 137 W2-F F2 — L4 recovery request (operator step 1).
+  // Backend: POST /risk/l4-recovery/{strategy_id} L4RecoveryRequest{reviewer_note}
+  // → returns {approval_id, status: "pending"}. Frontend stores approval_id in
+  // component state for the subsequent approve/reject step. Pre-condition:
+  // currentLevel === 4 (backend raises 400 ValueError if not L4_STOPPED).
+  const handleRequestRecovery = async (meta: { reason?: string }) => {
+    setShowRequestRecovery(false);
+    try {
+      const res = await apiClient.post<{ approval_id: string; status: string }>(
+        `/risk/l4-recovery/${DEFAULT_STRATEGY_ID}`,
+        { reviewer_note: meta.reason ?? "L4 recovery request from operator UI" },
+      );
+      setPendingApprovalId(res.data.approval_id);
+      setActionMsg({
+        ok: true,
+        text: `L4 恢复请求已创建: ${res.data.approval_id.slice(0, 8)}… (待 admin 审批)`,
+      });
+      void load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "请求失败";
+      setActionMsg({ ok: false, text: `L4 恢复请求失败: ${msg}` });
+    }
+    setTimeout(() => setActionMsg(null), 8000);
+  };
+
+  // iter 137 W2-F F2 — L4 recovery approve/reject (admin step 2).
+  // Backend: POST /risk/l4-approve/{approval_id} L4ApproveRequest{approved, reviewer_note}
+  // → on approved=true returns new_state; on approved=false returns status='rejected'.
+  // Reverse-decision-权 enforced at backend service layer (ADR-027); admin token
+  // required (verify_admin_token Depends, risk.py:243-244).
+  const handleApproveRecovery = async (meta: { reason?: string }) => {
+    if (!pendingApprovalId || !showApproveRecovery) return;
+    const approved = showApproveRecovery === "approve";
+    setShowApproveRecovery(null);
+    try {
+      const res = await apiClient.post<{ status: string; new_state?: { level: number } }>(
+        `/risk/l4-approve/${pendingApprovalId}`,
+        { approved, reviewer_note: meta.reason ?? "" },
+      );
+      const verdict = approved ? "已批准" : "已拒绝";
+      const newLvl = res.data.new_state?.level;
+      setActionMsg({
+        ok: true,
+        text: `L4 恢复${verdict}${newLvl != null ? ` (新状态: L${newLvl})` : ""}`,
+      });
+      setPendingApprovalId(null);
+      void load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "请求失败";
+      setActionMsg({ ok: false, text: `L4 ${approved ? "批准" : "拒绝"} 失败: ${msg}` });
+    }
+    setTimeout(() => setActionMsg(null), 8000);
   };
 
   const currentLevel = state?.level ?? 0;
@@ -289,10 +357,10 @@ export function SafetyControlPanel() {
               {adminAuthed === false ? "未授权 (需 Admin Token)" : "强制回归 L0 NORMAL"}
             </button>
 
-            {/* L4 STAGED notice */}
+            {/* L4 STAGED notice + Recovery flow (iter 137 W2-F F2) */}
             {needsManualApprove && (
               <div
-                className="px-3 py-2 rounded"
+                className="px-3 py-2 rounded space-y-2"
                 style={{
                   background: `${C.warn}15`,
                   border: `1px solid ${C.warn}40`,
@@ -300,13 +368,93 @@ export function SafetyControlPanel() {
                   color: C.warn,
                 }}
               >
-                <div className="flex items-center gap-1.5 mb-1">
+                <div className="flex items-center gap-1.5">
                   <AlertCircle size={12} />
-                  <span style={{ fontWeight: 600 }}>需要人工 approve</span>
+                  <span style={{ fontWeight: 600 }}>L4 STAGED — 需人工审批恢复</span>
                 </div>
                 <div style={{ color: C.text3 }}>
-                  L4 STAGED 流程: 当前需要 admin token + 反向决策权确认 (CC ops only)
+                  L4_LIQUIDATE 状态触发. 恢复流程: 操作员请求 → admin 审批 (反向决策权).
                 </div>
+
+                {/* Step 1: Request recovery — when no pending approval */}
+                {!pendingApprovalId && (
+                  <button
+                    onClick={() => setShowRequestRecovery(true)}
+                    disabled={adminAuthed === false || currentLevel !== 4}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer"
+                    style={{
+                      background: adminAuthed === false || currentLevel !== 4 ? C.bg3 : `${C.info}20`,
+                      border: `1px solid ${adminAuthed === false || currentLevel !== 4 ? C.border : `${C.info}50`}`,
+                      fontSize: 11,
+                      color: adminAuthed === false || currentLevel !== 4 ? C.text4 : C.info,
+                      fontWeight: 500,
+                      cursor: adminAuthed === false || currentLevel !== 4 ? "not-allowed" : "pointer",
+                    }}
+                    title={
+                      adminAuthed === false
+                        ? "需先设置 Admin Token"
+                        : currentLevel !== 4
+                          ? "仅 L4_LIQUIDATE 可发起恢复"
+                          : "发起 L4 恢复请求 (需 reviewer_note)"
+                    }
+                  >
+                    <ShieldCheck size={13} />
+                    发起 L4 恢复请求
+                  </button>
+                )}
+
+                {/* Step 2: Pending approval — show approval_id + approve/reject buttons */}
+                {pendingApprovalId && (
+                  <>
+                    <div
+                      className="px-2 py-1.5 rounded"
+                      style={{
+                        background: C.bg3,
+                        border: `1px solid ${C.border}`,
+                        fontSize: 10,
+                        color: C.text3,
+                        fontFamily: C.mono,
+                      }}
+                    >
+                      <div style={{ color: C.text4 }}>待审批 approval_id:</div>
+                      <div style={{ color: C.text2, wordBreak: "break-all" }}>{pendingApprovalId}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setShowApproveRecovery("approve")}
+                        disabled={adminAuthed === false}
+                        className="flex items-center justify-center gap-1 px-2 py-1.5 rounded cursor-pointer"
+                        style={{
+                          background: adminAuthed === false ? C.bg3 : `${C.down}20`,
+                          border: `1px solid ${adminAuthed === false ? C.border : `${C.down}50`}`,
+                          fontSize: 11,
+                          color: adminAuthed === false ? C.text4 : C.down,
+                          fontWeight: 500,
+                          cursor: adminAuthed === false ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <ShieldCheck size={12} />
+                        批准
+                      </button>
+                      <button
+                        onClick={() => setShowApproveRecovery("reject")}
+                        disabled={adminAuthed === false}
+                        className="flex items-center justify-center gap-1 px-2 py-1.5 rounded cursor-pointer"
+                        style={{
+                          background: adminAuthed === false ? C.bg3 : `${C.up}20`,
+                          border: `1px solid ${adminAuthed === false ? C.border : `${C.up}50`}`,
+                          fontSize: 11,
+                          color: adminAuthed === false ? C.text4 : C.up,
+                          fontWeight: 500,
+                          cursor: adminAuthed === false ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <ShieldX size={12} />
+                        拒绝
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -341,6 +489,38 @@ export function SafetyControlPanel() {
           reasonMinLength={5}
           onConfirm={handleForceReset}
           onCancel={() => setShowResetConfirm(false)}
+        />
+      )}
+
+      {/* iter 137 W2-F F2 — L4 recovery request modal (HIGH tier, reviewer_note required) */}
+      {showRequestRecovery && (
+        <ConfirmModal
+          title="发起 L4 恢复请求"
+          message="当前 L4_LIQUIDATE. 发起恢复请求会创建 approval_queue 待审批记录, 需 admin 审批后才生效. 请填写恢复理由 (≥5 字符)."
+          safetyTier="HIGH"
+          requiredReason
+          reasonMinLength={5}
+          onConfirm={handleRequestRecovery}
+          onCancel={() => setShowRequestRecovery(false)}
+        />
+      )}
+
+      {/* iter 137 W2-F F2 — L4 approve/reject modal (HIGH/CRIT tier, reverse-decision-权) */}
+      {showApproveRecovery && (
+        <ConfirmModal
+          title={showApproveRecovery === "approve" ? "批准 L4 恢复" : "拒绝 L4 恢复"}
+          message={
+            showApproveRecovery === "approve"
+              ? `审批 approval_id=${pendingApprovalId?.slice(0, 8)}… 批准后 strategy 状态将从 L4_LIQUIDATE 恢复. 请填写批准理由 (审计留痕).`
+              : `审批 approval_id=${pendingApprovalId?.slice(0, 8)}… 拒绝后 strategy 保持 L4_LIQUIDATE 状态. 请填写拒绝理由 (审计留痕).`
+          }
+          safetyTier={showApproveRecovery === "approve" ? "CRIT" : "HIGH"}
+          requiredReason
+          reasonMinLength={5}
+          requiredPhrase={showApproveRecovery === "approve" ? "APPROVE-L4-RECOVERY" : undefined}
+          cooldownSeconds={showApproveRecovery === "approve" ? 5 : 0}
+          onConfirm={handleApproveRecovery}
+          onCancel={() => setShowApproveRecovery(null)}
         />
       )}
     </div>

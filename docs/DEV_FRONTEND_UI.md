@@ -1137,6 +1137,13 @@ G4: 通知铃铛加下拉面板(最近5条+查看全部链接)
 - Circuit Breaker L0-L4 可视化
 - 6 CC-only 运维操作 frontend UI 化 (OpsEscapeHatchPanel: Servy 4 + ENV 切换 2 + Schtask 3 + 紧急平仓 3, 共 12 ops with 4-tier risk badges)
 - `fetchCircuitBreakerState` + `fetchEnvState` + `isAdminAuthed` 调用链
+- **iter 137 W2-F F2 closure — L4 Recovery + Approve 流程 wire** (backend `risk.py:206+239`):
+  - Step 1 (operator): currentLevel=4 + needsManualApprove → "发起 L4 恢复请求" button → HIGH tier ConfirmModal (reviewer_note ≥5 chars) → POST `/risk/l4-recovery/{strategy_id}` → store `approval_id` 在组件 state
+  - Step 2 (admin reverse-decision-权, ADR-027): `pendingApprovalId` displayed → "批准" + "拒绝" buttons
+    - 批准 = CRIT tier (input phrase `APPROVE-L4-RECOVERY` + 5s cooldown + reason) → POST `/risk/l4-approve/{approval_id}` `{approved: true, reviewer_note}`
+    - 拒绝 = HIGH tier (reason ≥5 chars) → POST `/risk/l4-approve/{approval_id}` `{approved: false, reviewer_note}`
+  - Backend 服务层 enforce: `risk.py:206+239` admin_token Depends + L4_STOPPED 前置条件 verify (400 if not L4)
+  - 测试: `frontend/src/__tests__/SafetyControlPanel.test.tsx` 5 case T1-T6 覆盖 (隐藏-显示-恢复请求-批准按钮-拒绝-审批 POST), 5/5 PASS
 
 #### 4. ConfirmModal (`frontend/src/components/ui/ConfirmModal.tsx`)
 - 4-tier 安全 modal (LOW / MED / HIGH / CRIT)
