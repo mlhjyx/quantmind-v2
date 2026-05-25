@@ -163,25 +163,28 @@ def main():
     if zhen_issue:
         issues.append(zhen_issue)
 
+    # iter 133 (2026-05-26): gate output on real issue presence (reconciles iter 53a
+    # "Stop hooks silent mode" user directive + iter 77 silent-UI + iter 100 Stop
+    # schema fix). iter 100 schema fix accidentally re-enabled always-on checklist
+    # surfacing — user feedback 2026-05-26 "为什么会一直显示这个" sustained iter 53a
+    # frustration. Fix: silent when clean (issues empty), surface when real issue.
+    # Preserves catching mechanism + removes UI noise.
+    if not issues:
+        sys.exit(0)  # silent: clean state, no UI nag
+
     checklist = "COMPLETION CHECKLIST:\n"
-    if issues:
-        checklist += "\n".join(f"  - {i}" for i in issues) + "\n\n"
+    checklist += "\n".join(f"  - {i}" for i in issues) + "\n\n"
     checklist += (
         "- [ ] ruff check 通过?\n"
         "- [ ] 相关测试运行过?\n"
         "- [ ] CLAUDE.md/SYSTEM_STATUS.md 需要更新?\n"
         "\n"
-        # v2 扩展: 4 元素 cite source 锁定 reminder (always surfaced)
+        # v2 扩展: 4 元素 cite source 锁定 reminder (only surfaced when issues exist)
         f"{cite_source_lock_reminder()}\n"
     )
 
-    # Stop hook schema-compliant output (iter 100 fix per harness validation error):
-    # Claude Code Stop hook schema does NOT permit hookSpecificOutput.hookEventName == "Stop"
-    # (only PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch allowed). iter 77's
-    # hookSpecificOutput-based silent-injection was harness-invalid → every Stop event echoed
-    # "Hook JSON output validation failed". Use top-level systemMessage (schema-valid) so the
-    # checklist reaches CC's next turn while remaining harness-conformant. Tests sustained:
-    # stdout JSON substring assertions still PASS via systemMessage payload.
+    # Stop hook schema-compliant output: top-level systemMessage (iter 100 schema fix
+    # sustained). When real issue present, surface checklist + cite reminder.
     output = {"systemMessage": checklist}
     print(json.dumps(output, ensure_ascii=False))
     sys.exit(0)
