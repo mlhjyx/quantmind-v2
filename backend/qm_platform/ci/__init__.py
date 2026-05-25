@@ -5,6 +5,12 @@ CoverageGate / SmokeTestSuite / TestSummary) with 5-phase orchestration
 (CIPhase / CIResult / CIOrchestrator) per docs/mvp/MVP_4_3_cicd.md.
 """
 
+from .ci_matrix import (
+    DEFAULT_CELL_TIMEOUT_SECONDS,
+    CIMatrixOrchestrator,
+    MatrixCell,
+    default_matrix,
+)
 from .interface import (
     CoverageGate,
     SmokeTestSuite,
@@ -36,13 +42,16 @@ from .prepush import (
 )
 
 __all__ = [
-    "DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS",
-    "DEFAULT_SMOKE_TIMEOUT_SECONDS",
-    "DEFAULT_TIMEOUT_SECONDS",
+    "CIMatrixOrchestrator",
     "CIOrchestrator",
     "CIPhase",
     "CIResult",
     "CoverageGate",
+    "DEFAULT_CELL_TIMEOUT_SECONDS",
+    "DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS",
+    "DEFAULT_SMOKE_TIMEOUT_SECONDS",
+    "DEFAULT_TIMEOUT_SECONDS",
+    "MatrixCell",
     "PreCommitCheck",
     "PreCommitOrchestrator",
     "PrePushCheck",
@@ -53,6 +62,7 @@ __all__ = [
     "X10_HARD_PATTERNS",
     "all_phases_passed",
     "default_checks",
+    "default_matrix",
     "default_subprocess_checks",
     "phases_in_canonical_order",
     "total_duration_ms",
