@@ -23,7 +23,7 @@
  * 5. Action modal (ConfirmModal tier per action)
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -150,6 +150,18 @@ function DetailDrawer({
   onClose: () => void;
 }) {
   const gateReport = detail.gate_report ?? {};
+
+  // iter 136c PR #485 reviewer M2 fix — Escape key dismissal (a11y standard
+  // for role="dialog"). Sibling ConfirmModal handles its own Escape; this
+  // drawer was missing the listener despite identical aria-modal contract.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-40 flex justify-end"
@@ -496,8 +508,11 @@ function HistoryTab({ onSelectDetail }: { onSelectDetail: (id: number) => void }
       ) : (
         <>
           <div style={{ fontSize: 11, color: C.text3 }}>
-            共 <span style={{ color: C.text1, fontWeight: 600 }}>{data?.total ?? 0}</span> 条历史 ·
-            当前 {offset + 1} - {Math.min(offset + limit, data?.total ?? 0)}
+            共 <span style={{ color: C.text1, fontWeight: 600 }}>{data?.total ?? 0}</span> 条历史
+            {/* iter 136c PR #485 reviewer L1 fix — hide "当前 1 - 0" range when total=0. */}
+            {(data?.total ?? 0) > 0 && (
+              <> · 当前 {offset + 1} - {Math.min(offset + limit, data?.total ?? 0)}</>
+            )}
           </div>
 
           {(data?.items ?? []).length === 0 ? (
@@ -626,18 +641,27 @@ export default function ApprovalQueue() {
   const handleConfirm = async (meta: { reason?: string }) => {
     if (!pendingAction) return;
     const { item, action } = pendingAction;
-    if (action === "approve") {
-      await approveMutation.mutateAsync({ id: item.id, notes: meta.reason });
-    } else if (action === "reject") {
-      await rejectMutation.mutateAsync({
-        id: item.id,
-        reason: meta.reason ?? "未填写原因",
-        notes: meta.reason,
-      });
-    } else if (action === "hold") {
-      await holdMutation.mutateAsync({ id: item.id, notes: meta.reason });
+    // iter 136c PR #485 reviewer M1 fix — wrap mutateAsync in try/catch so the
+    // modal stays open on failure (preserves user-entered reason text, avoids
+    // UX regression where modal closes on 409 conflict / network error after
+    // mutation onError notification already fired). On success, close modal.
+    try {
+      if (action === "approve") {
+        await approveMutation.mutateAsync({ id: item.id, notes: meta.reason });
+      } else if (action === "reject") {
+        await rejectMutation.mutateAsync({
+          id: item.id,
+          reason: meta.reason ?? "未填写原因",
+          notes: meta.reason,
+        });
+      } else if (action === "hold") {
+        await holdMutation.mutateAsync({ id: item.id, notes: meta.reason });
+      }
+      setPendingAction(null);
+    } catch {
+      // silent_ok: onError on each mutation already fires user notification.
+      // Keep modal open so user can adjust reason and retry without losing input.
     }
-    setPendingAction(null);
   };
 
   return (
