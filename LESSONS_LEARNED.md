@@ -7170,3 +7170,103 @@ Beat 端 dispatch 全 6 cycles (4-17 + 5 follow-up Fri), worker 端 task name �
 **Cross-ref**: LL-141 (4-step Celery service ops) + LL-097 X9 (Beat schedule restart 体例) + 铁律 33 (silent failure) + 铁律 X9 LL-097 (schedule 注释 ≠ 停服).
 
 **Sediment trigger**: 2026-05-25 iter 101 Pattern B agent static analysis 找到 smoking gun + remediation plan. 未来 iter 102+ 实施 (a)+(b)+(c) 三 fix (TIER B PR ~2-3h). 沿用 audit-first then fix-PR 体例.
+
+**LL-203 closure update (2026-05-25 iter 103 PR #479 merged a93f95c)**: §6a + §6b LL-203 remediation 落地. Fix code = `backend/app/tasks/daily_pipeline.py:1067-1144` (audit envelope) + `backend/app/tasks/celery_app.py:137-186` (signal-based boot self-check). 8 new tests + smoke 61/61 sustained. 后续 5-29 Fri 19:00 SH 真实观察 = ultimate verify (post-merge ops LL-141 4-step). Continued pattern → LL-204.
+
+---
+
+## LL-204 — Celery Beat task 双层防护 canonical pattern: audit envelope (try/finally) + signal-based boot self-check (worker_init/beat_init) (2026-05-25 iter 103)
+
+**Pattern essence**:
+
+LL-203 surface 了 "Beat 派发但 worker 静默 unregistered" 失效模式 + observability gap. LL-204 sediment 真 fix landed iter 103 (PR #479) 的 **双层防护 canonical pattern** — 任新 Celery Beat task 必须复制 + 任已有 Beat task 应 retrofit:
+
+**Layer 1 — Audit envelope (defensive observability)**: 每个 Beat task body 走 try/finally + `_write_scheduler_log_safe`:
+```python
+def some_beat_task(self) -> dict:
+    _audit_start = datetime.now(UTC)
+    _audit_status = "error"  # default if exception escapes try
+    _audit_summary: dict = {}
+    try:
+        # calendar gate / setting check / main work ...
+        if calendar_gate_skip:
+            _audit_summary = {"status": "skipped", "reason": ...}
+            _audit_status = "skipped"
+            return _audit_summary
+        # main work
+        _audit_summary = {"status": "ok", **result}
+        _audit_status = "success"
+        return _audit_summary
+    except Exception as e:
+        # ... log exception
+        if _audit_status == "error":  # 守护未 set 的情形
+            _audit_summary = {"status": "error", "error": f"{type(e).__name__}: {e}"}
+        raise
+    finally:
+        _write_scheduler_log_safe(
+            "some_beat_task",  # task_name string
+            _audit_start,
+            _audit_status,
+            _audit_summary,
+        )
+```
+canonical 参照: `backend/app/tasks/daily_pipeline.py:262-477` (risk_daily_check 体例最早实施), `:1067-1144` (factor_lifecycle iter 103 retrofit), `:522-720` (intraday_risk_check).
+
+**Layer 2 — Boot self-check (early fail-loud)**: `celery_app.py` 接 `worker_init` + `beat_init` 两 signal, 启动时强制比对 `CELERY_BEAT_SCHEDULE` 与 `celery_app.tasks` set:
+```python
+from celery.signals import beat_init, worker_init
+
+def _verify_beat_task_registration(*_args, **_kwargs) -> None:
+    try:
+        celery_app.loader.import_default_modules()  # 幂等, force imports
+    except Exception as e:
+        logger.warning("[BeatRegistration] import_default_modules raised: %s", e)
+    expected = {entry["task"] for entry in CELERY_BEAT_SCHEDULE.values()}
+    registered = set(celery_app.tasks.keys())
+    missing = expected - registered
+    if missing:
+        logger.error("[BeatRegistration] missing tasks: %s", sorted(missing))
+        missing_sorted = sorted(missing)
+        raise RuntimeError(
+            f"Beat task(s) not registered at worker/beat init: {missing_sorted}"
+        )
+    logger.info("[BeatRegistration] all %d Beat-scheduled tasks registered", len(expected))
+
+worker_init.connect(_verify_beat_task_registration)
+beat_init.connect(_verify_beat_task_registration)
+```
+canonical: `backend/app/tasks/celery_app.py:137-186` (iter 103 实施).
+
+**关键设计 (反 race condition)**:
+- 信号 base 而非 module-top-level: module 加载时 `celery_app.tasks` 还是空 set; signal 在 imports 处理完触发, registered set 已完整可对比
+- self-sufficient: 函数内 force `import_default_modules()`, 即使 signal 先于 finalize 触发也可 trust;production 时 idempotent (已 imported 模块不重复)
+- fail-loud: `RuntimeError` 抛出阻止 worker/beat 上线 → Servy AutoRestart loop + crash-loop notifier 兜底, 反 5-cycle silent drift
+
+**Reusable trigger condition (≥85% future-replay value)**:
+
+任新 Celery Beat task 加入 (V3 风控 / GP daily / IC compute / news ingest / 等) → 模板 + 必 wrap audit envelope. 任 `celery_app.py` `imports=[...]` 改 / rename / move 模块 → boot self-check signal-time catch 任 drift. 任 V3 sprint 闭前 sediment / sprint orchestrator pickup → 这 LL 是必读 canonical.
+
+**Why this matters**:
+
+- 反 silent failure 铁律 33 — Layer 1 envelope ensure 每 trigger 都留 audit row, Layer 2 boot check ensure registration miss 启动早期 surface
+- 反 observability-gap-driven debt — LL-203 surface 显示 `_write_scheduler_log_safe` helper 早 existed 但 retrofit slow; LL-204 sediment 模板降低 future retrofit cost
+- 反 Beat-worker bilateral drift — LL-203 case 显示 Beat 端 dispatch + worker 端 unregistered 可独立 drift, boot-time cross-check 是单 source of truth verify
+- Reviewer pattern guidance — iter 103 reviewer (oh-my-claudecode:code-reviewer) APPROVE 但识别 P2 (factor_lifecycle except guard always-true), 显示 mirror canonical 时若新 task 缺 retry path, guard 可冗余但保持沿用 pattern 一致性 (future retry 加入零 break risk)
+- Test pattern 沿用 — sys.modules injection fixture for inside-function imports (factor_lifecycle_monitor in scripts/) + canonical helper mock = 8 test 全 PASS pattern, future 测试 Celery task 时复用
+
+**Cite source (4-element, verify 2026-05-25 ~20:45 SH iter 103 closure)**:
+
+- `backend/app/tasks/daily_pipeline.py:1067-1144` §`factor_lifecycle_task` audit envelope (post iter 103)
+- `backend/app/tasks/daily_pipeline.py:262-477` §`risk_daily_check_task` canonical envelope source
+- `backend/app/tasks/celery_app.py:137-186` §`_verify_beat_task_registration` boot self-check (post iter 103)
+- `backend/app/tasks/celery_app.py:183-184` §signal connect lines
+- `backend/tests/test_factor_lifecycle_audit_envelope.py:1-203` §test pattern reference (sys.modules fixture + helper mock)
+- `docs/audit/STATUS_REPORT_2026_05_25_iter_103_factor_lifecycle_envelope.md` §full (iter 103 closure report)
+- `docs/audit/FACTOR_LIFECYCLE_ROOT_CAUSE_2026_05_25.md:117-170` §6 blueprint (iter 101 input for iter 103)
+- LL-203 closure update line (this LL above) — iter 103 closes LL-203 remediation arc
+
+**Heuristic backref**: #4 Silent Failure (Layer 1 + Layer 2 双层 defense), #15 Test-Reality Gap (signal-based check 而非 module-top, 反 import-time empty-set 假相), #11 Convenience-Driven Development (canonical mirror 是抗 future drift 的最佳实践; reviewer P2 显示 "保 mirror pattern + 注释解释 over-applied guard" 是健康技术债务). Anti-pattern guard: 任 Beat task 新增 PR 但 missing audit envelope OR 缺 boot check coverage → reviewer 必 catch.
+
+**Cross-ref**: LL-203 (root cause + 该 LL closure), LL-141 (4-step ops post-merge), LL-097 (铁律 X9 Beat schedule restart 提醒), 铁律 33 (silent failure). Sustained iter 100 audit-first → iter 101 root-cause-via-Pattern-B-agent → iter 103 fix-PR 三段式 anti-silent governance workflow.
+
+**Sediment trigger**: 2026-05-25 iter 103 PR #479 merged a93f95c. LL-203 remediation 落地 + 抗 future drift canonical pattern sediment 为模板. 后续 5-29 Fri 19:00 SH 真实 first-execution observation + scheduler_task_log row verify = 完整 closure (LL-141 4-step ops post-merge).
