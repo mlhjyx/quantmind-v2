@@ -101,7 +101,7 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
 
 ## 常用命令 (Quick Reference)
 
-> 项目无 root `pyproject.toml` / `Makefile` / `README.md`. 依赖管理走 `.venv` + `.pth` (见 [docs/SETUP_DEV.md](docs/SETUP_DEV.md)). 下列是 Windows PowerShell 视角.
+> Root `pyproject.toml` 存在 (project metadata + ruff config + pytest `[tool.pytest.ini_options]` markers SSOT, iter 80 sediment); 无 `Makefile` / `README.md`. 主 dependency 装载走 `.venv` + `.pth` (见 [docs/SETUP_DEV.md](docs/SETUP_DEV.md)). 下列是 Windows PowerShell 视角.
 
 ### 后端 (Python)
 | 操作 | 命令 |
