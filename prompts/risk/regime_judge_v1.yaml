@@ -88,4 +88,7 @@ user_template: |
   **Bear Agent 3 条看空论据 (JSON)**:
   {bear_arguments}
 
+  **历史相似事件 (RAG top-5, 反编造; "数据不足: ..." 表示 retrieve 异常或 0 命中)**:
+  {rag_context}
+
   请严格按 system_prompt 中的 JSON schema 输出 (regime + confidence + reasoning, 反 markdown fence).
