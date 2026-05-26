@@ -98,6 +98,22 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 25,  # 25s 内未执行则过期 (30s 周期内必执行或丢)
         },
     },
+    # ── MVP 4.7 Chunk 1 (iter 174) — BGE-M3 embedding backfill every 6h ──
+    # Phase J §1.4 wire: idempotent backfill of risk_memory rows where embedding
+    # IS NULL via BGE-M3 EmbeddingService. Self-healing for any future NULL
+    # source (reflector transient failure / manual INSERT / 21 historical rows).
+    # batch_size=100 keeps GPU+DB time <5s per fire; idempotent re-run safe.
+    # Sibling pattern: outbox-publisher-tick (Beat dispatch + caller-owns-conn).
+    # X9 post-merge ops: Servy restart Celery + CeleryBeat after merge.
+    "embedding-backfill-every-6h": {
+        "task": "embedding.backfill",
+        "schedule": crontab(hour="*/6", minute=15),  # 00:15 / 06:15 / 12:15 / 18:15
+        "kwargs": {"batch_size": 100},
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h expiry — next fire will retry if missed
+        },
+    },
     # ── T日 17:40 数据质量报告 (DATA_SYSTEM_V1 P1-2) ──
     "daily-quality-report": {
         "task": "daily_pipeline.data_quality_report",
