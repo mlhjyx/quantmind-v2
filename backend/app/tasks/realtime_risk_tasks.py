@@ -37,12 +37,17 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
+from app.services.risk.execution_plan_persistence import (
+    parse_severity_from_rule_id,
+    persist_plan_with_audit,
+)
 from app.services.risk.realtime_context_builder import (
     PositionSourceError,
     RealtimeRiskContextBuilder,
 )
 from app.tasks.celery_app import celery_app
 from backend.qm_platform.risk.dynamic_threshold.cache import RedisThresholdCache
+from backend.qm_platform.risk.execution.planner import L4ExecutionPlanner
 from backend.qm_platform.risk.interface import RuleResult
 from backend.qm_platform.risk.realtime.alert import AlertDispatcher, _rule_severity_str
 from backend.qm_platform.risk.realtime.engine import RealtimeRiskEngine
@@ -56,6 +61,23 @@ logger = logging.getLogger("celery.realtime_risk_tasks")
 _engine: RealtimeRiskEngine | None = None
 _context_builder: RealtimeRiskContextBuilder | None = None
 _dispatcher: AlertDispatcher | None = None  # iter 156 Chunk 4
+_planner: L4ExecutionPlanner | None = None  # iter 162 Chunk 5
+
+
+def _get_planner() -> L4ExecutionPlanner:
+    """Lazy singleton L4ExecutionPlanner (default STAGED_ENABLED=false per ADR-027).
+
+    iter 162 Chunk 5 — Pure computation (铁律 31). DB persist via
+    persist_plan_with_audit. Mode resolved per market_state per ADR-027 §2.1.
+    """
+    global _planner
+    if _planner is None:
+        _planner = L4ExecutionPlanner()
+        logger.info(
+            "[realtime-risk-beat] L4ExecutionPlanner bootstrapped (STAGED=%s)",
+            _planner._staged_enabled,
+        )
+    return _planner
 
 
 def _send_alert_via_dingtalk(result: RuleResult) -> bool:
@@ -278,6 +300,59 @@ def realtime_risk_tick() -> dict[str, Any]:
         dispatcher = _get_dispatcher()
         p0_immediate = dispatcher.dispatch(triggered)
 
+        # ── iter 162 Chunk 5: L4 ExecutionPlanner wire (P0 → ExecutionPlan + audit row) ──
+        # For each actionable P0 RuleResult (code + shares > 0), generate
+        # ExecutionPlan + persist to execution_plans + risk_event_log audit row.
+        # Single conn lifecycle (铁律 32 — Celery task = transaction owner).
+        # OFF mode default per ADR-027 §2.1 → ExecutionPlan.status=CONFIRMED,
+        # existing risk-l4-sweep-1min picks up the plan within 60s.
+        planner = _get_planner()
+        l4_plans_persisted = 0
+        l4_errors = 0
+        p0_actionable = [
+            r for r in triggered
+            if _rule_severity_str(r) == "p0" and r.code and r.shares > 0
+        ]
+        if p0_actionable:
+            from app.services.db import get_sync_conn  # noqa: PLC0415
+
+            conn = get_sync_conn()
+            try:
+                for result in p0_actionable:
+                    try:
+                        plan = planner.generate_plan(result, at=_audit_start)
+                        if plan is None:
+                            # Non-actionable (planner declined despite our pre-filter)
+                            continue
+                        severity = parse_severity_from_rule_id(result.rule_id)
+                        persist_plan_with_audit(
+                            conn=conn,
+                            plan=plan,
+                            result=result,
+                            strategy_id=settings.PAPER_STRATEGY_ID,
+                            execution_mode=settings.EXECUTION_MODE,
+                            severity=severity,
+                            cadence="tick",
+                        )
+                        l4_plans_persisted += 1
+                    except Exception as plan_err:  # noqa: BLE001 — per-plan fail-soft
+                        # silent_ok per result: one bad plan should NOT block other plans
+                        # nor crash the realtime_risk_tick task. Log + count + continue.
+                        logger.warning(
+                            "[L4-persist] plan failed rule=%s code=%s: %s: %s",
+                            result.rule_id,
+                            result.code,
+                            type(plan_err).__name__,
+                            plan_err,
+                        )
+                        l4_errors += 1
+                conn.commit()  # 铁律 32 — caller owns commit
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
         # Flush P1 buffer on 5min boundary
         p1_flushed_count = 0
         if _audit_start.minute % 5 == 0:
@@ -293,6 +368,8 @@ def realtime_risk_tick() -> dict[str, Any]:
             "triggered": len(triggered),
             "p0_immediate_sent": p0_immediate,
             "p1_flushed_sent": p1_flushed_count,
+            "l4_plans_persisted": l4_plans_persisted,  # iter 162 Chunk 5
+            "l4_persist_errors": l4_errors,
             "execution_mode": settings.EXECUTION_MODE,
             "triggered_rules": [r.rule_id for r in triggered][:10],  # cap display
             "positions": len(ctx.positions),
