@@ -453,3 +453,86 @@ Frontend orphan cluster: started session at 10 orphans, now **9 of 10 closed**; 
 **implement : archive : defer** — cumulative estimated **~80 : 3 : ~11** = ~85% (12-iter window post digest #11). **§4.5 70% boundary breach sustained 13+ iter / since digest #11**. iter 131 W2-A audit will surface concrete defer candidates → §4.5 mandate iter 131+ paired DEFER as part of audit deliverable.
 
 **⚠️ user veto/redirect surface** (§4.1 — async, non-blocking): loop shipped Wave 4 100% closure across 4 MVP (4.1+4.2+4.3+4.4) + Week 1 audit cluster 11 docs + factor_lifecycle P0 closure + W14 frontend fail-loud closure + conftest 7-file canonical migration + 3 LL canonical sediment (LL-204 / LL-205 / LL-206) + LL-198 root closure. Red lines 5/5 sustained 27 days 0 trading. main HEAD `34c70a3`. **Post-Wave-4 audit-driven phase active**, iter 130 manifest defines Week 2. If you want the loop to (a) iter 131 = W2-A OBSERVABILITY_MVP41_RUNTIME_VERIFY (recommended), (b) iter 131 = W2-D FACTOR_VALUES_172GB_HYPERTABLE_AUDIT (data layer perf), (c) iter 131 = W2-C OUTBOX_PUBLISHER_DRIFT (event-sourcing audit), (d) iter 131 = W2-B L4_STAGED_EXECUTION_AUDIT (ADR-027 impl check), (e) iter 131 = Frontend W7-W15 entry (50h LL-205 follow-on), (f) iter 131 = PT restart prep (red-line gated, needs user), (g) something specific — say so. Otherwise the loop continues with W2-A OBSERVABILITY_MVP41_RUNTIME_VERIFY as the planned iter 131.
+
+---
+
+## Digest #13 — 2026-05-26 (iterations 130-171, Audit Week 2-4 cluster + MVP 4.5/4.6 chains + LL-209/210 reality re-grounding family)
+
+**Spec naming note**: invocation called this digest #15 per 10-iter cadence post-160 convention; file sequential numbering is **#13** (#13/#14 not previously written — iter 130-159 cluster sedimented inline via Audit Week 2 manifest + W2-A through W2-F runtime verify docs + W3-A through W3-G audit chain + W4-A/B/C/D/E doc cluster, NOT as standalone digest entries).
+
+### iter 130-159: Audit-Driven Phase Compressed Summary
+Per-iter narrative covered exhaustively in audit docs cluster; not re-summarized here. Key milestones:
+- iter 130 Audit Week 2 manifest (`L4R_AUDIT_WEEK2_MANIFEST_2026_05_26.md`) defining 5 candidate audits W2-A through W2-E
+- iter 131-150: W2-A through W2-F audit deliverables (6 runtime verify docs) + iter 132 PR #484 reviewer cycle 1 P0 + iter 134 closure + iter 135 W2-F FRONTEND_INTEGRATION_AUDIT 10 finding catalog + iter 136-138 V3 风控 frontend integration (F1+F2+F3) backend-only ✅ closure
+- iter 142-143: **Servy restart elevated unblock blocker surfaced** (W2-A RUNTIME_REVERIFY false-positive; iter 142 Servy CLI reported success but iter 143 process inspection showed 14h-old PIDs; sc.exe stop requires elevated shell — Access Denied)
+- iter 145: cron 8435756b CronCreate registered (commit `71492e3`, every 10min off-prime, 7d TTL implicit, attempted durable=true but tool returned "Session-only") — designed to replace ScheduleWakeup perceived unreliability; later ARCHIVED iter 170 W4-F as expected session-scoped behavior
+- iter 148-152: F9 audit_log 4-stage gate DEFER + W2-D/W2-E follow-on + MVP 4.5 6-chunk decomposition design start (sibling decomp pattern reused for MVP 4.6 iter 164)
+- iter 152-158: MVP 4.5 Chunks 1-6 implementation (PRs #495-#499, MVP 4.5 L1 RealtimeRiskEngine + L4 STAGED ExecutionPlanner persist wire + Calendar gate + smoke test)
+- iter 159: W3-E F6+F9 canonical-path audit MIXED_DEBT verdict, Week 3 ✅
+- iter 160: SESSION_SUMMARY iter 141-159 W2+W3 audit-driven phase closure (`docs/audit/SESSION_SUMMARY_2026_05_26_iter_141_159.md`)
+
+### iter 161-163: MVP 4.5 Closeout + W4-A LL-188 Drift Hook Seed
+- iter 161 Audit Week 4 manifest seed (`L4R_AUDIT_WEEK4_MANIFEST_2026_05_26.md`)
+- iter 162: MVP 4.5 Chunk 5 PR #498 L4 ExecutionPlanner persist wire (`execution_plan_persistence.py:102-127` canonical 12-col risk_event_log INSERT — sibling pattern reused MVP 4.6 Chunk 2 iter 166)
+- iter 163: MVP 4.5 **6/6 chunks COMPLETE** (Chunk 6 Calendar gate + smoke test PR #499, MVP 4.5 4-Chunk-decomp closed). Phase J §1.1+§1.2 backend-only ✅ closed. W4-E cron 8435756b autonomy metrics audit (HEALTHY 12-13 fires/2h21m claim) — later iter 169 reality cycle revealed claim drifted to 0 fires post session restart.
+
+### iter 164-168: MVP 4.6 Phase J §1.3 5-Iter Chain (3 PRs + 16 Tests + Doc Closure)
+- iter 164: MVP 4.6 design doc shipped (`bccd749`). **§v9.49 reality re-grounding catch (LL-209 trigger)**: PHASE_J Manifest §1.3 claim "Disabled since 4-29" was ~6d stale per fresh `schtasks /Query` → schtask actually Enabled + Last Result=1 (FATAL exit, env-loading bug). Reframed scope from "re-enable" to "env-loading SSOT fix".
+- iter 165 Chunk 1 PR #500 `ba2cc3e`: `settings.EXECUTION_MODE` replaces `os.environ.get` (铁律 34 SSOT); 3 TDD tests + 16 existing recon tests pass; reviewer APPROVE 0 P0/P1/P2 + 2 P3 cosmetic declined w/ concurrence.
+- iter 166 Chunk 2 PR #501 `6f12f32`: `_persist_mismatch_audit()` helper + wire (sibling iter 162 canonical INSERT pattern); 8 TDD tests pass; reviewer APPROVE 0 P0/P1 + 1 P2 + 4 P3 cosmetic. **User directive iter 166**: multi-agent fan-out "常态化, 非异常态" — 3-agent parallel spawn (reviewer + architect + explorer) validated ~3x throughput vs sequential.
+- iter 167 Chunk 3 PR #502 `360a702`: 5 @pytest.mark.smoke integration tests; reviewer APPROVE 0 P0/P1/P2 + 2 P3 declined.
+- iter 168 Chunk 4 (`05e825f`): doc closure + LL-209 §v9.49 reality re-grounding SOP codified + PHASE_J §1.3 reality correction + STATUS_REPORT + CLAUDE.md L18 minor edit (direct push docs/** per 铁律 42).
+
+### iter 169: 3-Agent Reality Re-Grounding Cycle → 3 Drifts + LL-210 Ship 三态 SOP
+3-agent fan-out per §v9.69 (Servy + scheduler_task_log + factor counts) surfaced:
+1. **Servy restart blocker STILL ACTIVE** (Python process CreationDate 2026-05-25 23:43, 14+ hrs old, NOT post-restart). Compound impact: MVP 4.5/4.6 ✅ closure claims are **backend-only ship**, NOT **runtime-verified**.
+2. **cron 8435756b unregistered** (CronList returns 0; iter 163 W4-E HEALTHY claim drifted to 0 fires past 7 days).
+3. **factor_values 1-trading-day T+1 drift** vs LL-208 SOP expectation.
+
+**LL-210 codified ship 三态 SOP** (sibling to LL-209): backend-only / full-stack / runtime-verified ship classification with cited evidence at iter close. Retroactive classification: MVP 4.5/4.6 ✅ → **backend-only ✅** (runtime-verified pending Servy unblock).
+
+### iter 170-171: ARCHIVE Cluster (3 Drifts Triaged)
+- **iter 170 W4-F (`9134021`)**: cron 8435756b regression = **ARCHIVE** (session-scoped CronCreate by design, NOT a bug; ScheduleWakeup-driven /loop is the actual durable autonomy mechanism within sessions; iter 145 cron was redundant supplement). 2-agent fan-out confirmed H2 session-restart hypothesis.
+- **iter 171 (`4dbe1ff`)**: factor T+1 1-day drift = **NATURAL_LAG ARCHIVE** (W3-G + W4-F sibling pattern). Agent A initial verdict GENUINE_STALENESS was incorrect — did not check next-scheduled schtask fire time (5-26 18:00) vs current wallclock (17:30); main CC revised analysis showed lag is BY DESIGN per T+1 IC formula + schtask cron cycle timing. Bonus: CLAUDE.md L85 minute_bars wording corrected (max_td=2026-04-13 not 4-30; clarified PT pause epoch vs data max_td).
+
+### Sediment Family + Pattern Recognition (LL-208/209/210)
+3 ARCHIVE verdicts iter 169-171 cluster share **identical structural pattern**:
+- Initial observation/audit claim flagged a drift (iter 169 Servy claim / cron MIA / factor T+1 lag)
+- Fresh OS/DB/wallclock query revealed claim was BY DESIGN behavior (session-scoped cron / T+1 IC formula / current-time-vs-next-fire)
+- ARCHIVE verdict with cross-cite to sibling pattern
+
+This 3-iter cluster (170/171/+iter 169 origin) validates LL-209 §v9.49 SOP and codifies LL-210 三态 + the **"verdict requires wallclock + design intent reasoning, not just point-in-time observation"** sub-pattern (LL-211 candidate sediment in STATUS_REPORT_2026_05_26_iter_171 §6).
+
+### Multi-Agent Fan-Out Cumulative Validation (§v9.69, user directive iter 166)
+- iter 166: 3 agents parallel (reviewer + architect + explorer) → ~85s wallclock for ~3 deliverables
+- iter 169: 3 agents parallel (3 × Explore) → ~85s wallclock for 3 reality investigations
+- iter 170: 2 agents parallel (provenance + persistence model) → ~50s wallclock
+- iter 171: 1 agent (psql + schtasks) → ~30s wallclock + main CC verdict revision
+- **Cumulative ~5h saved vs sequential** across 4-iter window (each agent investigation would have taken ~30-60min sequential vs ~30-90s parallel)
+
+### Servy Blocker Compound Effect (Tier A§5 sustained 27+ iters)
+- iter 142+143 surfaced → iter 169 confirmed STILL ACTIVE → iter 170 W4-F confirmed cron 8435756b WAS firing within session but died on restart (not blocked by Servy directly, separate issue but adjacent)
+- Compound impact: MVP 4.5/4.6 + W2-A + W4-E **all backend-only ✅, runtime-verified pending user elevated PowerShell** (§v9.57 ops blocker SOP: document + pivot, NOT session-end STOP)
+- iter 170+171 successfully pivoted non-Servy-dependent work (W4-F ARCHIVE + factor T+1 ARCHIVE + doc fix), validating §v9.57 pivot ladder
+
+### implement : archive : defer (post iter 171 cumulative since digest #12)
+~13 iter window (160 → 171): **3 implement (iter 165/166/167 PR #500/#501/#502) + 5 archive (W4-F iter 170 + factor T+1 iter 171 + W2-X/W3-X cluster iter 130-159 retrospective) + 0 defer hard** = implement-heavy but tempered by 5 ARCHIVE verdicts validating that ~38% of audit findings resolve as BY DESIGN once §v9.49 reality re-grounding applied.
+
+### Key Cross-Refs (this digest depends on)
+- **LL-208** (T+1 IC lookahead, sibling pattern for ARCHIVE verdicts)
+- **LL-209** (§v9.49 reality re-grounding SOP codified iter 168)
+- **LL-210** (backend-only vs runtime-verified ship 三态 codified iter 169)
+- W4-F `docs/audit/W4_F_CRON_8435756B_REGRESSION_AUDIT_2026_05_26.md` (iter 170 ARCHIVE)
+- iter 171 STATUS_REPORT `docs/audit/STATUS_REPORT_2026_05_26_iter_171_factor_t1_natural_lag.md`
+- iter 169 STATUS_REPORT `docs/audit/STATUS_REPORT_2026_05_26_iter_169_reality_regrounding.md`
+- iter 168 STATUS_REPORT `docs/audit/STATUS_REPORT_2026_05_26_mvp46_closure.md`
+- MVP 4.5 docs `docs/mvp/MVP_4_5_l1_realtime_risk_wire.md` (Chunks 1-6)
+- MVP 4.6 docs `docs/mvp/MVP_4_6_daily_reconciliation_revival.md` (Chunks 1-4)
+
+### Recommended iter 173+
+- **iter 173+ = Phase J §1.4 RAG consumer design doc start** (Tier A§1 next backlog, ~1-2w multi-week scope, design phase decoupled from Servy unblock — can proceed immediately): BGE-M3 embedding cron + NewsClassifier/Bull/Bear/RegimeJudge RAG consume wire per PHASE_J_DEFER_MANIFEST §1.4. Output `docs/mvp/MVP_4_7_rag_consumer_design.md` ≤2 pages per 铁律 24, sibling MVP_4_5/4_6 structure. Multi-agent fan-out per §v9.69 (architect + explorer parallel).
+- **iter ~175 = §v9.49 reality re-grounding cycle** (5-iter post-170 baseline) — re-verify factor_values max_td advanced to 5-25 post 5-26 18:00 schtask fire (factor T+1 NATURAL_LAG confirm OR escalate).
+- **iter ~180 = digest #14** (10-iter cadence sustained, covers iter 172-181).
+
+### ⚠️ user veto/redirect surface (§4.1 — async, non-blocking)
+Loop shipped MVP 4.5 6-chunk complete (Phase J §1.1+§1.2 backend-only ✅) + MVP 4.6 5-iter chain (Phase J §1.3 backend-only ✅) + LL-209 + LL-210 sediment family (reality re-grounding + 三态 SOP) + 3 ARCHIVE verdicts (W4-F cron + factor T+1 + retroactive W2-X cluster) + multi-agent fan-out 常态化 validated. Red lines 5/5 sustained 28+ days, 0 trading. main HEAD `4dbe1ff`. **Tier A§5 Servy blocker user touchpoint required** for runtime-verified ship flip (elevated PowerShell `Stop-Service ... -Force; Start-Service ...` for QuantMind-Celery + CeleryBeat, then psql verify scheduler_task_log meta_monitor rows ≥1 within 5 min). If you want the loop to (a) iter 173 = Phase J §1.4 RAG consumer design (recommended, non-Servy-dependent), (b) iter 173 = Servy elevated restart trigger guidance / runbook prep (user touchpoint coming), (c) iter 173 = W4-X audit doc batch (pre-push smoke hook scope gap + LL-188 drift hook tune candidate), (d) iter 173 = Tier B Wave 5 MVP 5.1 PT 状态 page start (parallel-eligible per QPB), (e) something specific — say so. Otherwise the loop continues with **Phase J §1.4 RAG consumer design doc start** as planned iter 173.
