@@ -67,5 +67,8 @@ user_template: |
   北向资金净流入 (亿 CNY): {north_flow_cny}
   50ETF 期权 IV (恐慌指数 proxy): {iv_50etf}
 
+  历史相似事件 (RAG top-5, 反编造; "数据不足: ..." 表示 retrieve 异常或 0 命中):
+  {rag_context}
+
   注: None 字段表示该 source feed timeout / 数据 unavailable.
   请严格按 system_prompt 中的 JSON schema 输出 (3 arguments, 反 markdown fence).

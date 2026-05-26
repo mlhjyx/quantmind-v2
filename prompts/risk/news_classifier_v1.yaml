@@ -92,4 +92,7 @@ user_template: |
   标的: {symbol_id}
   语言: {lang}
 
+  历史相似事件 (RAG top-5, 反编造; "数据不足: ..." 表示 retrieve 异常或 0 命中):
+  {rag_context}
+
   请严格按 system_prompt 中的 JSON schema 输出 (6 字段, 反 markdown fence).
