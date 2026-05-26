@@ -610,3 +610,87 @@ Loop shipped MVP 4.5 6-chunk complete (Phase J §1.1+§1.2 backend-only ✅) + M
 
 ### ⚠️ user veto/redirect surface (§4.1 — async, non-blocking)
 Loop shipped MVP 4.7 Phase J §1.4 complete (4 of 5 Phase J chunks closed: §1.1/§1.2/§1.3/§1.4 backend-only ✅; §1.5 NEXT) + LL-211 SOP codified + 2 validated diagnostic applications (iter 175 codification + iter 179 catches compute_daily_ic Layer 4 silent failure). Red lines 5/5 sustained 28+ days. main HEAD `eaf6a9f`. **Tier A§5 Servy blocker user touchpoint sustained** for runtime-verified ship flip across MVP 4.5/4.6/4.7. iter 181+ candidate options (a) through (e) above. Otherwise loop continues with **option (a) — apply Option A fix to compute_daily_ic.py** as planned iter 181 (sibling iter 165 pattern, narrow scope, high impact closing the iter 179 finding).
+
+---
+
+## Digest #15 — 2026-05-26 (iterations 180-189, MVP 4.8 Phase J §1.5 closure + 4 cross-domain MID backlog shipped + batched-iter efficiency validated)
+
+### Cluster coverage (10-iter window, iter 180-189)
+
+| iter | scope | artifact | LL-210 ship 三态 |
+|---|---|---|---|
+| 180 | digest #14 (iter 170-179 cluster) | `L4R_DIGEST_LOG.md` append (~140 LOC) | doc-sediment ✅ |
+| 181 | compute_daily_ic.py Layer 4 silent failure fix (iter 179 finding closure) | PR #508 Option A (json output + fail-loud per 铁律 33) — 7 new tests + DataPipeline.ingest result inspection | backend-only ✅ |
+| 182 | regime compose_query null-guard (iter 177 reviewer P2-1 follow-up) | PR #509 — 6 null-guard tests + fail-soft preserved for None indicators (avoid silent RAG degradation) | backend-only ✅ |
+| 183 | MVP 4.8 design doc Phase J §1.5 trade event consumer | `docs/mvp/MVP_4_8_streambus_trade_event_consumer.md` (≤2 pages, 5-chunk decomposition, multi-agent fan-out Explore + architect) + **§v9.49 reality catch** (manifest §1.5 "no event publish" REFUTED — outbox publisher already wires `qm:fill:executed` since MVP 3.4 batch 5 PR #130 2026-04-28; true gap was 0 consumer) | doc-sediment ✅ |
+| 184 | MVP 4.8 Chunks 1-4 batched per user efficiency directive | PR #510 (`b80f27f`) — `trade_event_consumer.py` (XREADGROUP helper + consumer group MKSTREAM) + `trade_event_risk_tasks.py` (10s Beat + audit envelope) + beat_schedule.py + celery_app.py registration; 9 TDD; reviewer cycle 1 P1 (audit envelope missing end_time/duration_sec) + P2-1 (unsafe r=None default) + P2-2 (hardcoded consumer_name) all fixed same-iter per §v9.39 via canonical `_write_scheduler_log_safe` adoption + caller-supplied redis + hostname+pid consumer identity | backend-only ✅ |
+| 185 | MVP 4.8 closure + Phase J 5-chain ALL backend-only ✅ | `STATUS_REPORT_2026_05_26_mvp48_closure.md` (8 sections, ~150 LOC) + PHASE_J §1.5 closure header + CLAUDE.md L18 sync | doc-sediment ✅ |
+| 186 | Servy elevated restart Phase J 4-MVP unblock runbook | `09_servy_elevated_restart_phase_j_unblock.md` (~280 LOC) — 1 user touchpoint flips 4 MVP runtime-verified ship gates; 4 MVP-specific verification queries (scheduler_task_log + redis XINFO GROUPS); 00_INDEX.md row 09 added | doc-sediment ✅ |
+| 187 | W4-A LL-188 hook test_baseline drift fix (8+ month stale) | `ba477e6` — config/hooks/pre-commit line 105 refresh `2864/24` → `6714/2` per CLAUDE.md iter 80 fresh verify 2026-05-25 SSOT | config ✅ verified live dry-run |
+| 188 | §v9.49 reality cycle 5-iter post-180 | `STATUS_REPORT_2026_05_26_iter_188_reality_cycle.md` — 0 new drift; 1 confirmed expected blocker (Servy services running since 5-25 23:43 ~21h uptime BUT stale code — confirms Tier A§5 sustained); 2 benign findings (Python venv shim duplicates + loop spec sibling-faithful) | doc-sediment ✅ |
+| 189 | iter 167 pre-push smoke scope gap fix (cross-domain MID) | `d54966d` — config/hooks/pre-push line 85 broaden `backend/tests/smoke/` → `backend/tests/`; 30 smoke-marked tests previously ungated (test_*_smoke.py at backend/tests/ root); live verify 91 PASS / 0 fail | config ✅ verified live execution |
+
+### Highlights (high-impact cumulative)
+
+**MVP 4.8 Phase J §1.5 ✅ COMPLETE 3-iter chain** (iter 183-185):
+- 5 chunks shipped via **batched-iter pattern** (3 iter vs 6 iter sibling MVP 4.5/4.6/4.7 chunk-per-iter)
+- 4 chunks batched iter 184 + closure iter 185 + design iter 183
+- 9 new tests + reviewer cycle 1 P1+P2 same-iter fixes per §v9.39
+- canonical sibling-faithful: `_write_scheduler_log_safe` LL-204 + multi-worker consumer_name (socket.hostname+os.pid) + Outbox publisher reuse (MVP 3.4 batch 5)
+- runtime-verified pending Servy unblock per LL-210
+
+**Phase J 5-chain 100% backend-only ✅** (cumulative MVP 4.5+4.6+4.7+4.8):
+- §1.1 L1 RealtimeRiskEngine — MVP 4.5 iter 154-163 (PRs #495-#499)
+- §1.2 L4 STAGED planner — MVP 4.5 (same chain)
+- §1.3 daily_reconciliation — MVP 4.6 iter 164-168 (PRs #500-#502)
+- §1.4 RAG consumer + BGE-M3 — MVP 4.7 iter 173-178 (PRs #503-#507)
+- §1.5 trade event StreamBus consumer — MVP 4.8 iter 183-185 (PR #510)
+- Tier A§1 Phase J backlog 100% backend-only ✅ closed
+- Single user touchpoint (Servy elevated restart per iter 186 runbook) flips ALL 4 to runtime-verified ✅
+
+**4 cross-domain MID backlog items shipped** (4 of 7, ~57% closure):
+- iter 181: compute_daily_ic.py Layer 4 silent failure (iter 179 LL-211 diagnostic finding)
+- iter 182: regime compose_query null-guard (iter 177 reviewer P2-1 follow-up)
+- iter 187: W4-A LL-188 hook test_baseline drift (8+ month stale Session 9 baseline)
+- iter 189: iter 167 pre-push smoke scope gap (30 additional smoke tests now gated)
+- Remaining: F9 DEFER + Plan 2.5 SimBroker + Calendar singleton conn bug
+
+**§v9.49 reality cycle (iter 183 + iter 188 dual application)**:
+- iter 183 design-time catch (Catch #4 cumulative): manifest §1.5 "no event publish" STALE — outbox publisher already wires `qm:fill:executed`; sibling iter 164/175/179 catches
+- iter 188 5-iter post-180 cadence: 0 new drift + 1 confirmed expected blocker (Servy stale code) + 2 benign findings
+- Cumulative §v9.49 catches: 5 cases (iter 164/175/179/183/188) validating cycle SOP
+
+**Batched-iter efficiency directive validated** (user iter 184):
+- iter 184 batched MVP 4.8 Chunks 1-4 in 1 iter (vs 4 iter chunk-per-iter)
+- ~80% overhead reduction (15min → 3min wallclock for MVP 4.8 vs MVP 4.7)
+- Sustained iter 185-189 (5 iter shipped without ScheduleWakeup gaps, all ≤30-line commit messages)
+- Multi-agent fan-out preserved for design phase (iter 183), batching applied to implementation phase
+
+**Tier A§5 Servy blocker** sustained 28+ iter (now ~21h services uptime confirmed iter 188):
+- iter 186 runbook (`09_servy_elevated_restart_phase_j_unblock.md`) ready for user touchpoint
+- Handles "running but stale" case (Step 1 stops services first)
+- 4 MVP runtime-verified verification queries built-in (scheduler_task_log + redis XINFO GROUPS)
+
+### Implement : archive : defer (post iter 189 cumulative since digest #14)
+~10-iter window (180-189): **5 implement** (PR #508/#509/#510 + 2 hook fixes ba477e6/d54966d) + **0 archive** + **0 defer hard** + **3 closure** (PR #507 MVP 4.7 iter 178 → PR #510 MVP 4.8 iter 184 → Phase J 5-chain backend-only ✅ iter 185) + **2 diagnostic** (iter 183 §v9.49 reality catch + iter 188 reality cycle) = **70% IMPLEMENT-heavy** reflecting Phase J §1.5 closure + cross-domain MID backlog burn-down. Sharp pivot from digest #14 (40% implement-light) — backlog closure phase post-Phase-J chain completion.
+
+### Key Cross-Refs (this digest depends on)
+- **LL-209** (§v9.49 reality re-grounding SOP, validated 5× cumulative)
+- **LL-210** (ship 三态 backend-only vs runtime-verified)
+- **LL-211** (4-layer SOP, iter 179 finding closure via iter 181)
+- **LL-204** (canonical `_write_scheduler_log_safe` adopted iter 184)
+- **LL-206** (module-local copy promote at 5+ callers, sustained 2 callers iter 184)
+- iter 185 STATUS_REPORT `docs/audit/STATUS_REPORT_2026_05_26_mvp48_closure.md`
+- iter 186 runbook `docs/runbook/cc_automation/09_servy_elevated_restart_phase_j_unblock.md`
+- iter 188 STATUS_REPORT `docs/audit/STATUS_REPORT_2026_05_26_iter_188_reality_cycle.md`
+- MVP 4.8 design `docs/mvp/MVP_4_8_streambus_trade_event_consumer.md`
+- PHASE_J defer manifest `docs/audit/PHASE_J_DEFER_MANIFEST_2026_05_20.md` §1.5 closure header
+
+### Recommended iter 190+
+- **iter 191+ = remaining cross-domain MID backlog** (3 items): Plan 2.5 SimBroker design / Calendar singleton conn bug investigation / F9 DEFER triage
+- **iter ~195 = §v9.49 reality cycle** (5-iter post-190 cadence) — re-verify §-1 /goal v9.7 sustained, especially Tier A§5 Servy state post any user touchpoint
+- **iter ~200 = digest #16** (10-iter cadence sustained, covers iter 190-200)
+- **Tier B Wave 5 MVP 5.1 PT 状态 page** (parallel-eligible per QPB) candidate for user-touchpoint phase post-Servy unblock (Wave 5 START SATISFIED 33+ days)
+
+### ⚠️ user veto/redirect surface (§4.1 — async, non-blocking)
+Loop shipped MVP 4.8 5-chunk batched per user iter 184 efficiency directive (Phase J §1.5 backend-only ✅, last chain closed) + 4 cross-domain MID backlog items (iter 181/182/187/189) + LL-209 §v9.49 reality cycle 5th validation (iter 183 design + iter 188 cadence) + Servy elevated restart runbook ready for user touchpoint. **Phase J 5-chain 100% backend-only ✅ sustained**. **Cross-domain MID 4/7 shipped (~57%)**. Red lines 5/5 sustained 28+ days, 0 trading. main HEAD `d54966d`. **Tier A§5 Servy blocker user touchpoint required** for runtime-verified ship flip across all 4 Phase J MVPs (`09_servy_elevated_restart_phase_j_unblock.md` ready). If you want the loop to (a) iter 191 = remaining cross-domain MID backlog (Plan 2.5 SimBroker / Calendar conn bug / F9 triage), (b) iter 191 = Tier B Wave 5 MVP 5.1 PT 状态 page design start (parallel-eligible, frontend scope), (c) iter 191 = Servy elevated restart trigger / runbook walkthrough (user touchpoint coming), (d) something specific — say so. Otherwise the loop continues with **remaining cross-domain MID backlog burn-down** as planned iter 191+.
