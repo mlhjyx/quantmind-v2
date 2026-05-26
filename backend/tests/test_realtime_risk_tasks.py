@@ -97,9 +97,10 @@ class TestEngineLazySingleton:
         # Reset singleton for clean test
         task_mod._engine = None
 
-        with patch(
-            "app.tasks.realtime_risk_tasks.register_all_realtime_rules"
-        ) as mock_register:
+        with (
+            patch("app.tasks.realtime_risk_tasks.register_all_realtime_rules") as mock_register,
+            patch("app.tasks.realtime_risk_tasks.RedisThresholdCache") as mock_cache_cls,
+        ):
             engine_a = task_mod._get_engine()
             engine_b = task_mod._get_engine()
 
@@ -107,6 +108,8 @@ class TestEngineLazySingleton:
         assert engine_a is engine_b
         # register_all_realtime_rules called once
         mock_register.assert_called_once_with(engine_a)
+        # iter 155 Chunk 3: RedisThresholdCache constructed + wired
+        mock_cache_cls.assert_called_once()
 
         # Cleanup
         task_mod._engine = None
