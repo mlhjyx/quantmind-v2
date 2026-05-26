@@ -7572,3 +7572,41 @@ Script's exit=1 root cause: `os.environ.get("EXECUTION_MODE")` reads Windows pro
 **Cross-ref**: LL-194 (anti-assumption SOP family), LL-207 (Explore enumeration miss), LL-208 (T+1 IC lookahead), 铁律 25 (改什么读什么 → 改什么状态读什么 OS/DB), 铁律 41 (timezone — schtask Next Run shown in local time, manifest claims undated), `PHASE_J_DEFER_MANIFEST_2026_05_20.md` §1.3 (corrected this iter 168), `CLAUDE.md` L18 (corrected this iter 168).
 
 **Sediment trigger**: 2026-05-26 iter 168 MVP 4.6 closure. The 5-iter chain (164-168) demonstrates one fresh OS query (`schtasks /Query`) at iter start prevented an estimated ~2 days of misdirected implementation (re-enabling schtask already enabled, never investigating exit=1 root cause). §v9.49 reality re-grounding pays off in proportion to: (claim age × claim downstream blast radius). Future MVPs touching schtask / Servy / production state SHOULD invoke this SOP before chunk decomposition.
+
+---
+
+## LL-210 — Backend-only ship vs runtime-verified ship distinction: code merge ≠ production deployed when worker holds stale bytecode (2026-05-26 iter 169 reality re-grounding sibling to LL-209)
+
+**事件**: iter 169 §v9.49 reality re-grounding cycle (LL-209 SOP applied at 5-iter cadence post-164 baseline) surfaced that MVP 4.5 Phase J §1.1+§1.2 (claimed ✅ closed iter 163) AND MVP 4.6 Phase J §1.3 (claimed ✅ closed iter 164-168) are both **backend-only ship**, NOT **runtime-verified ship**:
+
+- All 4 Servy-managed Python processes (FastAPI / Celery / CeleryBeat / QMTData) have CreationDate `2026-05-25 23:43` per `Get-CimInstance Win32_Process` — **14+ hours old, NOT post-restart** as of iter 169
+- Log mtimes (logs/celery-stdout.log, logs/fastapi-stdout.log) all 2026-05-25 23:43 sustained
+- Result: Celery worker holds pre-iter-132 bytecode; the iter 154/156/162/163 MVP 4.5 Beat task code (`realtime_risk_tick`, `_persist_plan_with_audit`, etc.) and iter 166 MVP 4.6 code (`_persist_mismatch_audit`) are merged on `main` but NOT loaded into the running Celery worker process
+- Independent corroboration via Agent B psql query: 0 `task_name LIKE '%realtime%'` rows in scheduler_task_log past 7 days (target rate per W4-E iter 163 claim: 5.6 fires/hour during trading hours)
+
+iter 142 Servy `stop`/`restart` CLI reported success but iter 143 verification proved **false-positive** (`sc.exe stop` requires elevated shell, returned "Access is denied"). Non-elevated CC session cannot force Celery worker process termination.
+
+**根因**: §v9.44 ship 三态 (backend-only / full-stack / runtime-verified) was correctly defined in v9.7 spec but iter-by-iter closure declarations defaulted to ✅ without explicit ship-tier annotation. The implicit assumption "code merge = deployed" held for stateless code paths but fails when the runtime is a long-running Celery worker with cached bytecode. ~3 iters (163, 165, 168) of closure claims used ✅ without `runtime_verified=false` marker despite Servy blocker sustained since iter 142-143.
+
+**改进措施**: Honest ship 三态 marker SOP — at iter close (per §v9.44 + §v9.70 mental hook), explicitly annotate one of three states with cited evidence:
+
+1. **backend-only ✅**: code merged to main, unit/smoke tests pass via `pytest` — DEFAULT for code-only iters
+2. **full-stack ✅**: backend-only ✅ + frontend integration verified (vitest + manual UI check OR explicitly N/A for backend-only scope)
+3. **runtime-verified ✅**: backend-only ✅ + service restart confirmed via process inspection (`Get-CimInstance Win32_Process` CreationDate > last code commit time) + first-fire log evidence in `scheduler_task_log` / Celery worker stdout
+
+**Cross-cite rule**: Any iter that claims `runtime-verified` ship MUST cite process CreationDate + first-fire log line. Bare ✅ without runtime-verified evidence defaults to **backend-only** classification, NOT full closure. Specifically:
+- New Beat tasks / cron / Celery worker code: requires `Stop-Service ... -Force` + `Start-Service` from elevated shell + 5-min post-restart psql verify
+- New schtask command: requires `schtasks /Query /TN ... /V /FO LIST` LastResult check on next scheduled fire
+- New API endpoint: requires FastAPI restart + curl smoke verify
+- Pure script CLI / one-shot tooling: backend-only is sufficient (no long-running process state)
+
+**执行状态**: ✅ codified iter 169 STATUS_REPORT (docs/audit/STATUS_REPORT_2026_05_26_iter_169_reality_regrounding.md §2). Retroactive classification revisions:
+- iter 163 MVP 4.5 Phase J §1.1+§1.2: ✅ → **backend-only ✅** (runtime-verified pending Servy restart unblock)
+- iter 166-168 MVP 4.6 Phase J §1.3: ✅ → **backend-only ✅** (paper-mode dormancy preserved; runtime-verified pending Servy restart unblock + EXECUTION_MODE=live)
+- Existing W4-E iter 163 "HEALTHY" claim → REVISED to "POINT-IN-TIME observation pre-Servy-blocker compound effect; iter 169 regression to 0 fires confirms claim drifted"
+
+**Heuristic backref**: #1 Anti-Assumption SOP family (LL-194/207/208/209). LL-209 sibling pattern (manifest reality drift caught pre-implementation) directly extends to LL-210 (code merge claim caught post-implementation). Both surface same anti-pattern: "documented state" diverging from "live state" because docs lack auto-update mechanism against live runtime.
+
+**Cross-ref**: LL-209 (§v9.49 reality re-grounding SOP that triggered this finding), LL-194 (anti-assumption — extended here to claim verification), LL-098 (X10 forward-progress offer ban — runtime-verified ✅ ≠ chunk-done ≠ multi-MVP closure), 铁律 25 (改什么读什么 → 改什么状态读什么), 铁律 10b (smoke test生产入口真启动验证 — sibling of runtime-verified mandate), §v9.44 ship 三态 (codified marker spec), §v9.49 reality re-grounding cycle (operational SOP), §v9.57 ops blocker SOP (Servy restart is ops blocker, document + pivot).
+
+**Sediment trigger**: 2026-05-26 iter 169 reality re-grounding cycle. 3-agent parallel fan-out caught 3 drifts in ~85s wallclock; this LL-210 codifies the most impactful drift (ship 三态 honest classification). The Servy blocker has been sustained 27+ iters; without §v9.49 SOP it would have continued masking deploy state behind ✅ closure claims indefinitely. Future audit-driven phase iters MUST apply 三态 marker at iter close (§v9.70 mental hook step ~5.5 new addition candidate). Cluster impact: MVP 4.5 / 4.6 / W4-A / W4-E / W2-A all need retroactive ship-tier annotation in next sediment doc pass.
