@@ -389,6 +389,84 @@ async def get_factors_stats(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/factors/ic-monitoring  (iter 202 MVP 5.2 C1)
+# 必须在 /{name} 之前注册，避免路由冲突
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ic-monitoring")
+async def get_ic_monitoring(
+    pool: str | None = Query(default=None, description="可选 pool 过滤: CORE / CANDIDATE / etc"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """iter 202 MVP 5.2 Chunk 1 — Pool-level IC monitoring data for IcMonitoring page.
+
+    Single LATERAL JOIN query: factor_registry × factor_ic_history (last row per factor).
+    O(1) SQL not N+1; index-optimized via factor_ic_history PK on (factor_name, trade_date).
+
+    Returns:
+        {
+            "decay_heatmap": [{name, status, pool, ic_decay_ratio, ic_ma20, ic_ma60, decay_level}, ...],
+            "core_factors": [...4 items where pool="CORE"]
+        }
+
+    Architecture per docs/mvp/MVP_5_2_ic_monitoring_decay.md §2.1.
+    """
+    where_clause = "WHERE r.status IN ('active', 'warning', 'critical', 'candidate')"
+    params: dict[str, Any] = {}
+    if pool:
+        where_clause += " AND r.pool = :pool"
+        params["pool"] = pool
+
+    sql = f"""
+        SELECT r.name, r.status, r.pool, r.ic_decay_ratio, r.category,
+               h.ic_ma20, h.ic_ma60, h.decay_level, h.trade_date::text AS latest_trade_date
+        FROM factor_registry r
+        LEFT JOIN LATERAL (
+            SELECT ic_ma20, ic_ma60, decay_level, trade_date
+            FROM factor_ic_history
+            WHERE factor_name = r.name
+            ORDER BY trade_date DESC LIMIT 1
+        ) h ON true
+        {where_clause}
+        ORDER BY r.pool NULLS LAST, r.name
+    """  # noqa: S608 — where_clause from whitelist (constant + named param)
+
+    try:
+        result = await session.execute(text(sql), params)
+        rows = result.fetchall()
+    except Exception:
+        logger.exception("ic-monitoring query failed")
+        raise HTTPException(
+            status_code=500, detail="ic-monitoring query failed"
+        ) from None
+
+    decay_heatmap = [
+        {
+            "name": row.name,
+            "status": row.status,
+            "pool": row.pool,
+            "category": row.category,
+            "ic_decay_ratio": float(row.ic_decay_ratio) if row.ic_decay_ratio is not None else None,
+            "ic_ma20": float(row.ic_ma20) if row.ic_ma20 is not None else None,
+            "ic_ma60": float(row.ic_ma60) if row.ic_ma60 is not None else None,
+            "decay_level": row.decay_level,
+            "latest_trade_date": row.latest_trade_date,
+        }
+        for row in rows
+    ]
+
+    # S4 CORE quick-access (subset, sibling MVP 5.2 §2.2 component map)
+    core_factors = [f for f in decay_heatmap if f["pool"] == "CORE"]
+
+    return {
+        "decay_heatmap": decay_heatmap,
+        "core_factors": core_factors,
+        "total_count": len(decay_heatmap),
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /api/factors  — 因子库列表
 # ---------------------------------------------------------------------------
 
