@@ -15,9 +15,13 @@
 
 ## §1 P0 Multi-Week (Phase J Research / Phase B-2 Implementation)
 
-### §1.1 流 4 风控 Chain Wire ⭐⭐⭐ (PT 重启 5-27 前 prerequisite)
+### §1.1 流 4 风控 Chain Wire ✅ CLOSED iter 154-163 (MVP 4.5)
 
-**Source**: Wave 1 Agent D 流 4 闭环 audit, alert.py:22-23 自述 "**AlertDispatcher 0 production caller 当前 — tests-only usage**"
+**Status iter 163 (2026-05-25)**: ✅ backend-only ✅ closed. Runtime-verified pending Servy unblock.
+
+**Closure**: MVP 4.5 6-chunk chain (PRs #495/#496/#497/#498/#499) wired L1 RealtimeRiskEngine + Beat task shell + AlertDispatcher production caller via realtime_risk_tasks.py 1min Beat (9-14h trading-hours). All 4 PHASE_J chains 100% backend-only ✅ shipped post MVP 4.8 closure iter 185.
+
+**Source**: Wave 1 Agent D 流 4 闭环 audit, alert.py:22-23 自述 "**AlertDispatcher 0 production caller 当前 — tests-only usage**" (pre-iter-154 state)
 
 **Real issue**:
 - `RealtimeRiskEngine` (`backend/qm_platform/risk/realtime/engine.py`) 单元完整, register_rule + on_tick + on_5min_beat 全实现
@@ -45,11 +49,15 @@
 
 ---
 
-### §1.2 L4 STAGED Plan 创建源 Wire (跟 §1.1 同 chain 上游)
+### §1.2 L4 STAGED Plan 创建源 Wire ✅ CLOSED iter 162 (MVP 4.5 Chunk 5)
 
-**Source**: Wave 1 Agent D 流 4
+**Status iter 162 (2026-05-25)**: ✅ backend-only ✅ closed. Runtime-verified pending Servy unblock.
 
-**Real issue**:
+**Closure**: MVP 4.5 Chunk 5 PR #498 wired L4ExecutionPlanner.generate_plan caller via realtime_risk_tasks L1 → L4 STAGED dispatch chain. STAGED plan now created from real risk events. l4_sweep_tasks consumption path validated.
+
+**Source**: Wave 1 Agent D 流 4 (pre-iter-162 state)
+
+**Original issue**:
 - `L4ExecutionPlanner.generate_plan` (`backend/qm_platform/risk/execution/planner.py:65`) 单元完整, PENDING_CONFIRM ExecutionPlan 创建路径 OK
 - `l4_sweep_tasks.py:74` PENDING_CONFIRM → TIMEOUT_EXECUTED → broker.sell wire 完整 (8c-followup, broker_qmt asyncio bootstrap fix LL-182 sustained)
 - **但**: planner.generate_plan 0 production caller — STAGED plan 实际 0 创建 → l4_sweep 空跑
@@ -92,9 +100,17 @@
 
 ---
 
-### §1.4 流 6 RAG Consumer Wire (TB-4d / TB-5)
+### §1.4 流 6 RAG Consumer Wire ✅ CLOSED iter 173-178 (MVP 4.7)
 
-**Source**: Wave 1 Agent D 流 6
+**Status iter 178 (2026-05-26)**: ✅ backend-only ✅ closed. Runtime-verified pending Servy unblock.
+
+**Closure**: MVP 4.7 5-chunk chain (PRs #503/#504/#505/#506/#507) shipped:
+- C1 BGE-M3 embedding backfill Beat (every-6h cron via Celery)
+- C2 shared `rag_context_builder` service (sibling pattern)
+- C3+C4 NewsClassifier + Bull/Bear/RegimeJudge RAG consume wire (4 agents collapsed via 1× retrieve shared)
+- C5 closure + 4 production yamls `{rag_context}` placeholder + 3 smoke tests on real yamls
+
+**Source**: Wave 1 Agent D 流 6 (pre-iter-173 state)
 
 **Real issue**:
 - `risk_reflector_agent.py` Sun 19:00 + 月 1 日 09:00 reflection sediment 进 risk_memory ✅
