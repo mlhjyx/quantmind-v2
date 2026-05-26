@@ -7499,3 +7499,42 @@ W2-F FRONTEND_INTEGRATION_AUDIT (iter 135) used Explore subagent to enumerate 32
 **Cross-ref**: LL-194 (verify retrospective bug claim pre-fix — Explore enumeration verdict is a retrospective claim type), W2-F audit doc 3 ARCHIVE discoveries (F3 iter 138 / F4 iter 142 / F10 iter 143), 铁律 25 (代码变更前必读当前代码验证 — Explore audit verdict ≠ verified code state, secondary grep required pre-claim).
 
 **Sediment trigger**: 2026-05-26 Audit Week 2 W2-F campaign closure (iter 135-148, 10/10 findings closed). 30% audit false-DARK rate is **single largest governance signal in Week 2** — applies retroactively to validate Week 3 W3-B (qm_platform migration audit) + W3-D (V3 §S6 outbox DDL) which surfaced similar PATH_DRIFT / DDL_GAP claims — those claims need SOP-refresh re-verification before downstream design or impl iters.
+
+---
+
+## LL-208 — Factor pipeline audits MUST account for T+1 IC lookahead = expected 1-trading-day lag (klines_daily max_td - 1 = factor_values max_td) (2026-05-26 W3-G iter 152-154 audit chain retrospective)
+
+**Pattern essence**:
+
+W3-G FACTOR_PIPELINE_STALENESS_AUDIT consumed **3-iter chain** to triage a P1 alarm down to ARCHIVE (false alarm):
+
+- **iter 152 (initial verdict P1)**: factor_values + factor_ic_history max_td=2026-05-22, observed "4 calendar days stale vs today 5-26". Audit produced 4 recommendations (1 implement + 3 defer). Severity P1.
+- **iter 153 (revised P2)**: schtasks /Query confirmed QuantMind_DailyIC ran Mon 5-25 18:00 with exit code 0 success. Blamed upstream Tushare ingest gap as new hypothesis. Severity downgrade P1→P2.
+- **iter 154 (final ARCHIVE)**: psql `klines_daily` + `daily_basic` max_td=2026-05-25 both have 5-25 data. Upstream healthy. True root cause = T+1 forward return lookahead inherent in IC formula: IC for trade_date=t requires return_{t+1}. Therefore factor_values max_td = (latest klines_daily max_td) - 1 trading day BY DESIGN.
+
+**Inherent IC computation T+1 lookahead**:
+
+```
+factor_values.trade_date = signal_at_t
+IC = corr(signal_at_t, return_{t+1})
+∴ to compute IC for trade_date=t, need return_{t+1} = close_{t+1}/close_t - 1
+∴ max factor_values trade_date = latest available close - 1 trading day
+∴ klines_daily max_td=2026-05-25 (Mon) → factor_values max_td=2026-05-22 (Fri) is EXPECTED, not stale
+```
+
+Weekend gap natural: 5-23 Sat + 5-24 Sun = no market data. Next IC computation tonight 5-26 18:00 will INSERT 5-25 Mon row to factor_values once today's Tue close return is available.
+
+**SOP for future factor pipeline audits** (mandatory checks BEFORE declaring "stale"):
+
+1. **Compute expected max_td**: query `klines_daily` max trade_date → subtract 1 trading day → that's the expected factor_values max_td.
+2. **Calendar-aware subtraction**: if klines max_td is Friday, subtract to Thursday (skip weekend). If Monday, subtract to previous Friday. Use trading_calendar SSOT for accurate offset.
+3. **Verify gap = expected lag**: if observed factor_values max_td matches expected (klines max_td - 1 trading day), system is HEALTHY — do NOT raise P1 alarm.
+4. **Cross-check schtask runtime**: only after expected lag check fails should schtasks /Query be invoked to investigate.
+
+**Audit chain ratio**: 0 broker / 0 .env / 0 yaml / 0 DDL / 0 production code consumed across 3 iters. Pure read-only triage demonstrating L4R §4.2 reality re-grounding pattern (W2-F sibling: 30% false-DARK; W3-G sibling: 100% false-P1 → ARCHIVE).
+
+**Heuristic backref**: #1 Anti-Assumption SOP (LL-194 + LL-207 — "verify retrospective claim pre-commit" applies to AUDIT VERDICTS too, not just code claims) / #14 Documentation Lying (initial audit doc said "stale 4 days" — was self-published claim that didn't account for T+1 lookahead inherent in design).
+
+**Cross-ref**: LL-194 (audit verdict = retrospective claim type), LL-207 (Audit Explore enumeration systematic miss — sibling audit anti-pattern), W3-G iter 152-153-154 chain (3-iter triage), 铁律 25 (代码变更前必读 — applied to AUDIT side: verdict ≠ verified semantic), 铁律 41 (timezone + trading calendar — applies to "trade_date - 1" subtraction).
+
+**Sediment trigger**: 2026-05-26 iter 152→153→154 audit chain closure. Single 3-iter audit chain consumed ~150 LOC of audit docs + 3 commits to converge from P1 false alarm → ARCHIVE verdict. Future factor pipeline audits MUST run SOP step 1+2 (compute expected max_td via klines - 1 trading day) BEFORE declaring stale. This 3-iter pattern is **structurally same as LL-207 W2-F 30% false-DARK** — initial Explore enumeration / initial audit verdict has systematic blind spot for inherent design semantic.
