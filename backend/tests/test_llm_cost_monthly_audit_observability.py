@@ -15,7 +15,6 @@ import pytest
 # Module under test
 from scripts import llm_cost_monthly_audit as module
 
-
 # ────────────────────────────────────────────────────────────────────
 # SDK dispatch path (settings.OBSERVABILITY_USE_PLATFORM_SDK = True)
 # ────────────────────────────────────────────────────────────────────

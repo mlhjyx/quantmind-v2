@@ -17,13 +17,11 @@ mirrors `_format_indicators_for_prompt` agents.py:170-184 null-guard pattern
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from backend.qm_platform.risk.regime.interface import MarketIndicators
 
-SHANGHAI_TZ = timezone.utc  # UTC stand-in for unit test scope
+SHANGHAI_TZ = UTC  # UTC stand-in for unit test scope
 
 
 def _make_indicators(

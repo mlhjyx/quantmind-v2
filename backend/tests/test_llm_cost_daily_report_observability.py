@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 from scripts import llm_cost_daily_report as module
 
-
 # ────────────────────────────────────────────────────────────────────
 # SDK dispatch path (settings.OBSERVABILITY_USE_PLATFORM_SDK = True)
 # ────────────────────────────────────────────────────────────────────
