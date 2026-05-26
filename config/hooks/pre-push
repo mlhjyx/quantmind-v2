@@ -82,7 +82,12 @@ fi
 echo "[pre-push] 铁律 10b: pytest -m 'smoke and not live_tushare' (生产入口真启动验证, 跳网络) — $PY"
 # 跳 live_tushare: 真调 Tushare API 可能限流 / 网络抖动, 不应阻塞 push
 # 手动完整 smoke (含 Tushare live): `pytest -m smoke`
-if ! "$PY" -m pytest backend/tests/smoke/ -m "smoke and not live_tushare" --tb=line -q --timeout=60; then
+# iter 189 (2026-05-26): broaden scope `backend/tests/smoke/` → `backend/tests/` per iter 167
+# scope gap finding. Pre-fix: 61 tests gated. Post-fix: 91 tests gated (+30 smoke-marked
+# tests outside backend/tests/smoke/, e.g. test_rag_consumer_smoke.py /
+# test_daily_reconciliation_smoke.py / test_realtime_risk_beat_smoke.py / etc).
+# pytest -m filter still gates exact smoke selection; only collection root broadens.
+if ! "$PY" -m pytest backend/tests/ -m "smoke and not live_tushare" --tb=line -q --timeout=60; then
     echo ""
     echo "[pre-push] smoke failed — push 被阻断."
     echo "[pre-push] 铁律 10b 要求 push 前 smoke 全绿. 修复后重 push."
