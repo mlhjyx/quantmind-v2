@@ -11,7 +11,6 @@
 
 import functools
 import json
-import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -81,7 +80,12 @@ def query_qmt_positions() -> dict[str, int] | None:
         # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
         # Pure FATAL retained only on EXECUTION_MODE undefined (bad config).
         # PR #384 refinement: normalize case + strip whitespace ('Paper'/'paper ').
-        expected_mode = (os.environ.get("EXECUTION_MODE") or "").strip().lower()
+        # iter 165 MVP 4.6 Chunk 1 (2026-05-26): SSOT via settings.EXECUTION_MODE
+        # (pydantic-settings auto-loads backend/.env regardless of process env). Pre-fix:
+        # os.environ.get returned "" when schtask launched python.exe without sourcing
+        # .env → fell through paper guard → FATAL exit code 1 (observed 2026-05-26 15:40
+        # schtask Last Result). Post-fix: settings reads .env canonically, schtask exit 0.
+        expected_mode = (settings.EXECUTION_MODE or "").strip().lower()
         if expected_mode == "paper":
             logger.info(
                 "[daily_reconciliation] EXECUTION_MODE=paper detected — graceful skip "
