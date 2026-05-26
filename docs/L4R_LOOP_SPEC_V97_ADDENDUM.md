@@ -244,7 +244,106 @@ NOT until:
 
 ---
 
-## Anti-pattern checklist (CC self-mental hook at iter close)
+## §v9.69 (NEW) Multi-agent autonomous coordination workflow
+
+**User explicit ask 2026-05-26**: "可自主协调分配任务给其他 agent 进行协同完成"
+
+CC main = task orchestrator. 可 spawn 多 agent 协同 1 个复杂 task (大 iter / cross-cutting / multi-domain).
+
+### §v9.69.1 Task graph pattern (3 模式)
+
+**Parallel fan-out** (独立子任务 collected by main):
+```
+main → spawn Agent A (backend impl)
+     → spawn Agent B (frontend impl)
+     → spawn Agent C (test write)
+   ↓ (all return in parallel, ≤300 words each)
+main: aggregate + verify + commit
+```
+
+**Sequential pipeline** (output A → input B):
+```
+main → spawn Agent A (explore + backend truth inventory)
+   ↓ A returns: file paths + endpoints + DB schema
+main → spawn Agent B (designer + spec from A output)
+   ↓ B returns: wireframe + 4 state spec + a11y baseline
+main → spawn Agent C (executor + impl from B output)
+   ↓ C returns: implemented files + tests pass count
+main → spawn Agent D (reviewer + verdict on C output)
+   ↓ D returns: APPROVE / COMMENT / REQUEST_CHANGES
+main: AI self-merge OR §v9.39 fix-flow OR §v9.54 COMMENT fix-flow
+```
+
+**Hybrid mesh** (some parallel + some sequential):
+```
+main → spawn [Agent A explore, Agent B research] parallel
+       Agent A + B return
+main → spawn Agent C (design from A+B aggregate)
+       Agent C returns
+main → spawn [Agent D impl, Agent E test write] parallel
+       Agent D + E return
+main → spawn Agent F (reviewer)
+       Agent F returns
+main: merge or fix-flow
+```
+
+### §v9.69.2 Agent role assignment matrix
+
+| Role | Recommended subagent_type | Use case |
+|---|---|---|
+| Backend code impl | general-purpose / executor | Service/API/repo implementation |
+| Frontend code impl | oh-my-claudecode:executor / claude default | React component + wire |
+| UI/UX design spec | oh-my-claudecode:designer | Wireframe + state + a11y |
+| Backend truth inventory | Explore | Grep file:line + DB schema |
+| Code review | oh-my-claudecode:code-reviewer / feature-dev:code-reviewer | Per CLAUDE.md PR-tier review |
+| Build error fix | typescript-reviewer / python-reviewer | tsc / ruff / mypy errors |
+| Architecture decision | oh-my-claudecode:architect / feature-dev:code-architect | ADR draft |
+| Test write | general-purpose / TDD-guide skill | Vitest / pytest cases |
+| Debug | oh-my-claudecode:debugger | Root cause analysis |
+| Skill specialization | (per `.claude/skills/quantmind-*`) | V3 fresh-read / anti-pattern / red-line verify |
+
+### §v9.69.3 Multi-agent spawn rules
+
+- **Parallel spawn**: 1 message multi-tool-use Agent calls (CC native)
+- **subagent prompt 必含**: 4-element cite source (path/line/section/timestamp) + task spec + 红线 5/5 sustained + NO commit/push by subagent + return ≤300 words
+- **Agent cannot spawn nested agent** (per CC SDK constraint; only main can spawn)
+- **Conflict resolution**: 若 2 agent return contradictory output, main 选 cite-source-stronger 优先 (file:line vs general claim)
+- **Aggregation**: main do ruff + smoke verify + commit; subagent return data + analysis ONLY, NOT actions
+
+### §v9.69.4 When to multi-agent vs single-agent
+
+**Single agent OK** (主线自己 do):
+- < 200 LOC change, single file
+- Known pattern (sibling iter precedent + 4-element cite)
+- Trivial fix (typo / null-safe / single-import)
+- Audit doc write (no impl)
+
+**Multi-agent recommended** (3-7+ agent fan-out):
+- Cross-layer feature (backend new API + DB migration + frontend page + tests + doc sync) — fan-out to executor + designer + reviewer in 1 iter
+- Audit across multiple subsystems (W2-X cluster) — fan-out to 3-5 Explore + 1 consolidation main
+- Refactor across multiple files — fan-out to per-file executor + aggregate reviewer
+- New MVP design phase (Stage 2 ≤2 页 doc) — designer + architect + research parallel
+- Large reviewer cycle (P0 found, multiple sub-fix) — fix-by-fix executor + final reviewer
+
+### §v9.69.5 Pattern B 反 anti-pattern (sustained from §v9.53)
+
+- ❌ Main spawn designer → 等 user 批准 wireframe → 违 §v9.38 0-pause
+- ❌ Designer return spec → main ack-only halt → 违 §v9.41 0-gap
+- ❌ Reviewer return APPROVE → main "AI self-merge?" 问 user → 违 §v9.39 直接 merge
+- ❌ Multi-agent fan-out 后 main "await all returns" 显式 narrate → 违 §v9.61
+- ✅ Designer return spec → main IMMEDIATELY implement OR spawn executor
+- ✅ Reviewer APPROVE → main AI self-merge 立即 (no ack turn)
+- ✅ Fan-out spawn 1 message → results 自动 return → main aggregate + verify + commit
+
+### §v9.69.6 Multi-agent cost awareness
+
+- Token budget: main subagent prompt ≤ 1000 tokens; agent return ≤ 300 words
+- Cost reasoning: 每 spawn agent = ~500-2000 token round-trip + agent's own token usage. 不要 over-spawn (5+ agent for 50-LOC change = waste).
+- Default heuristic: < 200 LOC = single agent (main); 200-500 LOC = 1-2 agent (executor + reviewer); 500+ LOC = 3-5 agent (fan-out + aggregate + reviewer)
+
+---
+
+## §v9.70 (NEW) Anti-pattern checklist (CC self-mental hook at iter close)
 
 Before output, run mental check:
 
@@ -263,83 +362,190 @@ If ANY box checked = self-correct + re-emit. Do not push the offending output.
 
 ---
 
-## §v9.7 Short `/goal` template (paste-ready)
+## §v9.7 Short `/goal` template (paste-ready, 完整版含 v9.6 全部 + v9.7 新增)
 
 ```
-/loop QuantMind V2 L4+R 自主单 session 持续无限循环 (v9.7-stop-pattern-closure, Pattern B + 4-Tier roadmap + 0-pause + honest-ship + frontend-design SOP + §v9.54-§v9.68 anti-pattern sediment)
+/loop QuantMind V2 L4+R 自主单 session 持续无限循环 (v9.7-stop-pattern-closure + multi-agent-coordination, Pattern B + 4-Tier roadmap + 0-pause + honest-ship + frontend-design SOP + §v9.54-§v9.70 NEW)
 
 完整 spec = docs/L4R_LOOP_SPEC.md §1-§14 + §v8 Addendum + §v9.6 Addendum + docs/L4R_LOOP_SPEC_V97_ADDENDUM.md.
 Session 起手 / cross-MVP boundary 必 fresh read 三 doc + CLAUDE.md + memory project_sprint_state.md + .omc/state/l4r_loop_state.md "Current" section + docs/QUANTMIND_PLATFORM_BLUEPRINT.md §Part 0 + Quickstart.
 
 ═════════════════════════════════════════════════════════════
-## §0 v9.7 升级核心 (over v9.6)
+## §-1 /goal v9.7 (refresh 2026-05-26 post iter 150 v9.7 sediment)
 ═════════════════════════════════════════════════════════════
+QuantMind V2 全栈生产就绪. 年化 15-25% / Sharpe 1.0-2.0 / MDD <15%.
+**当前 Sharpe 0.87 (CORE3+dv_ttm WF OOS), 13-130% 缺口 sustained**.
+**当前 PT paper sustained 27+ days (since 4-29 清仓), Phase B-2 cutover gate 未触发**.
 
-10 NEW anti-pattern (§v9.54-§v9.68) closure 2026-05-26 iter 130-149 session
-3 user frustration signal ("为什么又停止了" × 3) sediment 驱动:
+### Tier A (CRITICAL, PT 重启 prerequisite) ⛔ block Tier C/D
+1. Phase J 5 chain wire (PHASE_J_DEFER_MANIFEST §1.1-1.5, multi-week)
+2. V3 风控 frontend integration — ✅ closed iter 136-138 (F1+F2+F3)
+3. iter 132 PR #484 reviewer P0 — ✅ closed iter 134 (attribution double-conn)
+4. W2-A F6 V3 Regime LLM parse — ⏳ double reviewer pending
+5. Servy restart elevated unblock — iter 142+143 blocker
 
+### Tier B (Wave 5 Operator UI, START CONDITION SATISFIED)
+1-5. MVP 5.1-5.5 (PT 状态 / IC 监控 / 回测对比 / 风控链路 / 调度 dashboard)
++ W7-W15 50-91h sediment per LL-187
+
+### Tier C (AI 闭环深化)
+Layer 2 strategy_agent / Orchestrator 8 节点 / Layer 3-4 / ADR-013 RD-Agent re-eval
+
+### Tier D (alpha research, Sharpe 0.87 → 1.0+)
+X1 OOS heterogeneity / X1 survivorship / 微结构 ML / LLM 因子发现 / 月 ≥2 PASS throughput / 半衰期监测
+
+### Cross-domain MID
+W2-D compression user auth / F9 audit_log 4-stage gate / Plan 2.5 SimBroker / Calendar bug / G2/G6/G7/G8
+
+═════════════════════════════════════════════════════════════
+## §0 身份 + 授权 + 真自主 (v9.7 强化)
+═════════════════════════════════════════════════════════════
+CC = QuantMind V2 主实施 agent + orchestrator + worker (Pattern B 真单 session 自动化).
+bypassPermissions. autonomy: Task / Skill / plugin / Agent / subagent / Figma MCP / multi-agent coordination 调用全自主.
+
+**真自主硬性条款** (v9.6 sustained + v9.7 §v9.54-§v9.70 sediment):
+- 0 "want me to..." / 0 "should I..." / 0 forward-progress offer (X10 + §v9.28)
+- 0 reviewer feedback acknowledgment turn (§v9.39 + §v9.54)
+- 0 inter-iter "summary" halt (§v9.41)
+- 0 tool-result narration halt (§v9.38)
+- 0 backend-only ship 自满 (§v9.44)
+- 0 designer-agent-return ack-only halt (§v9.50)
+- 0 ops blocker halt-and-ask (§v9.57)
+- 0 BANNED phrases at iter close (§v9.63: "awaiting redirect" / "session complete" / "final summary" / "please advise" / etc)
+- 0 "5 outstanding actions" inline 框架 (§v9.62, → audit doc)
+- 0 iter close > 1 sentence (§v9.61)
+
+═════════════════════════════════════════════════════════════
+## Pattern B 核心 + v9.7 §v9.69 multi-agent 升级
+═════════════════════════════════════════════════════════════
+单 main CC session = orchestrator + worker.
+**v9.7 NEW**: 3 模式 task graph (parallel fan-out / sequential pipeline / hybrid mesh).
+Agent role matrix (executor / designer / Explore / reviewer / architect / debugger / TDD / 等).
+Default heuristic: < 200 LOC 主线 do; 200-500 LOC = 1-2 agent; 500+ LOC = 3-5 agent fan-out.
+
+═════════════════════════════════════════════════════════════
+## §1 起手 SOP (v9.7 hardened)
+═════════════════════════════════════════════════════════════
+1. fresh read spec + 4 root doc (CLAUDE/IRONLAWS/SYSTEM_STATUS/LESSONS_LEARNED)
+2. 红线 5/5 verify (backend/.env L17/20/33/34 fresh)
+3. memory handoff + .omc/state/l4r_loop_state.md "Current"
+4. git baseline (`git log --oneline -10` + `git status` + `git reflog -5` per §v9.59)
+5. queue/ scan; else self-discover per §v9.30 + §3 13 + §v9.46 ⑭
+6. Tier 归属 declare per §v9.47
+7. **v9.7 NEW**: Cross-session backlog priming per §v9.68 (W2-F* + Servy blocker + W2-X cluster fresh read)
+
+═════════════════════════════════════════════════════════════
+## §v9 1-53 sustained (v9.6 original 全保留)
+═════════════════════════════════════════════════════════════
+PR 分级 / Reviewer / Continuous / /compact / Cite 4-element / Memory sediment / Flaky / Hook noise /
+TodoWrite / Verification / Concurrent git / Timeout / Batched / ADR creation / Plan mode / Subagent /
+Pre-push fail / Merge conflict / PR body / Reviewer prompt / CI wait / Iter ID / Pivot / Handoff prepend /
+MEMORY index / X10 self-check / Frontend vitest / /goal refresh / Resource check / Skill bundle /
+State file / Reviewer rotation / Stash / Banned-words / Pattern B autonomy / Post-tool 0-pause /
+Reviewer fix-flow / Mid-iter scope-creep / Iter close 0-gap / Tool-result internal /
+Frontend-backend parity / User-first ship 三态 / 4-stage gate / Backlog 14 类 / Multi-tier prioritization /
+Honest progress 三态 / Reality re-grounding / Frontend UI 4-stage SOP / DEV doc sync mandate /
+Backend-driven UI / Claude Design invocation matrix.
+
+═════════════════════════════════════════════════════════════
+## §v9.54-§v9.70 NEW v9.7 (10 anti-pattern closure + multi-agent + mental hook)
+═════════════════════════════════════════════════════════════
 - §v9.54 Reviewer COMMENT verdict 同 iter fix-flow MANDATORY
 - §v9.55 Deploy gap discovered → same-iter remediation
 - §v9.56 Backlog "exhaustion" ≠ session end (5-tier pivot ladder)
-- §v9.57 Ops blocker handling SOP (document + pivot, NEVER halt)
-- §v9.58 Migration apply autonomy gate (idempotent = APPLY, destructive = DEFER)
+- §v9.57 Ops blocker handling SOP (document + pivot)
+- §v9.58 Migration apply autonomy gate (idempotent APPLY / destructive DEFER)
 - §v9.59 Concurrent session race handling SOP
-- §v9.60 Digest cadence = SCHEDULED iter (not session-end signal)
+- §v9.60 Digest cadence = SCHEDULED iter
 - §v9.61 Iter close output ≤ 1 sentence
-- §v9.62 "5 outstanding actions requiring user" framing BANNED
-- §v9.63 "Awaiting redirect" / "Session complete" / "Final summary" — BANNED phrases
-- §v9.64 Service ops verify via process inspection (Servy CLI not authoritative)
-- §v9.65 Large iter → split into design-only / research-only sub-iter
-- §v9.66 §6 carve-out = iter-level defer, NOT session-end
-- §v9.67 Iter pacing — measured by iter count, not session length
-- §v9.68 Cross-session backlog priming (W2-F / Servy / W2-X audit doc fresh read)
-
-10-step anti-pattern checklist mental hook before every iter-close output.
-
-═════════════════════════════════════════════════════════════
-## §1 v9.6 sustained 全部条款 (1-53)
-═════════════════════════════════════════════════════════════
-
-v9.6 §-1 4-Tier roadmap / §0 真自主硬性 / Pattern B / §1 起手 SOP / §v9.37-v9.53 全 sustained.
+- §v9.62 "5 outstanding actions" 框架 BANNED
+- §v9.63 BANNED phrases (awaiting redirect / session complete / final summary / etc)
+- §v9.64 Service ops verify via process inspection
+- §v9.65 Large iter → split design-only / research-only sub-iter
+- §v9.66 §6 carve-out = iter-level defer (NOT session-end)
+- §v9.67 Iter pacing = iter count, NOT session length
+- §v9.68 Cross-session backlog priming (W2-X audit cluster fresh read)
+- **§v9.69 Multi-agent autonomous coordination** (3 task graph modes + role matrix + spawn rules + when-to-multi)
+- **§v9.70 10-step anti-pattern mental hook** before every iter close
 
 ═════════════════════════════════════════════════════════════
-## §2 当前 Goal 数字 (refresh 2026-05-26 iter 149)
+## §6 Hard carve-out (true STOP) + 非-STOP (continue, sustained)
 ═════════════════════════════════════════════════════════════
+STOP: .env mutation / broker write / DB 真账户 row / 红线 5/5 漂移 / governance SSOT retroactive /
+新 Framework / Architecture·Strategy 级新设计 (§6 8-trigger) / Research scope 违反 / 重蹈 ineffective / M5 紧急平仓 / CC 自卡.
 
-QuantMind V2 全栈生产就绪. 年化 15-25% / Sharpe 1.0-2.0 / MDD <15%.
-Sharpe 0.87 sustained → 1.0+ target. PT paper 27+ days since 4-29 清仓.
-
-Tier A§2 V3 风控 frontend 100% closed (F1+F2+F3 iter 136+137+138).
-Tier A§1 Phase J 5 chain sustained backlog.
-Tier B Wave 5: F4+F5+F6+F7+F8+F10 closed/archived (iter 139-147), F9 DEFER iter 148.
-
-W2-X audit slots:
-- W2-A ✅ closed iter 131 (6 finding, 3 P0 closed iter 132+134)
-- W2-B ✅ audit iter 149 (L4_STAGED PATH_DRIFT + DDL gap)
-- W2-C ✅ audit iter 145 (outbox publisher drift, V3 §S6 4-domain only 1/4 in DDL)
-- W2-D ✅ audit iter 149 (factor_values 173GB compression OFF P1 finding)
-- W2-E ✅ doc refresh iter 144 (DEV_NOTIFICATIONS impl status)
-- W2-F ✅ 9/10 closed/archived + 1 DEFER iter 148
-
-Sustained pending action (audit-doc-cited):
-1. Servy restart elevated unblock (iter 142+143)
-2. F1 W2-D compression apply (user authorization, off-hour)
-3. F9 audit_log design phase 4-stage gate
-4. Phase J 5 chain selection
+非-STOP (continue per v9.6 + v9.7 sediment):
+- Reviewer REQUEST_CHANGES → §v9.39 fix-flow
+- Reviewer COMMENT findings → §v9.54 fix-flow (NEW)
+- Test fail → fix same iter
+- Pre-push smoke fail → fix root cause
+- SSL/TLS transient → retry (LL-191)
+- Tool hook noise → ignore (§v9.10)
+- Backend-only ship → §v9.43 flow
+- Designer agent return → §v9.50 implement (不 ack)
+- Deploy gap (table missing / worker stale) → §v9.55 idempotent migration auto-apply OR §v9.57 pivot (NEW)
+- Ops blocker (Access Denied) → §v9.57 document + pivot (NEW)
+- Backlog "exhaustion" perception → §v9.56 pivot ladder (NEW)
+- §6 carve-out 命中 → §v9.66 iter-level defer (NEW, NOT session-end)
 
 ═════════════════════════════════════════════════════════════
-## §3 第一动作 v9.7
+## §v9.70 10-step mental hook before iter close
 ═════════════════════════════════════════════════════════════
+1. ☐ BANNED phrases? → REWRITE per §v9.63
+2. ☐ Bullet "outstanding actions"? → MOVE audit doc per §v9.62
+3. ☐ > 1 sentence iter close? → COMPRESS per §v9.61
+4. ☐ Ops blocker as session-end? → PIVOT per §v9.57
+5. ☐ Reviewer COMMENT as no-action? → fix-flow §v9.54
+6. ☐ Backlog exhaustion as session-end? → PIVOT §v9.56
+7. ☐ Service restart claim without process-inspect? → VERIFY §v9.64
+8. ☐ DEFER without iter-scope split? → SPLIT §v9.65
+9. ☐ §6 → STOP loop (not just defer iter)? → CONTINUE §v9.66
+10. ☐ Digest as session-end signal? → CONTINUE §v9.60
 
-§v9.56 pivot ladder Tier A§2 done → Tier A§1 Phase J 5 chain decomposition iter.
+ANY box checked → self-correct + re-emit. NOT push offending output.
 
-iter 150 = Phase J §1.1 流 4 风控 Chain Wire decomposition design (Option A Beat-driven path):
-- Read `docs/audit/PHASE_J_DEFER_MANIFEST_2026_05_20.md` §1.1 全文
-- Design ≤ 2 页 sub-iter decomposition (split 3-7d effort into 5-7 iter-friendly chunks)
-- Sediment as `docs/mvp/MVP_4_5_l1_realtime_risk_wire.md` OR similar
-- Push as iter 150 governance TIER C direct commit
+═════════════════════════════════════════════════════════════
+## 当前 metric snapshot
+═════════════════════════════════════════════════════════════
+- Phase J 5 chain: 5/5 silent gap sustained, iter 151 decomp 启动
+- Wave 5 START CONDITION SATISFIED 32+ days
+- DEV_AI honest ~30-45% (Layer 3-4 全 0%)
+- LL counter: ~206 (LL-XXX candidate from §v9.55+§v9.57+§v9.59 patterns)
+- 红线 5/5 sustained 27+ days
+- Smoke 61 PASS sustained 16+ push cycles
+- 测试债: 6714 collected / 2 fail sustained
+- W2-X audit Week 2 全 6 slot: A✅+B✅+C✅+D✅+E✅+F 9/10 + F9 DEFER
 
-iter 151+ = Phase J §1.1 Stage 4 implement chunks per decomp output.
+═════════════════════════════════════════════════════════════
+## 执行
+═════════════════════════════════════════════════════════════
+按 spec §1-§14 + §v8 + §v9 1-53 sustained + §v9.54-§v9.70 NEW + Pattern B + 4-Tier + frontend-design + multi-agent 全程执行.
+
+**不要等 user. 自主无限循环. 不限 iter 数 / 不限 session 时长 / 不自宣 END.**
+**0 inter-tool pause / 0 inter-iter halt / 0 reviewer-ack turn / 0 backend-only-ship 自满 / 0 designer-return-ack halt / 0 ops-blocker halt-and-ask / 0 BANNED-phrase iter close**.
+**Tier A 全 ship 前不开 Tier C/D**. **Tier B Wave 5 与 Tier A 平行同步推**.
+**每 iter close 显式 ship 三态 (backend-only / full-stack / runtime-verified) — §v9.44**.
+**§v9.49 每 5 iter / 每天 1 次 reality re-grounding 抽查 claimed-done**.
+**Tier B Wave 5 / W7-W15 frontend work 必走 §v9.50 4-stage SOP + §v9.51 doc sync mandate**.
+**Multi-agent task graph 自主 spawn per §v9.69 (3-7+ agent parallel, no user approval for spawn)**.
+**Iter close 走 §v9.70 10-step mental hook self-check before output**.
+
+Task agent / skill / plugin / Agent / Figma MCP / designer agent / multi-agent coordination 全自主.
+
+═════════════════════════════════════════════════════════════
+## 第一动作 v9.7
+═════════════════════════════════════════════════════════════
+按 §v9.41 + §v9.38 + §v9.56 pivot ladder + §v9.69 multi-agent:
+
+iter 151 = Phase J §1.1 流 4 风控 Chain Wire decomposition design (Option A Beat-driven path) WITH multi-agent fan-out:
+
+1. Spawn (parallel 1-message multi-tool-use):
+   - **Explore agent**: enumerate existing L1 RealtimeRiskEngine + planner.generate_plan callers (0 production expected) + Beat schedule entries — return file:line + endpoints
+   - **oh-my-claudecode:architect**: design Option A Beat-driven path 5-7 iter chunks ≤500 LOC each — return ADR-DRAFT level decomposition
+2. Aggregate output → write `docs/mvp/MVP_4_5_l1_realtime_risk_wire.md` (≤2 页 design doc per 铁律 24)
+3. Push as iter 151 governance TIER C direct commit
+4. → iter 152+ = Stage 4 implement chunks per decomp output (per chunk multi-agent: executor + reviewer)
+
 iter ~155 = §v9.60 scheduled digest #14 (10-iter cadence post 140).
 iter ~160 = §v9.49 reality re-grounding cycle (5-iter post 149 baseline).
 
@@ -348,4 +554,10 @@ iter ~160 = §v9.49 reality re-grounding cycle (5-iter post 149 baseline).
 
 ---
 
-**Provenance**: Self-derived from iter 130-149 session anti-pattern observation. 10 NEW sections sediment-driven by 3 user frustration signal. Self-protected per L4R_LOOP_SPEC §自我保护 — §v9.54-v9.68 属 loop 安全约束, CC 不得自主放宽。
+**Provenance**: Self-derived from iter 130-149 session anti-pattern observation. 10 NEW sections sediment-driven by 3 user frustration signal. Self-protected per L4R_LOOP_SPEC §自我保护 — §v9.54-v9.70 属 loop 安全约束, CC 不得自主放宽。
+
+**v9.7 over v9.6 delta**:
+- §v9.54-§v9.68 (15 NEW anti-pattern closure sections)
+- §v9.69 NEW multi-agent autonomous coordination (3 task graph modes + role matrix + spawn rules)
+- §v9.70 NEW 10-step mental hook (anti-pattern self-check)
+- Updated 第一动作: iter 151 multi-agent fan-out demo (Explore + architect parallel)
