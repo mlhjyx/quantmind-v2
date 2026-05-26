@@ -37,13 +37,33 @@ export interface SchedulerTask {
   enabled: boolean;
 }
 
+/**
+ * iter 198 §v9.49 finding: TYPE DRIFT — backend `system.py:get_system_health` returns
+ * keys `pg/redis/celery/disk/memory` with `ok: boolean` shape (lines 324-331), but
+ * legacy frontend type used `postgres/redis/celery` with `status: "ok"|"error"`.
+ * Existing callers (SystemSettings.tsx:434-436, IndustryAndSystem.tsx:16) used
+ * `health.postgres ?? { ok: false }` fallback — silent bug showing "always down".
+ *
+ * Extended interface adds actual backend keys (`pg/redis/celery/disk/memory` with
+ * `ok: boolean`) alongside legacy `postgres/redis/celery` aliases for backward
+ * compat. Future iter: deprecate legacy aliases + update SystemSettings + IndustryAndSystem.
+ *
+ * 关联: 铁律 25 (改什么读什么 — actual backend response shape vs type definition).
+ */
 export interface SystemHealth {
-  postgres: { status: "ok" | "error"; latency_ms: number | null; message?: string };
-  redis: { status: "ok" | "error"; latency_ms: number | null; message?: string };
-  celery: { status: "ok" | "error"; active_workers: number; message?: string };
-  disk: { used_gb: number; total_gb: number; percent: number };
-  memory: { used_gb: number; total_gb: number; percent: number };
-  data_freshness: { latest_kline_date: string | null; days_stale: number };
+  // Backend actual response shape (iter 198 fix). status?: optional legacy field for
+  // callers (IndustryAndSystem.tsx:26-27 + SystemSettings.tsx:458-462) — never populated
+  // by backend but kept for type-compat until separate cleanup iter.
+  pg?: { ok: boolean; status?: "ok" | "error"; latency_ms?: number | null; message?: string };
+  redis?: { ok: boolean; status?: "ok" | "error"; latency_ms?: number | null; message?: string };
+  celery?: { ok: boolean; status?: "ok" | "error"; active_workers?: number; message?: string };
+  disk?: { ok: boolean; used_gb?: number; total_gb?: number; percent: number; message?: string };
+  memory?: { ok: boolean; used_gb?: number; total_gb?: number; percent: number; message?: string };
+  overall_status?: "ok" | "degraded" | "critical";
+  // Legacy aliases (DEPRECATED — sustained for SystemSettings.tsx + IndustryAndSystem.tsx
+  // until separate cleanup iter)
+  postgres?: { ok?: boolean; status?: "ok" | "error"; latency_ms: number | null; message?: string };
+  data_freshness?: { latest_kline_date: string | null; days_stale: number };
 }
 
 export interface NotificationParam {
@@ -151,6 +171,47 @@ export interface PaperStrategyIdResponse {
 export async function getPaperStrategyId(): Promise<PaperStrategyIdResponse> {
   const { data } = await apiClient.get<PaperStrategyIdResponse>(
     "/system/settings/paper-strategy-id",
+  );
+  return data;
+}
+
+// ── iter 198 MVP 5.1 C4: scheduler_task_log API wrapper ────────────────────
+
+/** Single scheduler_task_log row (matches backend system.py:get_scheduler_task_log). */
+export interface SchedulerTaskLogEntry {
+  id: string;
+  task_name: string;
+  status: "success" | "failed" | "running" | "skipped";
+  schedule_time: string;
+  start_time: string | null;
+  end_time: string | null;
+  duration_sec: number | null;
+  error_message: string | null;
+}
+
+export interface SchedulerTaskLogResponse {
+  tasks: SchedulerTaskLogEntry[];
+  total_count: number;
+}
+
+/**
+ * Fetch recent scheduler_task_log rows for PtStatus page S5 section.
+ *
+ * MVP 5.1 C1 (PR #511 iter 197) + C4 (this wrapper iter 198).
+ * Index-optimized via idx_scheduler_log_date (schedule_time DESC).
+ *
+ * @param limit max rows (default 20, backend clamps to [1, 100])
+ * @param taskName optional exact-match filter
+ */
+export async function fetchSchedulerTaskLog(
+  limit = 20,
+  taskName?: string,
+): Promise<SchedulerTaskLogResponse> {
+  const params: Record<string, string | number> = { limit };
+  if (taskName) params.task_name = taskName;
+  const { data } = await apiClient.get<SchedulerTaskLogResponse>(
+    "/system/scheduler-task-log",
+    { params },
   );
   return data;
 }

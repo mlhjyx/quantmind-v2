@@ -13,7 +13,10 @@ export function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem
     retry: 1,
   });
 
-  const pg      = health?.postgres;
+  // iter 198 fix (sibling §v9.49 finding): legacy `health.postgres` is undefined —
+  // backend returns `health.pg`. Fall back to actual backend key + use `ok` boolean
+  // instead of stale `status === "ok"` (backend never populates status string).
+  const pg      = health?.pg ?? health?.postgres;
   const redis   = health?.redis;
   const celery  = health?.celery;
   const fresh   = health?.data_freshness;
@@ -22,9 +25,9 @@ export function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem
     : "—";
 
   const pills = [
-    { l: "PG",      ok: pg     ? pg.status === "ok"     : null, s: pg?.latency_ms != null ? `${pg.latency_ms}ms` : undefined },
-    { l: "Redis",   ok: redis  ? redis.status === "ok"  : null, s: redis?.latency_ms != null ? `${redis.latency_ms}ms` : undefined },
-    { l: "Celery",  ok: celery ? celery.status === "ok" : null, s: celery ? `${celery.active_workers}w` : undefined },
+    { l: "PG",      ok: pg     ? pg.ok === true     : null, s: pg?.latency_ms != null ? `${pg.latency_ms}ms` : undefined },
+    { l: "Redis",   ok: redis  ? redis.ok === true  : null, s: redis?.latency_ms != null ? `${redis.latency_ms}ms` : undefined },
+    { l: "Celery",  ok: celery ? celery.ok === true : null, s: celery ? `${celery.active_workers ?? 0}w` : undefined },
     { l: "Tushare", ok: null  as boolean | null },
     { l: "DeepSeek",ok: null  as boolean | null, s: "¥87" },
     { l: "数据",    ok: fresh  ? fresh.days_stale <= 1   : null, s: staleLabel },

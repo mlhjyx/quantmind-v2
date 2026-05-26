@@ -431,13 +431,31 @@ function HealthTab() {
     );
   }
 
-  const pg = health.postgres ?? { ok: false, latency_ms: null };
+  // iter 198 fix (sibling §v9.49 finding): legacy `health.postgres` is undefined —
+  // backend returns `health.pg`. Fall back to actual backend key when legacy alias absent.
+  // Also derive `status` from `ok` (backend doesn't populate string status, only boolean ok).
+  const pg = health.pg ?? health.postgres ?? { ok: false, latency_ms: null };
   const rd = health.redis ?? { ok: false, latency_ms: null };
   const cel = health.celery ?? { ok: false, active_workers: 0 };
   const services = [
-    { label: "PostgreSQL", ...pg, extra: pg.latency_ms != null ? `${pg.latency_ms}ms` : undefined },
-    { label: "Redis", ...rd, extra: rd.latency_ms != null ? `${rd.latency_ms}ms` : undefined },
-    { label: "Celery", ...cel, extra: `${cel.active_workers ?? 0} 个 worker` },
+    {
+      label: "PostgreSQL",
+      ...pg,
+      status: (pg.ok ? "ok" : "error") as "ok" | "error",
+      extra: pg.latency_ms != null ? `${pg.latency_ms}ms` : undefined,
+    },
+    {
+      label: "Redis",
+      ...rd,
+      status: (rd.ok ? "ok" : "error") as "ok" | "error",
+      extra: rd.latency_ms != null ? `${rd.latency_ms}ms` : undefined,
+    },
+    {
+      label: "Celery",
+      ...cel,
+      status: (cel.ok ? "ok" : "error") as "ok" | "error",
+      extra: `${cel.active_workers ?? 0} 个 worker`,
+    },
   ];
 
   const staleDays = health.data_freshness?.days_stale ?? 0;
