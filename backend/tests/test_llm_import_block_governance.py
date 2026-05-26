@@ -31,11 +31,18 @@ DEEPSEEK_CLIENT = REPO_ROOT / "backend" / "engines" / "mining" / "deepseek_clien
 
 
 def _run_full() -> subprocess.CompletedProcess[str]:
+    # iter 232 fix: explicit encoding='utf-8' + errors='replace' prevents Windows
+    # Python default encoding (GBK/cp936) UnicodeDecodeError on UTF-8 bash output.
+    # Root cause: subprocess capture set stdout=None when decode failed, then
+    # 'in' check on None raised TypeError ("argument of type 'NoneType' is not
+    # iterable"). Discovered iter 232 §v9.49 cycle "1 unknown sweep" investigation.
     return subprocess.run(
         ["bash", SCRIPT_REL, "--full"],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=15,
     )
 

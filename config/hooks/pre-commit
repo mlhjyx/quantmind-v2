@@ -102,12 +102,13 @@ except Exception as e:
     canonical['d_headers'] = 'N/A'
 
 # 5. 测试 baseline (defer to pre-push hook smoke run, 这里仅 cite sprint state baseline)
-#    iter 187 W4-A LL-188 hook drift fix → iter 231 baseline refresh:
-#    iter 80 (6714/2) → iter 231 (6869/2) = +155 collected (~+2.3%) reflecting
-#    Wave 5 iter 196-216 ~55 unit tests + sibling additions; fail baseline 2
-#    sustained (8+ month low-fail state maintained, 0 new fail in Wave 5 work).
+#    iter 187 W4-A LL-188 hook drift fix → iter 231 baseline refresh → iter 232
+#    fail baseline reduction: iter 80 (6714/2) → iter 231 (6869/2) → iter 232
+#    (6869/1) — identified + FIXED "1 unknown sweep" via Windows GBK encoding
+#    bug in test_llm_import_block_governance subprocess.run(text=True) default
+#    encoding (now explicit encoding='utf-8' + errors='replace').
 #    SSOT: CLAUDE.md §当前进度 §其他状态. Re-sync when CLAUDE.md baseline updates.
-canonical['test_baseline'] = '6869 collected / 2 fail (CLAUDE.md iter 231 fresh verify 2026-05-26 SSOT, 铁律 40 baseline)'
+canonical['test_baseline'] = '6869 collected / 1 fail (CLAUDE.md iter 232 fresh verify 2026-05-27 SSOT, 铁律 40 baseline)'
 
 # 6. LL-188 step 0 sediment-drift check (Session 58 round-6 NEW):
 #    Scan staged .md files for red-line claims (EXECUTION_MODE / LIVE_TRADING_DISABLED)
