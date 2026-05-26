@@ -212,8 +212,16 @@ class _ArgumentsAgent:
         indicators: MarketIndicators,
         *,
         decision_id: str | None = None,
+        rag_context: str = "",
     ) -> tuple[tuple[RegimeArgument, RegimeArgument, RegimeArgument], Decimal]:
         """Call LLM → parse 3 RegimeArgument tuple + cost_usd Decimal.
+
+        Args:
+            indicators: market indicator snapshot
+            decision_id: caller-traceable audit id
+            rag_context: iter 177 MVP 4.7 Chunk 4 — optional RAG markdown table
+                (shared from MarketRegimeService.classify across bull/bear/judge).
+                Empty string when rag DI absent (backward-compat).
 
         Returns:
             (3-tuple of RegimeArgument, response.cost_usd Decimal).
@@ -222,7 +230,7 @@ class _ArgumentsAgent:
             MarketRegimeError: parse fail / wrong arg count / RegimeArgument validation
                 fail (sustained 铁律 33 fail-loud).
         """
-        messages = self._build_messages(indicators)
+        messages = self._build_messages(indicators, rag_context=rag_context)
         response = self._router.completion(
             task=self.TASK,
             messages=messages,
@@ -232,12 +240,20 @@ class _ArgumentsAgent:
         args = self._parse_arguments(payload)
         return args, response.cost_usd
 
-    def _build_messages(self, indicators: MarketIndicators) -> list[LLMMessage]:
-        """Build LLM messages from MarketIndicators + yaml prompt template."""
+    def _build_messages(
+        self, indicators: MarketIndicators, *, rag_context: str = ""
+    ) -> list[LLMMessage]:
+        """Build LLM messages from MarketIndicators + yaml prompt template.
+
+        iter 177 MVP 4.7 Chunk 4: include rag_context in format kwargs so yaml
+        templates that have {rag_context} placeholder substitute correctly. Empty
+        string default — yaml templates without {rag_context} silently ignore the
+        extra kwarg per Python str.format behavior (backward-compat).
+        """
         system_content = self._prompt["system_prompt"]
-        user_content = self._prompt["user_template"].format(
-            **_format_indicators_for_prompt(indicators)
-        )
+        substitutions = _format_indicators_for_prompt(indicators)
+        substitutions["rag_context"] = rag_context
+        user_content = self._prompt["user_template"].format(**substitutions)
         return [
             LLMMessage(role="system", content=system_content),
             LLMMessage(role="user", content=user_content),
@@ -340,8 +356,18 @@ class RegimeJudge:
         bear_arguments: tuple[RegimeArgument, ...],
         *,
         decision_id: str | None = None,
+        rag_context: str = "",
     ) -> tuple[RegimeLabel, float, str, Decimal]:
         """Call LLM → parse (regime, confidence, reasoning, cost_usd).
+
+        Args:
+            indicators: market indicator snapshot
+            bull_arguments: 3-tuple from BullAgent
+            bear_arguments: 3-tuple from BearAgent
+            decision_id: caller-traceable audit id
+            rag_context: iter 177 MVP 4.7 Chunk 4 — optional RAG markdown table
+                shared from MarketRegimeService.classify. Empty string when rag
+                DI absent (backward-compat).
 
         Returns:
             4-tuple (RegimeLabel enum, confidence ∈ [0,1] float, reasoning str, cost_usd Decimal).
@@ -349,7 +375,9 @@ class RegimeJudge:
         Raises:
             MarketRegimeError: parse fail / invalid regime / confidence out-of-range.
         """
-        messages = self._build_messages(indicators, bull_arguments, bear_arguments)
+        messages = self._build_messages(
+            indicators, bull_arguments, bear_arguments, rag_context=rag_context
+        )
         response = self._router.completion(
             task=self.TASK,
             messages=messages,
@@ -364,8 +392,15 @@ class RegimeJudge:
         indicators: MarketIndicators,
         bull_args: tuple[RegimeArgument, ...],
         bear_args: tuple[RegimeArgument, ...],
+        *,
+        rag_context: str = "",
     ) -> list[LLMMessage]:
-        """Build LLM messages — indicators + Bull/Bear 6 论据 JSON snippets."""
+        """Build LLM messages — indicators + Bull/Bear 6 论据 JSON snippets + RAG context.
+
+        iter 177 MVP 4.7 Chunk 4: rag_context kwarg added (sibling pattern to
+        _ArgumentsAgent._build_messages above). Backward-compat preserved via
+        empty string default + Python format silently-ignored-extras behavior.
+        """
         system_content = self._prompt["system_prompt"]
         substitutions = _format_indicators_for_prompt(indicators)
         substitutions["bull_arguments"] = json.dumps(
@@ -384,6 +419,7 @@ class RegimeJudge:
             ensure_ascii=False,
             indent=2,
         )
+        substitutions["rag_context"] = rag_context
         user_content = self._prompt["user_template"].format(**substitutions)
         return [
             LLMMessage(role="system", content=system_content),

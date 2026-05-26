@@ -89,6 +89,7 @@ class MarketRegimeService:
         bull_agent: BullAgent | None = None,
         bear_agent: BearAgent | None = None,
         judge: RegimeJudge | None = None,
+        rag: Any | None = None,
     ) -> None:
         """Initialize MarketRegimeService with 3 agents (DI for testability).
 
@@ -97,11 +98,18 @@ class MarketRegimeService:
             bull_agent: optional pre-built BullAgent override (default builds new).
             bear_agent: optional pre-built BearAgent override (default builds new).
             judge: optional pre-built RegimeJudge override (default builds new).
+            rag: iter 177 MVP 4.7 Chunk 4 — optional RiskMemoryRAG instance for
+                Phase J §1.4 wire. When provided, classify() retrieves RAG context
+                ONCE per call via build_rag_context and shares the markdown table
+                across bull/bear/judge agents (saves 2 BGE-M3 retrieves per
+                classify, ~2-3s wallclock). When None (default), rag_context
+                resolves to empty string at each agent (backward-compat).
         """
         self._router = router
         self._bull = bull_agent if bull_agent is not None else BullAgent(router=router)
         self._bear = bear_agent if bear_agent is not None else BearAgent(router=router)
         self._judge = judge if judge is not None else RegimeJudge(router=router)
+        self._rag = rag
 
     def classify(
         self,
@@ -134,13 +142,37 @@ class MarketRegimeService:
             decision_id or "(none)",
         )
 
-        bull_args, bull_cost = self._bull.find_arguments(indicators, decision_id=bull_id)
-        bear_args, bear_cost = self._bear.find_arguments(indicators, decision_id=bear_id)
+        # iter 177 MVP 4.7 Chunk 4: retrieve RAG context ONCE per classify and
+        # share the markdown table across bull/bear/judge (saves 2 BGE-M3
+        # retrieves per call). compose_query derived from indicators snapshot —
+        # all 3 agents see the same historical context per V3 §5.4 design intent
+        # (L1 push augmentation, NOT per-agent specialization).
+        rag_context = ""
+        if self._rag is not None:
+            from app.services.risk.rag_context_builder import build_rag_context  # noqa: PLC0415
+
+            def _compose() -> str:
+                return (
+                    f"市场 regime classify @ {indicators.timestamp.isoformat()} "
+                    f"SSE={indicators.sse_return:.4f} HS300={indicators.hs300_return:.4f} "
+                    f"breadth_up={indicators.breadth_up} breadth_down={indicators.breadth_down} "
+                    f"north_flow={indicators.north_flow_cny} iv_50etf={indicators.iv_50etf}"
+                )
+
+            rag_context = build_rag_context(self._rag, compose_query=_compose, k=5)
+
+        bull_args, bull_cost = self._bull.find_arguments(
+            indicators, decision_id=bull_id, rag_context=rag_context
+        )
+        bear_args, bear_cost = self._bear.find_arguments(
+            indicators, decision_id=bear_id, rag_context=rag_context
+        )
         regime, confidence, reasoning, judge_cost = self._judge.judge(
             indicators,
             bull_args,
             bear_args,
             decision_id=judge_id,
+            rag_context=rag_context,
         )
 
         # Sum cost across 3 V4-Pro calls (Decimal → float for MarketRegime cost_usd).
