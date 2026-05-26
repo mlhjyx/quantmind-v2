@@ -233,6 +233,22 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 45,  # 45s within next 60s cycle (反 overlap on slow PG)
         },
     },
+    # ── Phase J §1.1 Chunk 2 (iter 154): L1 RealtimeRiskEngine production wire ──
+    # 1min cadence 9-14h trading-hours-only. Instantiate engine + 10 rules + build
+    # RiskContext from Redis (QMTClient) + evaluate on_tick + on_5min_beat (when
+    # minute % 5 == 0). expires=45 within next 60s cycle (反 overlap on slow
+    # context build). Beat sequential dispatch + Worker --pool=solo tolerates
+    # collision with risk-l4-sweep-1min (both cheap, no shared lock).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND
+    # QuantMind-Celery`.
+    "realtime-risk-tick": {
+        "task": "app.tasks.realtime_risk_tasks.realtime_risk_tick",
+        "schedule": crontab(minute="*", hour="9-14", day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 45,  # 45s within next 60s cycle
+        },
+    },
     # ── HC-2b2 G7 (V3 §14 mode 12): broker plan stuck sweep ──
     # Plans stuck in CONFIRMED / TIMEOUT_EXECUTED > 5min = broker 接口故障 signal
     # (execute_plan never completed — broker call 挂 / DB writeback 失败 / worker
