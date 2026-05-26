@@ -57,7 +57,11 @@ function HealthSummary({
   schtasks: SchedulerTask[];
   taskLog: SchedulerTaskLogEntry[];
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  // Reviewer P2 iter 211 (铁律 41): use Asia/Shanghai timezone for "today",
+  // not UTC. Previous `new Date().toISOString().slice(0,10)` returned UTC date,
+  // causing 0 counters during 00:00-08:00 CST since UTC = yesterday.
+  // 'sv' locale returns YYYY-MM-DD format.
+  const today = new Date().toLocaleDateString("sv", { timeZone: "Asia/Shanghai" });
   const todayCount = taskLog.filter((t) => (t.start_time ?? "").startsWith(today)).length;
   const failedCount = taskLog.filter(
     (t) => t.status === "failed" && (t.start_time ?? "").startsWith(today),
@@ -187,7 +191,15 @@ function BeatScheduleSection({
                 <tr
                   key={e.beat_key}
                   onClick={() => onSelectTask(e.task_name)}
-                  className="border-b border-slate-800/50 cursor-pointer hover:bg-slate-950/40"
+                  // Reviewer P2 iter 211: keyboard a11y for interactive table rows
+                  tabIndex={0}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      onSelectTask(e.task_name);
+                    }
+                  }}
+                  className="border-b border-slate-800/50 cursor-pointer hover:bg-slate-950/40 focus-visible:outline focus-visible:outline-1 focus-visible:outline-sky-400"
                 >
                   <td className="py-2 pr-3 text-slate-300 font-mono">{e.beat_key}</td>
                   <td className="py-2 pr-3 text-slate-400 font-mono text-[10px]">
@@ -279,7 +291,15 @@ function RecentHistoryTable({
                 <tr
                   key={t.id}
                   onClick={() => onSelectTask(t.task_name)}
-                  className="border-b border-slate-800/50 cursor-pointer hover:bg-slate-950/40"
+                  // Reviewer P2 iter 211: keyboard a11y for interactive table rows
+                  tabIndex={0}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      onSelectTask(t.task_name);
+                    }
+                  }}
+                  className="border-b border-slate-800/50 cursor-pointer hover:bg-slate-950/40 focus-visible:outline focus-visible:outline-1 focus-visible:outline-sky-400"
                 >
                   <td className="py-2 pr-3 text-slate-300 font-mono">{t.task_name}</td>
                   <td className="py-2 pr-3">
@@ -319,11 +339,22 @@ function TaskDrillDown({ taskName, onClose }: { taskName: string; onClose: () =>
   const failures = tasks.filter((t) => t.status === "failed" && t.error_message);
 
   const durationOption = useMemo(() => {
+    // Reviewer P1 iter 211: pre-compute per-datum color array embedded in series
+    // data items (vs closure callback over `tasks` indexed by params.dataIndex).
+    // Old pattern was fail-soft silent if ECharts called with non-sequential index.
+    // Now: each bar's color is explicit per data point at construction time.
+    const chronological = [...tasks].reverse(); // oldest → newest for x-axis time order
+    const seriesData = chronological.map((t) => ({
+      value: t.duration_sec ?? 0,
+      itemStyle: {
+        color: t.status === "failed" ? "#ef4444" : "#22c55e",
+      },
+    }));
     return {
       grid: { left: 50, right: 20, top: 20, bottom: 40 },
       xAxis: {
         type: "category",
-        data: tasks.map((t) => t.start_time?.slice(11, 19) ?? "—").reverse(),
+        data: chronological.map((t) => t.start_time?.slice(11, 19) ?? "—"),
         axisLabel: { color: "#94a3b8", fontSize: 9, rotate: 45 },
       },
       yAxis: {
@@ -338,13 +369,7 @@ function TaskDrillDown({ taskName, onClose }: { taskName: string; onClose: () =>
         {
           name: "duration",
           type: "bar",
-          data: tasks.map((t) => t.duration_sec ?? 0).reverse(),
-          itemStyle: {
-            color: (params: { dataIndex: number }) => {
-              const idx = tasks.length - 1 - params.dataIndex;
-              return tasks[idx]?.status === "failed" ? "#ef4444" : "#22c55e";
-            },
-          },
+          data: seriesData,
         },
       ],
     };
@@ -408,6 +433,14 @@ export default function SchedulerDashboard() {
   const [filter, setFilter] = useState<string>("");
   const [selectedTask, setSelectedTask] = useState<string>("");
 
+  // Reviewer P1 iter 211: clear filter when selectedTask changes via click on
+  // S2/S3/S4. Without this, S4 dropdown shows stale filter while S5 drill-down
+  // shows a different task — inconsistent visual state.
+  function handleSelectTask(name: string) {
+    setSelectedTask(name);
+    setFilter("");
+  }
+
   const schtaskQ = useQuery({
     queryKey: ["scheduler-dashboard", "schtask"],
     queryFn: fetchSchedulerTasks,
@@ -453,19 +486,19 @@ export default function SchedulerDashboard() {
       <SchtaskListSection
         data={schtasks}
         error={schtaskQ.error}
-        onSelectTask={setSelectedTask}
+        onSelectTask={handleSelectTask}
       />
       <BeatScheduleSection
         entries={beatEntries}
         error={beatQ.error}
-        onSelectTask={setSelectedTask}
+        onSelectTask={handleSelectTask}
       />
       <RecentHistoryTable
         data={taskLog}
         error={logQ.error}
         filter={filter}
         onFilterChange={setFilter}
-        onSelectTask={setSelectedTask}
+        onSelectTask={handleSelectTask}
       />
       {selectedTask && (
         <TaskDrillDown taskName={selectedTask} onClose={() => setSelectedTask("")} />
