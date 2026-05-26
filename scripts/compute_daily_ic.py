@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import logging
 import os
 import sys
@@ -217,6 +218,64 @@ def _compute_factor_ic(
     return result.reset_index()
 
 
+def _verify_ingest_result(result: object, factor_count: int) -> None:
+    """iter 181 Option A: post-ingest sanity check per LL-211 Layer 4 SOP.
+
+    Raises RuntimeError if valid_rows > 0 but upserted_rows == 0. This catches
+    silent rollback / FK constraint failure / DataPipeline.ingest reports
+    success-shaped result without actual DB write (iter 179 LL-211 4-layer
+    diagnostic finding root cause).
+
+    Args:
+        result: IngestResult-like object (has .valid_rows / .upserted_rows /
+            .rejected_rows / .reject_reasons attrs)
+        factor_count: number of factors that produced IC rows (for diagnostic context)
+
+    Raises:
+        RuntimeError: when Layer 4 silent failure pattern detected.
+    """
+    if result.valid_rows > 0 and result.upserted_rows == 0:
+        raise RuntimeError(
+            f"[daily_ic] Layer 4 silent failure detected: "
+            f"valid_rows={result.valid_rows} but upserted_rows=0; "
+            f"rejected_rows={result.rejected_rows} reasons={result.reject_reasons}. "
+            f"Likely DataPipeline.ingest silent rollback / FK constraint failure "
+            f"(iter 179 LL-211 diagnostic root cause). factor_count={factor_count}."
+        )
+
+
+def _insert_scheduler_task_log(
+    conn: object,
+    *,
+    status: str,
+    result: dict[str, object] | None = None,
+    error_message: str | None = None,
+) -> None:
+    """iter 181 Option A: scheduler_task_log row INSERT (sibling daily_reconciliation.py:548-565).
+
+    task_name='daily_ic' / market='astock'. Caller manages commit (铁律 32).
+    error_message truncated to 500 chars per sibling pattern.
+
+    Args:
+        conn: psycopg2 connection (caller owns commit/rollback)
+        status: 'success' | 'failed' | other (writes to status column)
+        result: dict serialized to result_json JSONB column (None on failure path)
+        error_message: stack/exception detail for ops triage (truncated to 500)
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO scheduler_task_log
+           (task_name, market, schedule_time, start_time, status,
+            error_message, result_json)
+           VALUES ('daily_ic', 'astock', NOW(), NOW(), %s, %s, %s)""",
+        (
+            status,
+            error_message[:500] if error_message else None,
+            json.dumps(result) if result is not None else None,
+        ),
+    )
+
+
 def compute_and_ingest(
     conn: psycopg2.extensions.connection,
     days: int = 30,
@@ -386,6 +445,10 @@ def compute_and_ingest(
             logger.warning("[daily_ic]   reject_reasons=%s", result.reject_reasons)
         if result.null_ratio_warnings:
             logger.warning("[daily_ic]   null_ratio_warnings=%s", result.null_ratio_warnings)
+        # iter 181 Option A: post-ingest sanity check per LL-211 Layer 4 SOP.
+        # Catches "valid input but 0 actually upserted" silent failure
+        # (iter 179 diagnostic root cause hypothesis sustained).
+        _verify_ingest_result(result, factor_count=len(all_ic_frames))
 
     elapsed = time.time() - t0
     logger.info("[daily_ic] 完成: %d 因子 / %d 行 / %.1fs", len(all_ic_frames), total_rows, elapsed)
@@ -451,7 +514,12 @@ def _run(args: argparse.Namespace) -> int:
             factors=factors,
             dry_run=args.dry_run,
         )
+        # iter 181 Option A: scheduler_task_log monitoring sediment (sibling
+        # daily_reconciliation.py:548-565). Skip on dry_run (no real ingest, no
+        # need to record run). Caller (this _run) owns transaction; INSERT
+        # batched with conn.commit() below.
         if not args.dry_run:
+            _insert_scheduler_task_log(conn, status="success", result=result)
             conn.commit()
         logger.info(
             "[daily_ic] 结果: processed=%d total_rows=%d %.1fs",
@@ -460,9 +528,18 @@ def _run(args: argparse.Namespace) -> int:
             result["elapsed_sec"],
         )
         return 0 if result["processed_factors"] > 0 else 1
-    except Exception:
+    except Exception as e:
         conn.rollback()
         logger.exception("[daily_ic] 异常, rollback")
+        # iter 181 Option A: 'failed' scheduler_task_log row (defense-in-depth,
+        # sibling daily_reconciliation.py:572-595 pattern). silent_ok inner
+        # exception so failed-row write doesn't mask original exception
+        # (re-raised below). conn.rollback above cleaned aborted-tx state.
+        with contextlib.suppress(Exception):
+            _insert_scheduler_task_log(
+                conn, status="failed", error_message=str(e)[:500]
+            )
+            conn.commit()
         raise
     finally:
         conn.close()
