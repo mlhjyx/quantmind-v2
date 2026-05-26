@@ -74,7 +74,12 @@ function HeatmapBar({ events }: { events: RiskEvent[] }) {
 
     for (const ev of events) {
       try {
-        const t = new Date(ev.triggered_at);
+        // Reviewer P1 iter 215: backend returns TIMESTAMPTZ::text format
+        // "YYYY-MM-DD HH:MM:SS+TZ" (space separator). new Date() parses as
+        // ISO-compliant in Chrome/Firefox, but Safari returns Invalid Date.
+        // Normalize space → 'T' for ISO 8601 compliance.
+        const isoSafe = ev.triggered_at.replace(" ", "T");
+        const t = new Date(isoSafe);
         const hoursAgo = Math.floor((now.getTime() - t.getTime()) / 3_600_000);
         if (hoursAgo < 0 || hoursAgo >= 24) continue;
         const slot = slots[23 - hoursAgo];
@@ -103,12 +108,17 @@ function HeatmapBar({ events }: { events: RiskEvent[] }) {
         {buckets.map((b, i) => {
           const height = Math.max(4, (b.count / maxCount) * 76);
           const color = b.count === 0 ? "#1e293b" : severityHexColor(b.maxSev);
+          // Reviewer P1 iter 215: tooltip label off-by-one fix. slot[23-hoursAgo]
+          // maps hoursAgo=0 (current hour, events 0-1h ago) → index 23.
+          // So index i holds events from `(23-i)-(24-i)` hours ago.
+          const ago = 23 - i;
+          const agoLabel = ago === 0 ? "0–1h ago" : `${ago}–${ago + 1}h ago`;
           return (
             <div
-              key={i}
+              key={`heatmap-bar-${i}`}
               className="flex-1 rounded-t"
               style={{ height: `${height}px`, backgroundColor: color }}
-              title={`${24 - i}h ago — ${b.count} events${b.maxSev ? ` (max ${b.maxSev})` : ""}`}
+              title={`${agoLabel} — ${b.count} events${b.maxSev ? ` (max ${b.maxSev})` : ""}`}
             />
           );
         })}
@@ -379,6 +389,13 @@ export function RiskEventTracePanel() {
       {eventsQ.error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-sm text-red-400">
           事件加载失败: {eventsQ.error instanceof Error ? eventsQ.error.message : "unknown"}
+        </div>
+      )}
+      {/* Reviewer P2 iter 215: surface ruleIdsQ error (was silently swallowed,
+          rule dropdown would show empty without user feedback per 铁律 33). */}
+      {ruleIdsQ.error && (
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-400">
+          规则列表加载失败: {ruleIdsQ.error instanceof Error ? ruleIdsQ.error.message : "unknown"}
         </div>
       )}
       <FilterBar filter={filter} ruleIds={ruleIds} onChange={setFilter} />
