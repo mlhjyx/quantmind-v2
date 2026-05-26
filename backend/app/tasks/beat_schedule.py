@@ -98,6 +98,23 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 25,  # 25s 内未执行则过期 (30s 周期内必执行或丢)
         },
     },
+    # ── MVP 4.8 (iter 184) — Trade event risk consumer 10s Beat (Phase J §1.5) ──
+    # Consumes qm:fill:executed Redis Stream (outbox publisher output, MVP 3.4
+    # batch 5 sustained since PR #130 2026-04-28). XREADGROUP at-least-once via
+    # consumer group risk-engine-fill-consumer. Triggers RealtimeRiskEngine
+    # on_tick per fill event → tick-level risk eval (vs current ~60s
+    # l4_sweep_tasks polling gap). Per MVP 4.8 design doc iter 183.
+    # Beat cadence 10s via float schedule (Celery crontab min granularity is
+    # 1min). expires=8s within next 10s cycle.
+    # X9 post-merge ops: Servy restart Celery + CeleryBeat after merge.
+    "trade-event-risk-consumer-tick": {
+        "task": "risk.trade_event_consumer_tick",
+        "schedule": 10.0,
+        "options": {
+            "queue": "default",
+            "expires": 8,
+        },
+    },
     # ── MVP 4.7 Chunk 1 (iter 174) — BGE-M3 embedding backfill every 6h ──
     # Phase J §1.4 wire: idempotent backfill of risk_memory rows where embedding
     # IS NULL via BGE-M3 EmbeddingService. Self-healing for any future NULL
