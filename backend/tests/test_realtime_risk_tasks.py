@@ -145,6 +145,68 @@ class TestAuditEnvelopeCanonical:
         assert any("scheduler_task_log" in rec.message for rec in caplog.records)
 
 
+class TestAlertDispatcherWire:
+    """iter 156 Chunk 4 — AlertDispatcher P0/P1/P2 wire."""
+
+    def test_send_alert_via_dingtalk_calls_send_with_dedup(self):
+        """_send_alert_via_dingtalk adapts RuleResult → send_with_dedup."""
+        from app.tasks import realtime_risk_tasks as task_mod  # noqa: PLC0415
+        from backend.qm_platform.risk.interface import RuleResult  # noqa: PLC0415
+
+        result = RuleResult(
+            rule_id="p0_limit_down_detection",
+            code="600519.SH",
+            shares=100,
+            reason="跌停触发",
+            metrics={"pnl_pct": -0.10},
+        )
+
+        with patch("app.services.dingtalk_alert.send_with_dedup") as mock_send:
+            mock_send.return_value = {"sent": True, "reason": "sent", "dedup_hit": False}
+            ok = task_mod._send_alert_via_dingtalk(result)
+
+        assert ok is True
+        mock_send.assert_called_once()
+        kwargs = mock_send.call_args.kwargs
+        assert kwargs["source"] == "realtime_risk_engine"
+        assert "p0_limit_down_detection" in kwargs["dedup_key"]
+        assert "600519.SH" in kwargs["dedup_key"]
+        assert "L1" in kwargs["title"]
+
+    def test_send_alert_failure_returns_false(self):
+        """send_with_dedup raising httpx.HTTPError → returns False (silent_ok)."""
+        from app.tasks import realtime_risk_tasks as task_mod  # noqa: PLC0415
+        from backend.qm_platform.risk.interface import RuleResult  # noqa: PLC0415
+
+        result = RuleResult(
+            rule_id="p1_rapid_drop_5min",
+            code="000001.SZ",
+            shares=0,
+            reason="5分钟跌幅 -8%",
+            metrics={},
+        )
+
+        with patch("app.services.dingtalk_alert.send_with_dedup") as mock_send:
+            mock_send.side_effect = RuntimeError("httpx connection refused")
+            ok = task_mod._send_alert_via_dingtalk(result)
+
+        assert ok is False
+
+    def test_dispatcher_singleton(self):
+        """_get_dispatcher returns same instance + uses _send_alert_via_dingtalk."""
+        from app.tasks import realtime_risk_tasks as task_mod  # noqa: PLC0415
+
+        # Reset singleton
+        task_mod._dispatcher = None
+
+        d_a = task_mod._get_dispatcher()
+        d_b = task_mod._get_dispatcher()
+        assert d_a is d_b
+
+        # Cleanup
+        task_mod._dispatcher = None
+
+
 class TestBeatScheduleRegistration:
     """Verify Beat schedule entry registered correctly (iter 154 Chunk 2)."""
 
