@@ -12,7 +12,7 @@ from typing import Any
 import psutil
 import redis as redis_lib
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -345,7 +345,7 @@ async def get_streams_status() -> dict[str, Any]:
 
 @router.get("/scheduler-task-log")
 async def get_scheduler_task_log(
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=100),
     task_name: str | None = None,
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -354,8 +354,12 @@ async def get_scheduler_task_log(
     Returns rows from scheduler_task_log table sorted by schedule_time DESC.
     Index-optimized via idx_scheduler_log_date.
 
+    iter 199 reviewer P2 cleanup: Query(ge=1, le=100) replaces silent clamp —
+    rogue limit now returns 422 with clear validation, sibling FastAPI idiom.
+
     Args:
-        limit: max rows to return (default 20, clamped to [1, 100]).
+        limit: max rows to return (default 20, validated to [1, 100], 422 on
+            out-of-range).
         task_name: optional exact-match filter on task_name column.
         session: AsyncSession DB dependency.
 
@@ -363,12 +367,8 @@ async def get_scheduler_task_log(
         {tasks: [{id, task_name, status, schedule_time, start_time, end_time,
                   duration_sec, error_message}], total_count: int}
     """
-    # Clamp limit (sibling-faithful contract — silently clamp instead of 422
-    # so frontend with rogue limit gets best-effort response)
-    safe_limit = max(1, min(int(limit), 100))
-
     where_clause = ""
-    params: dict[str, Any] = {"limit": safe_limit}
+    params: dict[str, Any] = {"limit": limit}
     if task_name:
         where_clause = "WHERE task_name = :task_name"
         params["task_name"] = task_name
@@ -408,11 +408,11 @@ async def get_scheduler_task_log(
     except Exception:
         logger.exception("查询 scheduler_task_log 失败")
         # fail-loud per 铁律 33 — return empty + 200 OK is silent; raise 500.
-        from fastapi import HTTPException  # noqa: PLC0415
-
-        raise HTTPException(  # noqa: B904
+        # iter 199 reviewer P2 cleanup: `from None` drops `noqa: B904` suppression —
+        # logger.exception already captured chain at line above, intentionally break here.
+        raise HTTPException(
             status_code=500, detail="scheduler_task_log query failed"
-        )
+        ) from None
 
 
 @router.get("/scheduler")

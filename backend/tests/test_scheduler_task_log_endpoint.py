@@ -140,8 +140,13 @@ class TestSchedulerTaskLogEndpoint:
             app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
-    async def test_limit_param_default_20_max_100(self):
-        """Limit param default 20, max 100 (caller-supplied limit clamped)."""
+    async def test_limit_param_default_20_validated_range_1_to_100(self):
+        """Limit param default 20, Query(ge=1, le=100) — out-of-range returns 422.
+
+        iter 199 reviewer P3 cleanup: tightened from `in (200, 422)` ambiguous
+        assertion to definitive 422 (since iter 199 backend now uses
+        Query(ge=1, le=100) validator).
+        """
         from app.db import get_db
 
         mock_session = _make_mock_session_with_rows([], total_count=0)
@@ -149,11 +154,11 @@ class TestSchedulerTaskLogEndpoint:
         try:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                # Default limit
+                # Default limit (20) → 200 OK
                 resp1 = await client.get("/api/system/scheduler-task-log")
                 assert resp1.status_code == 200
 
-                # Explicit limit within range
+                # Explicit limit within range (50) → 200 OK
                 mock_session.execute.side_effect = [
                     MagicMock(fetchall=MagicMock(return_value=[])),
                     MagicMock(scalar=MagicMock(return_value=0)),
@@ -161,14 +166,35 @@ class TestSchedulerTaskLogEndpoint:
                 resp2 = await client.get("/api/system/scheduler-task-log?limit=50")
                 assert resp2.status_code == 200
 
-                # Limit >100 should be clamped (or 400)
-                mock_session.execute.side_effect = [
-                    MagicMock(fetchall=MagicMock(return_value=[])),
-                    MagicMock(scalar=MagicMock(return_value=0)),
-                ]
+                # Limit >100 → 422 (FastAPI Query validator)
                 resp3 = await client.get("/api/system/scheduler-task-log?limit=500")
-                # Either clamp to 100 (200 OK) or reject (422)
-                assert resp3.status_code in (200, 422)
+                assert resp3.status_code == 422
+
+                # Limit <1 → 422
+                resp4 = await client.get("/api/system/scheduler-task-log?limit=0")
+                assert resp4.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_db_error_returns_500_fail_loud(self):
+        """iter 199 reviewer P3 cleanup: DB exception path returns 500 per 铁律 33.
+
+        Mock session.execute raises Exception → endpoint catches + logger.exception +
+        raise HTTPException(500). Verifies fail-loud contract.
+        """
+        from app.db import get_db
+
+        mock_session = MagicMock()
+        mock_session.execute = AsyncMock(side_effect=Exception("db connection lost"))
+        app.dependency_overrides[get_db] = _override_get_db(mock_session)
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.get("/api/system/scheduler-task-log")
+            assert resp.status_code == 500
+            data = resp.json()
+            assert "scheduler_task_log query failed" in data.get("detail", "")
         finally:
             app.dependency_overrides.clear()
 
