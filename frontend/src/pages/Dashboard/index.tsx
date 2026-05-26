@@ -20,6 +20,7 @@ import type { NavChartPoint } from "./EquityCurve";
 import { AlertsPanel } from "./AlertsPanel";
 import type { Alert } from "./AlertsPanel";
 import { PendingActionsPanel } from "./PendingActionsPanel";
+import { AttributionPanel } from "./AttributionPanel";  // iter 147 W2-F F6
 import { StrategiesPanel } from "./StrategiesPanel";
 import { HoldingsTable } from "./HoldingsTable";
 import { MonthlyHeatmap } from "./MonthlyHeatmap";
@@ -287,6 +288,8 @@ export default function DashboardOverview() {
             ) : (
               <PendingActionsPanel actions={pendingActions} />
             )}
+            {/* iter 147 W2-F F6 — Attribution panel (daily_attribution table). */}
+            <AttributionPanel />
             {alerts === null ? (
               <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 320 }}>
                 <div className="p-4 space-y-2">
