@@ -1,8 +1,53 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** + **Plan v9 Design-Reality Reconciliation closure (2026-05-20, §0.-5)** + **Wave 4 100% closure iter 51-75 single-day (2026-05-25, §0.-6)** ⭐
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** + **Plan v9 Design-Reality Reconciliation closure (2026-05-20, §0.-5)** + **Wave 4 100% closure iter 51-75 single-day (2026-05-25, §0.-6)** + **Wave 5 Operator UI = 5/5 100% closure iter 196-216 (2026-05-26, §0.-7)** ⭐⭐
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.-7 Wave 5 Operator UI = 5/5 sub-MVPs ✅ 100% closure (iter 196-216, 2026-05-26) ⭐⭐
+
+> **Wave 5 MILESTONE**: 5/5 sub-MVPs backend-only ✅ shipped over 21-iter span (iter 196-216, single-day autonomous L4+R loop continuous mode). Tier B Wave 5 Operator UI 100% complete. Runtime-verified pending Tier A§5 Servy elevated restart user touchpoint (sustained 28+ iter blocker, now flips 9 MVPs simultaneously: Phase J 4 + Wave 5 5).
+
+### Wave 5 5-MVP rollup table
+
+| MVP | Iter range | Status | PR | 关键产出 |
+|-----|-----------|--------|---|---------|
+| 5.1 PT 状态 Page | iter 196-199 | ✅ 4-iter chain | #511/#512/#513 | PtStatus.tsx 5 sections + scheduler-task-log endpoint + §v9.49 #6 SystemHealth type drift side-fix |
+| 5.2 IC 监控 + 因子衰减 | iter 201-204 | ✅ 4-iter chain | #514/#515 | IcMonitoring.tsx 5 sections + ic-monitoring LATERAL JOIN endpoint + ECharts heatmap (113 factors) |
+| 5.3 回测结果对比页 | iter 205-208 | ✅ 4-iter chain | #516/#517 | BacktestCompare.tsx 5 sections + /compare endpoint +5 fields seal (config_yaml_hash + git_commit per 铁律 15) + URL-shareable ?runs= state + ECharts NAV+drawdown overlay |
+| 5.5 调度任务 Dashboard | iter 209-212 | ✅ 4-iter chain | #518/#519 | SchedulerDashboard.tsx 5 sections + beat-schedule endpoint + §v9.49 #11 fetchSchedulerTasks type drift fix |
+| 5.4 风控事件链路追踪 | iter 213-216 | ✅ 4-iter chain | #520/#521 | RiskEventTracePanel 7th tab on /risk + /events endpoint LEFT JOIN execution_plans chain + Safari Invalid Date cross-browser fix |
+
+### Wave 5 cumulative artifact counts
+
+| 类目 | iter 196-216 增量 |
+|------|------------------|
+| PRs merged | 11 (#511-#521) |
+| Frontend LOC added | ~3500 (5 new pages + 5 components/wrappers) |
+| Backend LOC added | ~600 (8 new endpoints + 1 wrapper fix) |
+| New TDD tests | ~40 |
+| AI reviewer cycles sustained | 10 (5 backend + 5 frontend per 铁律 42 mandate) |
+| Production bugs prevented | ~8 (memoization / type drift × 3 / silent error swallow × 4 / cross-browser × 1) |
+| Doc artifacts (design + closure) | 10 (5 design + 5 closure STATUS_REPORTs) |
+| main HEAD at Wave 5 milestone | `85c4169` (iter 216 closure commit) |
+
+### Wave 5 → Next milestone transition
+
+主线 transition to **post-Wave-5 next category requires user direction**:
+- **(A) Tier A§5 Servy elevated restart walkthrough** — highest leverage immediate ROI, runbook iter 186 ready, single elevated PowerShell session flips all 9 MVPs runtime-verified ✅
+- **(B) Tier C/D research lane start** — user direction needed (DEV_AI Layer 3-4 / Sharpe 0.87→1.0+ research / factor discovery / regime / ML synthesis)
+- **(C) Tier A§5+ broader cleanup** — speculative autonomous (LL-188 hook cleanup iter 223 done / backend audit / SYSTEM_STATUS sediment iter 224 = this commit)
+- **(D) Specific user-defined task**
+
+### iter 220-224 post-Wave-5 sediment (sustained 铁律 22 doc-follows-code)
+
+- iter 220 CLAUDE.md L18 Wave 5 milestone sediment
+- iter 221 PHASE_J_DEFER_MANIFEST §1.1+§1.2+§1.4 closure annotations (sibling §1.3+§1.5)
+- iter 222 session summary STATUS_REPORT (37-iter post-compaction cumulative)
+- iter 223 LL-188 hook sediment file skip whitelist (sibling iter 187/189 hook fix pattern)
+- **iter 224 SYSTEM_STATUS.md §0.-7 (本 commit, Wave 5 closure formal sediment)**
 
 ---
 
