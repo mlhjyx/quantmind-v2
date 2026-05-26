@@ -804,3 +804,154 @@ async def dingtalk_inbound_webhook(
             )
 
     return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MVP 5.4 风控事件链路追踪 (iter 214) — events history query + rule_id discovery
+# Sibling MVP 5.1-5.3+5.5 pattern: index-optimized queries, fail-loud per 铁律 33,
+# AI reviewer 铁律 42 mandate sustained.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/events/rule-ids")
+async def get_risk_events_rule_ids(
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """iter 214 MVP 5.4 C1 — Distinct rule_ids from risk_event_log for filter dropdown.
+
+    Read-only DISTINCT query, sustained 90d retention window.
+
+    Returns:
+        {rule_ids: [str, ...], total_count: int}
+    """
+    try:
+        result = await session.execute(
+            text(
+                "SELECT DISTINCT rule_id FROM risk_event_log "
+                "WHERE triggered_at > NOW() - INTERVAL '90 days' "
+                "ORDER BY rule_id"
+            )
+        )
+        rule_ids = [row.rule_id for row in result.fetchall()]
+        return {"rule_ids": rule_ids, "total_count": len(rule_ids)}
+    except Exception as exc:
+        logger.exception("risk_events_rule_ids query failed")
+        raise HTTPException(
+            status_code=500, detail="rule_ids query failed"
+        ) from exc
+
+
+@router.get("/events")
+async def get_risk_events(
+    severity: str | None = Query(default=None, description="p0/p1/p2/info filter"),
+    rule_id: str | None = Query(
+        default=None, max_length=128, description="exact rule_id filter (max 128 chars)"
+    ),
+    hours: int = Query(default=24, ge=1, le=720, description="time window in hours (max 30 days)"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    include_chain: bool = Query(default=False, description="LEFT JOIN execution_plans"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """iter 214 MVP 5.4 C1 — Filtered + paginated risk_event_log query for RiskEventTrace.
+
+    Architecture per docs/mvp/MVP_5_4_risk_event_trace.md §2.1.
+
+    When include_chain=true, LEFT JOIN execution_plans on triggered_by_event_id
+    to attach chain data inline (saves 2nd round-trip on drill-down). Default
+    omits join for lighter list-view response.
+
+    Returns:
+        {events: [{...core fields + optional chain object}], total_count: int}
+    """
+    # Build WHERE clause from whitelist of filters.
+    # Reviewer P1 iter 214: set `rel.` prefix at construction time (not post-hoc
+    # `.replace("triggered_at", "rel.triggered_at")` which had double-replace trap
+    # if future filter clauses ever contain literal "triggered_at" → "rel.rel.").
+    # Reviewer P2 iter 214: int(hours) cast + Query(ge=1, le=720) bounds prevent
+    # injection; INTERVAL syntax can't accept bound param in SQLAlchemy/psycopg2,
+    # so f-string interpolation is the canonical form here.
+    where_parts = [f"rel.triggered_at > NOW() - INTERVAL '{int(hours)} hours'"]
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if severity:
+        where_parts.append("rel.severity = :severity")
+        params["severity"] = severity.lower()
+    if rule_id:
+        where_parts.append("rel.rule_id = :rule_id")
+        params["rule_id"] = rule_id
+
+    where_clause = "WHERE " + " AND ".join(where_parts)
+
+    chain_select = ""
+    chain_join = ""
+    if include_chain:
+        chain_select = (
+            ", ep.plan_id::text AS plan_id, ep.status AS plan_status, "
+            "ep.action AS plan_action, ep.qty AS plan_qty, "
+            "ep.user_decision AS plan_user_decision, "
+            "ep.broker_order_id AS plan_broker_order_id"
+        )
+        chain_join = (
+            "LEFT JOIN execution_plans ep ON ep.triggered_by_event_id = rel.id"
+        )
+
+    # noqa: S608 — where_clause built from named params + literal int(hours);
+    # interpolated severity/rule_id values pass via :params binding only.
+    main_sql = (
+        f"SELECT rel.id, rel.strategy_id::text AS strategy_id, rel.rule_id, "  # noqa: S608
+        f"rel.severity, rel.triggered_at::text AS triggered_at, "
+        f"rel.code, rel.shares, rel.reason, rel.action_taken, rel.cadence, "
+        f"rel.priority, rel.detection_latency_ms"
+        f"{chain_select} "
+        f"FROM risk_event_log rel {chain_join} {where_clause} "
+        f"ORDER BY rel.triggered_at DESC LIMIT :limit OFFSET :offset"
+    )
+    count_sql = (
+        f"SELECT COUNT(*) FROM risk_event_log rel {where_clause}"  # noqa: S608
+    )
+
+    try:
+        result = await session.execute(text(main_sql), params)
+        rows = result.fetchall()
+        count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+        count_result = await session.execute(text(count_sql), count_params)
+        total_count = int(count_result.scalar() or 0)
+    except Exception as exc:
+        logger.exception("risk_events query failed")
+        raise HTTPException(
+            status_code=500, detail="risk_events query failed"
+        ) from exc
+
+    events = []
+    for row in rows:
+        event = {
+            "id": row.id,
+            "strategy_id": row.strategy_id,
+            "rule_id": row.rule_id,
+            "severity": row.severity,
+            "triggered_at": row.triggered_at,
+            "code": row.code,
+            "shares": row.shares,
+            "reason": row.reason,
+            "action_taken": row.action_taken,
+            "cadence": row.cadence,
+            "priority": row.priority,
+            "detection_latency_ms": row.detection_latency_ms,
+        }
+        if include_chain:
+            plan_id = getattr(row, "plan_id", None)
+            event["chain"] = (
+                {
+                    "plan_id": plan_id,
+                    "status": getattr(row, "plan_status", None),
+                    "action": getattr(row, "plan_action", None),
+                    "qty": getattr(row, "plan_qty", None),
+                    "user_decision": getattr(row, "plan_user_decision", None),
+                    "broker_order_id": getattr(row, "plan_broker_order_id", None),
+                }
+                if plan_id
+                else None
+            )
+        events.append(event)
+
+    return {"events": events, "total_count": total_count}
