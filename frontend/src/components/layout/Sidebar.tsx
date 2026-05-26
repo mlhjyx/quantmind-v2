@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Activity,
   Scale,
+  Clock,
   Settings,
   ClipboardCheck,
 } from "lucide-react";
@@ -87,6 +88,8 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: GraduationCap, label: "PT毕业评估", path: "/pt-graduation" },
       // iter 198 MVP 5.1 — Wave 5 sub-MVP 1/5 operational dashboard
       { icon: Activity, label: "PT状态", path: "/pt-status" },
+      // iter 211 MVP 5.5 — Wave 5 sub-MVP 5/5 — 调度任务 dashboard
+      { icon: Clock, label: "调度", path: "/scheduler" },
       { icon: Settings, label: "系统设置", path: "/settings" },
     ],
   },
