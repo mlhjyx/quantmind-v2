@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { statusBadgeClasses } from "@/utils/statusBadgeClasses";
 import {
   fetchSchedulerTasks,
   fetchBeatSchedule,
@@ -29,24 +30,8 @@ import {
   type SchedulerTaskLogEntry,
 } from "@/api/system";
 
-// ── Status color helpers ────────────────────────────────────────────────────
-
-function statusBadgeClasses(status: string | null | undefined): string {
-  switch (status) {
-    case "success":
-      return "bg-green-500/20 text-green-400 border border-green-500/30";
-    case "failed":
-      return "bg-red-500/20 text-red-400 border border-red-500/30";
-    case "running":
-      return "bg-sky-500/20 text-sky-400 border border-sky-500/30";
-    case "skipped":
-      return "bg-amber-500/20 text-amber-400 border border-amber-500/30";
-    case "never":
-      return "bg-slate-700/40 text-slate-500 border border-slate-700";
-    default:
-      return "bg-slate-700/40 text-slate-400 border border-slate-700";
-  }
-}
+// ── Status color helpers (iter 226: statusBadgeClasses moved to shared
+//    utils/statusBadgeClasses.ts per refactor-cleaner P2-A consolidation) ─────
 
 // ── S1 HealthSummary (derived) ─────────────────────────────────────────────
 

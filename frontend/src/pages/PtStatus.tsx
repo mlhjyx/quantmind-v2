@@ -21,6 +21,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { statusBadgeClasses } from "@/utils/statusBadgeClasses";
 import {
   fetchEnvState,
   fetchSystemHealth,
@@ -33,20 +34,8 @@ import {
   type SchedulerTaskLogEntry,
 } from "@/api/system";
 
-// ── Status color helpers (sibling PTGraduation.tsx pattern) ─────────────────
-
-function statusBadgeClasses(status: "pass" | "warn" | "fail" | "info"): string {
-  switch (status) {
-    case "pass":
-      return "bg-green-500/20 text-green-400 border border-green-500/30";
-    case "warn":
-      return "bg-amber-500/20 text-amber-400 border border-amber-500/30";
-    case "fail":
-      return "bg-red-500/20 text-red-400 border border-red-500/30";
-    case "info":
-      return "bg-sky-500/20 text-sky-400 border border-sky-500/30";
-  }
-}
+// ── Status color helpers (iter 226: statusBadgeClasses moved to shared
+//    utils/statusBadgeClasses.ts per refactor-cleaner P2-A consolidation) ─────
 
 function taskStatusBadge(status: SchedulerTaskLogEntry["status"]) {
   switch (status) {
