@@ -60,6 +60,8 @@ const NAV_SECTIONS: NavSection[] = [
     group: "因子",
     items: [
       { icon: Database, label: "因子库", path: "/factors" },
+      // iter 203 MVP 5.2 — Wave 5 sub-MVP 2/5 IC monitoring dashboard
+      { icon: BarChart3, label: "IC监控", path: "/factors/monitoring" },
       { icon: Layers, label: "因子挖掘", path: "/mining" },
     ],
   },

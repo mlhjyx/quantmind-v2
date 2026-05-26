@@ -1,5 +1,44 @@
 import apiClient from "./client";
 
+// ── iter 203 MVP 5.2 C2: ic-monitoring API wrapper ─────────────────────────
+
+/** Single decay_heatmap row (matches backend factors.py:get_ic_monitoring). */
+export interface IcMonitoringFactor {
+  name: string;
+  status: "active" | "warning" | "critical" | "candidate" | "retired";
+  pool: string | null;
+  category: string | null;
+  ic_decay_ratio: number | null;
+  ic_ma20: number | null;
+  ic_ma60: number | null;
+  decay_level: "normal" | "warning" | "critical" | null;
+  latest_trade_date: string | null;
+}
+
+export interface IcMonitoringResponse {
+  decay_heatmap: IcMonitoringFactor[];
+  core_factors: IcMonitoringFactor[];
+  total_count: number;
+}
+
+/**
+ * Fetch pool-level IC monitoring data for IcMonitoring page S2/S4.
+ *
+ * MVP 5.2 C1 (PR #514 iter 202) + C2 (this wrapper iter 203).
+ * Single LATERAL JOIN query, O(1) not N+1.
+ *
+ * @param pool optional pool filter (case-normalized backend-side, e.g. "CORE")
+ */
+export async function fetchIcMonitoring(pool?: string): Promise<IcMonitoringResponse> {
+  const params: Record<string, string> = {};
+  if (pool) params.pool = pool;
+  const { data } = await apiClient.get<IcMonitoringResponse>(
+    "/factors/ic-monitoring",
+    { params },
+  );
+  return data;
+}
+
 export interface FactorSummary {
   id: string;
   name: string;
