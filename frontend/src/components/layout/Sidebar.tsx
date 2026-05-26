@@ -54,6 +54,8 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: Zap, label: "策略工作台", path: "/strategy" },
       { icon: BarChart3, label: "回测分析", path: "/backtest/config" },
       { icon: Library, label: "策略库", path: "/backtest/history" },
+      // iter 207 MVP 5.3 — Wave 5 sub-MVP 3/5 — 回测结果对比页
+      { icon: ArrowLeftRight, label: "回测对比", path: "/backtest/compare" },
     ],
   },
   {
