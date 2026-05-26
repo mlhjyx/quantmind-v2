@@ -37,7 +37,7 @@
 | # | Issue | Source | Status | Owner | Effort |
 |---|---|---|---|---|---|
 | F1 | F-S7-001 LLM cost_usd=0 across 570 historical calls | Subagent I SUPPLEMENT | ✅ Fix forward (sustained backward) | — | DONE 23ebea5 |
-| F2 | F-S7-005 RAG memory embedding=NULL (BGE-M3 cron 未实施) | Subagent I SUPPLEMENT | 🟡 21 rows ready, retrieve broken | User | ~4h GPU cron |
+| F2 | F-S7-005 RAG memory embedding=NULL (BGE-M3 cron 未实施) | Subagent I SUPPLEMENT | ✅ CLOSED iter 178 (MVP 4.7 C1 PR #503 — BGE-M3 embedding backfill Beat every-6h cron shipped backend-only ✅, runtime-verified pending Servy unblock per LL-210) | iter 235 stale-row sediment update | DONE 23092e9 |
 | F3 | F-S7-008 PG planner stats stale (VACUUM never ran) | Subagent I SUPPLEMENT | 🟡 Script ready, schtask 未注册 | User elevated | ~30min |
 
 **F1 详情**:
