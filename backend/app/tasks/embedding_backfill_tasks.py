@@ -30,6 +30,12 @@ from typing import Any
 from app.services.db import get_sync_conn
 from app.tasks.celery_app import celery_app
 
+# Reviewer P0 fix (iter 174): pgvector adaptation — BGEM3EmbeddingService.encode
+# returns tuple[float, ...] which psycopg2 cannot adapt to pgvector column.
+# Use canonical helper from repository.py + %s::vector cast (sibling pattern
+# persist_risk_memory at backend/qm_platform/risk/memory/repository.py:69+86).
+from backend.qm_platform.risk.memory.repository import _embedding_to_pgvector_str
+
 logger = logging.getLogger("celery.embedding_backfill_tasks")
 
 # Lazy singleton — shared BGE-M3 model load across Beat invocations.
@@ -100,13 +106,15 @@ def backfill_risk_memory_embeddings(*, batch_size: int = 100) -> dict:
             embedding = embedding_svc.encode(lesson)
             if embedding_dim is None:
                 embedding_dim = len(embedding)
+            # Reviewer P0 fix: tuple[float,...] → pgvector text literal + ::vector cast.
+            embedding_str = _embedding_to_pgvector_str(embedding)
             cur.execute(
                 """
                 UPDATE risk_memory
-                SET embedding = %s
+                SET embedding = %s::vector
                 WHERE memory_id = %s AND embedding IS NULL
                 """,
-                (embedding, memory_id),
+                (embedding_str, memory_id),
             )
 
         conn.commit()

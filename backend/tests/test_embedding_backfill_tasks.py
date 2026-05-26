@@ -209,3 +209,51 @@ def test_backfill_closes_connection_on_success(
         backfill_risk_memory_embeddings(batch_size=100)
 
     conn.close.assert_called_once()
+
+
+def test_backfill_uses_pgvector_cast_and_text_literal(
+    mock_conn_with_rows, mock_embedding_service
+):
+    """Reviewer P0 regression guard (iter 174): UPDATE must use `%s::vector` cast +
+    bind value must be a pgvector text literal (str starting with `[`), NOT a raw
+    tuple. psycopg2 cannot adapt tuple → pgvector; canonical pattern from
+    `backend/qm_platform/risk/memory/repository.py:_embedding_to_pgvector_str`
+    converts tuple → `[v1,v2,...]` text + `::vector` cast.
+
+    This test prevents the original P0 from regressing: tests 3 + 4 mock execute
+    so they don't catch SQL adapter failure; this assertion locks the contract.
+    """
+    from app.tasks.embedding_backfill_tasks import backfill_risk_memory_embeddings
+
+    conn, cur = mock_conn_with_rows
+
+    with (
+        patch("app.tasks.embedding_backfill_tasks.get_sync_conn", return_value=conn),
+        patch(
+            "app.tasks.embedding_backfill_tasks._get_embedding_service",
+            return_value=mock_embedding_service,
+        ),
+    ):
+        backfill_risk_memory_embeddings(batch_size=100)
+
+    update_calls = [
+        c for c in cur.execute.call_args_list
+        if c.args and "UPDATE" in c.args[0] and "risk_memory" in c.args[0]
+    ]
+    assert len(update_calls) == 3
+    # SQL must contain `::vector` cast (P0 regression guard)
+    update_sql = update_calls[0].args[0]
+    assert "::vector" in update_sql, (
+        f"UPDATE must use ::vector cast for pgvector adaptation; got: {update_sql!r}"
+    )
+    # Bind value 0 must be str (pgvector text literal), NOT tuple
+    bind_embedding = update_calls[0].args[1][0]
+    assert isinstance(bind_embedding, str), (
+        f"Embedding bind must be str (pgvector text literal), got {type(bind_embedding).__name__}"
+    )
+    assert bind_embedding.startswith("["), (
+        f"pgvector text literal must start with '['; got: {bind_embedding[:20]!r}"
+    )
+    assert bind_embedding.endswith("]"), (
+        f"pgvector text literal must end with ']'; got: ...{bind_embedding[-20:]!r}"
+    )
