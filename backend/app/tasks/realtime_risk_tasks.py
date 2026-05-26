@@ -46,6 +46,7 @@ from app.services.risk.realtime_context_builder import (
     RealtimeRiskContextBuilder,
 )
 from app.tasks.celery_app import celery_app
+from backend.qm_platform.calendar import is_trading_day_today_or_skip
 from backend.qm_platform.risk.dynamic_threshold.cache import RedisThresholdCache
 from backend.qm_platform.risk.execution.planner import L4ExecutionPlanner
 from backend.qm_platform.risk.interface import RuleResult
@@ -260,6 +261,20 @@ def realtime_risk_tick() -> dict[str, Any]:
     _audit_status = "error"
     _audit_summary: dict = {}
     try:
+        # iter 163 Chunk 6: calendar gate (H4 fix pattern from beat_schedule.py:26-30)
+        # Beat crontab already filters hour=9-14 + day_of_week=1-5 BUT calendar
+        # 节假日 still fires. is_trading_day_today_or_skip handles via DB cache
+        # + Tushare L2 + L3 fallback. Returns False on 节假日 → silent skip.
+        if not is_trading_day_today_or_skip():
+            result = {
+                "ok": True,
+                "reason": "non_trading_day",
+                "at": _audit_start.isoformat(),
+            }
+            _audit_summary = result
+            _audit_status = "skipped"
+            return result
+
         engine = _get_engine()
         builder = _get_context_builder()
 
