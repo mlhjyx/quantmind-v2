@@ -184,3 +184,40 @@ Top order for iter 131+ execution (**iter 135 update**: W2-F user-driven Tier A�
 - **Red lines 5/5 sustained verify** (2026-05-26 iter 130 .env fresh read): EXECUTION_MODE=paper (L17) / LIVE_TRADING_DISABLED=true (L20) / PT_TOP_N=5 sustained灰度 (L33) / PT_INDUSTRY_CAP=1.0 (L34) / cash ¥993,520.66 sustained 27 days 0 trading.
 - **Phase opening**: user `/loop` + "全面+主动" directive → iter 130 produces manifest → iter 131+ executes W2-A first.
 - **Next iter signal**: iter 131 picks W2-A OBSERVABILITY_MVP41_RUNTIME_VERIFY (§3.3 #1, §4.2 reality re-grounding overdue, highest governance value).
+
+---
+
+## §6 Week 2 Closure Status (iter 150 sediment, 2026-05-26 13:57 SH)
+
+**Manifest 6/6 items closed** ✅:
+
+| # | Audit | Closure iter | Closure doc | Verdict |
+|---|---|---|---|---|
+| 1 | W2-A OBSERVABILITY_MVP41_RUNTIME_VERIFY | 131-134 + 142-143 reverify | W2_A_OBSERVABILITY_MVP41_RUNTIME_VERIFY_2026_05_26.md + Servy restart blocker reverify | ✅ closed (PR #484 envelope + reverify sediment) |
+| 2 | W2-F FRONTEND_INTEGRATION_AUDIT | 135 audit + 136-148 implementation/archive/defer campaign | W2_F_FRONTEND_INTEGRATION_AUDIT_2026_05_26.md (10 findings) + 7 PRs (#485-#487+#489-#491+#493) | ✅ 10/10 closed (6 implement + 3 archive + 1 defer) |
+| 3 | W2-E DEV_NOTIFICATIONS_IMPL_STATUS | 144 | DEV_NOTIFICATIONS.md header refresh ~75% Aligned | ✅ doc-rot fix to reflect Wave 4 batch 3.x 17/17 milestone |
+| 4 | W2-C OUTBOX_PUBLISHER_DRIFT | 145 | W2_C_OUTBOX_PUBLISHER_DRIFT_2026_05_26.md | ✅ 2 critical findings (3/4 outbox tables missing + scheduler_task_log gap) + 4 recs (3 defer + 1 implement) |
+| 5 | W2-B L4_STAGED_EXECUTION_AUDIT | 149 | W2_B_L4_STAGED_EXECUTION_AUDIT_2026_05_26.md | ✅ PATH_DRIFT (legacy vs V3 §7.3 canonical) + DDL gap, 4 DEFER recs |
+| 6 | W2-D FACTOR_VALUES_173GB_HYPERTABLE_AUDIT | 149 (concurrent session, iter ID collision with #5) | W2_D_FACTOR_VALUES_HYPERTABLE_AUDIT_2026_05_26.md | ✅ Compression OFF (153 chunks, 173 GB) + ADR-DRAFT compression policy candidate |
+
+**Net Week 2 finding closure**: ~20 distinct findings closed (compared to ~17 Week 1). 6 ARCHIVE discoveries surfaced LL-194 anti-pattern (audit Explore subagent enumeration systematically missed sub-component + apiClient inline grep).
+
+**Week 2 ratio sediment**: ~50% implement / ~25% archive / ~25% defer — sustained mid-band per L4R §4.5 guard.
+
+---
+
+## §7 Week 3 Candidate Seed (iter 150 propose, NOT yet authoritative)
+
+Per /loop §3 backlog sources (⑥ DEV未实施 + ⑪ 项目特性 audit + ⑬ CC 主动 propose), tentative Week 3 candidates:
+
+| # | Candidate | Source | Effort | Prerequisite |
+|---|---|---|---|---|
+| W3-A | V3 §9.1 sequenceDiagram refresh (SCHEDULER_V3 §5 Rec #1 deferred since iter 130) | Week 2 deferred carry-forward | 1 iter doc | none |
+| W3-B | qm_platform migration audit (legacy backend/app/services/risk → qm_platform/risk path drift surfaced by W2-B) | W2-B R1 sustained | 1 iter audit | none |
+| W3-C | TimescaleDB compression policy ADR-DRAFT sediment + offline rehearsal (W2-D R2+R3) | W2-D paired DEFER | 1-2 iter | host disk audit + maintenance window |
+| W3-D | V3 §S6 4-domain outbox DDL completion (3 missing tables per W2-C) | W2-C R1 sustained | 2 iter | PT restart trigger |
+| W3-E | F6 attribution + F9 audit log V3-canonical-path migration (Week 2 implementations sit at legacy paths) | W2-F backlog | 2-3 iter | post Week 3 architectural consensus |
+| W3-F | LL-XXX sediment "Audit Explore enumeration systematic miss" — sub-component + inline apiClient grep SOP refresh | Week 2 retrospective LL | 1 iter LL append | none |
+
+**Smallest-first for iter 151**: W3-F (LL sediment, 1 iter, 0 precondition) or W3-A (V3 doc refresh, deferred 20+ iters).
+
