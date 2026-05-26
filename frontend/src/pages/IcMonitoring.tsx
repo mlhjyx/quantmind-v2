@@ -22,10 +22,12 @@ import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
   fetchIcMonitoring,
+  fetchFactorIcSeries,
+  fetchFactorsStats,
+  fetchFactorsHealth,
   type IcMonitoringFactor,
   type IcMonitoringResponse,
 } from "@/api/factors";
-import apiClient from "@/api/client";
 
 // ── Status color helpers (sibling PtStatus.tsx pattern) ─────────────────────
 
@@ -51,15 +53,15 @@ function decayHexColor(level: IcMonitoringFactor["decay_level"]): string {
     case "critical":
       return "#ef4444";
     default:
+      // Reviewer P1 iter 203: exhaustive-default guard — backend may add new
+      // decay_level union members (e.g. "retired"); falls through to grey here.
+      // TS won't warn on union additions due to this default; add explicit cases
+      // when backend extends contract.
       return "#475569";
   }
 }
 
 // ── S1 IcTimeSeriesSection ──────────────────────────────────────────────────
-
-interface IcSeriesResponse {
-  ic_series?: Array<{ trade_date: string; ic_value: number }>;
-}
 
 function IcTimeSeriesSection({ factors }: { factors: IcMonitoringFactor[] }) {
   const [selectedFactor, setSelectedFactor] = useState<string>(
@@ -68,17 +70,16 @@ function IcTimeSeriesSection({ factors }: { factors: IcMonitoringFactor[] }) {
   const [period, setPeriod] = useState<60 | 180 | 365>(180);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["ic-series", selectedFactor, period],
-    queryFn: async () => {
+    // Reviewer P2 iter 203: namespaced query key prevents future cross-page
+    // cache collision (sibling EnvStateBanner shared-key pattern is intentional;
+    // this is page-local).
+    queryKey: ["ic-monitoring", "series", selectedFactor, period],
+    queryFn: () => {
       const endDate = new Date().toISOString().slice(0, 10);
       const startDate = new Date(Date.now() - period * 86400 * 1000)
         .toISOString()
         .slice(0, 10);
-      const { data } = await apiClient.get<IcSeriesResponse>(
-        `/factors/${selectedFactor}`,
-        { params: { start_date: startDate, end_date: endDate } },
-      );
-      return data;
+      return fetchFactorIcSeries(selectedFactor, startDate, endDate);
     },
     enabled: !!selectedFactor,
   });
@@ -215,22 +216,12 @@ function DecayHeatmapSection({ data }: { data: IcMonitoringResponse | undefined 
 
 // ── S3 FactorHealthSummary ──────────────────────────────────────────────────
 
-interface FactorsStatsResponse {
-  active: number;
-  warning?: number;
-  critical?: number;
-  retired: number;
-  candidate?: number;
-  total?: number;
-}
-
 function FactorHealthSummary() {
-  const { data } = useQuery({
-    queryKey: ["factors-stats"],
-    queryFn: async () => {
-      const { data } = await apiClient.get<FactorsStatsResponse>("/factors/stats");
-      return data;
-    },
+  // Reviewer P1+P2 iter 203: destructure `error` for fail-loud per 铁律 33 +
+  // namespace query key under "ic-monitoring".
+  const { data, error } = useQuery({
+    queryKey: ["ic-monitoring", "factors-stats"],
+    queryFn: fetchFactorsStats,
     refetchInterval: 60_000,
   });
   const items = [
@@ -244,6 +235,11 @@ function FactorHealthSummary() {
       <h2 className="text-base font-semibold text-slate-100 mb-3">
         S3 — 因子健康总览
       </h2>
+      {error ? (
+        <div className="text-sm text-red-400 mb-3">
+          加载失败: {error instanceof Error ? error.message : "unknown"}
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {items.map((it) => (
           <div key={it.label} className="bg-slate-950/40 rounded p-3">
@@ -294,25 +290,12 @@ function CoreFactorPanel({ coreFactors }: { coreFactors: IcMonitoringFactor[] })
 
 // ── S5 DecayAlertTable ──────────────────────────────────────────────────────
 
-interface FactorHealthEntry {
-  name: string;
-  ic_mean_30d: number | null;
-  ic_mean_90d: number | null;
-  ic_trend: string;
-  decay_warning: boolean;
-}
-
-interface FactorsHealthResponse {
-  factors: FactorHealthEntry[];
-}
-
 function DecayAlertTable() {
-  const { data } = useQuery({
-    queryKey: ["factors-health"],
-    queryFn: async () => {
-      const { data } = await apiClient.get<FactorsHealthResponse>("/factors/health");
-      return data;
-    },
+  // Reviewer P1+P2 iter 203: destructure `error` for fail-loud per 铁律 33 +
+  // namespace query key under "ic-monitoring".
+  const { data, error } = useQuery({
+    queryKey: ["ic-monitoring", "factors-health"],
+    queryFn: fetchFactorsHealth,
     refetchInterval: 60_000,
   });
   const alerts = (data?.factors ?? []).filter((f) => f.decay_warning);
@@ -321,6 +304,11 @@ function DecayAlertTable() {
       <h2 className="text-base font-semibold text-slate-100 mb-3">
         S5 — 衰减告警 ({alerts.length} 个)
       </h2>
+      {error ? (
+        <div className="text-sm text-red-400 mb-3">
+          加载失败: {error instanceof Error ? error.message : "unknown"}
+        </div>
+      ) : null}
       {alerts.length === 0 ? (
         <div className="text-sm text-slate-500">
           ✓ 无衰减告警 (所有 active 因子 IC 比 ≥ 0.5)
@@ -367,7 +355,9 @@ function DecayAlertTable() {
 
 export default function IcMonitoring() {
   const monitorQ = useQuery({
-    queryKey: ["ic-monitoring"],
+    // Reviewer P3 iter 203: refetchInterval=60s consistent with S3/S5
+    // subordinate queries — primary heatmap data should not go stale.
+    queryKey: ["ic-monitoring", "root"],
     queryFn: () => fetchIcMonitoring(),
     refetchInterval: 60_000,
   });

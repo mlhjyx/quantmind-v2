@@ -39,6 +39,64 @@ export async function fetchIcMonitoring(pool?: string): Promise<IcMonitoringResp
   return data;
 }
 
+// ── iter 203 reviewer P1 fix: IcMonitoring page response types moved
+//    out of page per LL-035 api-layer rule. 3 wrapper functions below
+//    replace inline apiClient.get calls in IcMonitoring.tsx ─────────────────
+
+export interface IcSeriesPoint {
+  trade_date: string;
+  ic_value: number;
+}
+
+export interface IcSeriesResponse {
+  ic_series?: IcSeriesPoint[];
+}
+
+/** Fetch IC time-series for a single factor (used by IcMonitoring S1). */
+export async function fetchFactorIcSeries(
+  factorName: string,
+  startDate: string,
+  endDate: string,
+): Promise<IcSeriesResponse> {
+  const { data } = await apiClient.get<IcSeriesResponse>(`/factors/${factorName}`, {
+    params: { start_date: startDate, end_date: endDate },
+  });
+  return data;
+}
+
+export interface FactorsStatsResponse {
+  active: number;
+  warning?: number;
+  critical?: number;
+  retired: number;
+  candidate?: number;
+  total?: number;
+}
+
+/** Fetch pool counts (used by IcMonitoring S3). */
+export async function fetchFactorsStats(): Promise<FactorsStatsResponse> {
+  const { data } = await apiClient.get<FactorsStatsResponse>("/factors/stats");
+  return data;
+}
+
+export interface FactorHealthEntry {
+  name: string;
+  ic_mean_30d: number | null;
+  ic_mean_90d: number | null;
+  ic_trend: string;
+  decay_warning: boolean;
+}
+
+export interface FactorsHealthResponse {
+  factors: FactorHealthEntry[];
+}
+
+/** Fetch factor health (used by IcMonitoring S5 + Dashboard). */
+export async function fetchFactorsHealth(): Promise<FactorsHealthResponse> {
+  const { data } = await apiClient.get<FactorsHealthResponse>("/factors/health");
+  return data;
+}
+
 export interface FactorSummary {
   id: string;
   name: string;
