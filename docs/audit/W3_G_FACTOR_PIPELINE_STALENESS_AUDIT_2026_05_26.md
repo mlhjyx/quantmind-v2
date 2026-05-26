@@ -118,3 +118,40 @@ Root cause for factor_values max_td=2026-05-22 stale is **upstream data ingestio
 - R7 (DEFER) — Add COMMENT to compute_daily_ic.py:N if exiting with "no new data" path — should fail-loud via DingTalk (sustained iter 27 BAU pattern) when expected day's data still missing 2+h post-ingestion window
 
 **iter 152 P1 → iter 153 P1 revised to P2** (operational, not critical — natural data pipeline retry mechanic exists, today's 18:00 schtask will catch up).
+
+---
+
+## §8 R5 audit — upstream ingest HEALTHY, real root cause = T+1 IC lookahead by design (iter 154 ARCHIVE)
+
+PowerShell psql fresh 2026-05-26 14:25 SH:
+
+| Table | max trade_date | row count | Verdict |
+|---|---|---|---|
+| **klines_daily** | **2026-05-25** (Monday) | 11,864,154 | ✅ HAS 5-25 data |
+| **daily_basic** | **2026-05-25** (Monday) | 11,769,338 | ✅ HAS 5-25 data |
+| minute_bars | 2026-04-13 | 190,885,634 | sustained Baostock 6w stale (PT 4-29 暂停 expected) |
+
+**R5 contradicts iter 153 hypothesis** — upstream tables DO have 2026-05-25 data. So compute_daily_ic.py 5-25 18:00 ran with upstream data available, but factor_values max_td still 5-22.
+
+**Real root cause**: T+1 forward return lookahead inherent in IC computation design.
+
+IC formula requires signal_t vs return_{t+1} correlation. Therefore:
+- IC for trade_date=5-22 (Fri signal) needs return_{5-25} (Mon close) → ✅ computed 5-25 18:00 schtask, INSERT 5-22 row to factor_values
+- IC for trade_date=5-25 (Mon signal) needs return_{5-26} (Tue close, today ~15:00) → **expected computation tonight 5-26 18:00 schtask**, will INSERT 5-25 row
+- 5-23/5-24 weekend = no market data
+
+**System is operating as designed**. The "4-day stale" observation in iter 152 was misinterpreted; expected gap = (latest klines_daily date) - 1 trading day = 5-22 = factor_values max_td. ✅
+
+**iter 152 P1 → iter 153 P2 → iter 154 ARCHIVE (false alarm)**:
+- 0 implement needed for factor pipeline
+- The system passes the audit
+- R5+R6+R7 recommendations all SUPERSEDED (no action needed)
+
+**Lesson sediment** (LL-208 candidate next iter):
+"Audit hypothesis chain — iter 152 P1 → iter 153 P2 → iter 154 ARCHIVE
+demonstrates value of follow-up audits revising upstream assumption. Initial
+'staleness' interpretation skipped T+1 lookahead semantic. Future factor
+pipeline audits MUST account for IC computation T+1 lookahead = expected
+1-trading-day lag between klines_daily max_td and factor_values max_td."
+
+**Audit chain ratio**: 1 initial finding (iter 152 P1) → 2 revisions (iter 153 + iter 154) → ARCHIVE verdict. 3-iter chain consumed 0 broker / 0 .env / 0 yaml / 0 DDL / 0 code change — pure read-only audit triage demonstrating L4R §4.2 reality re-grounding pattern.
