@@ -15,6 +15,8 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+import psycopg2.extras
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 # Canonical sys.path order: PROJECT_ROOT first, then BACKEND_DIR (LL-175 lesson 2).
@@ -417,6 +419,95 @@ def send_alert(conn, level: str, title: str, content: str) -> None:
         _send_alert_via_legacy_dingtalk(level, title, content)
 
 
+def _persist_mismatch_audit(
+    *,
+    conn,
+    recon_date: date,
+    severity: str,
+    significant_mismatches: list[dict],
+    total_diff_pct: float,
+    fill_stats: dict,
+    alert_outcome: str,
+    alert_error: str | None = None,
+) -> str | None:
+    """Insert risk_event_log audit row when QMT vs DB mismatch detected.
+
+    iter 166 MVP 4.6 Chunk 2 — Phase J §1.3 audit trail wire. One row per
+    reconciliation call WITH mismatches (no insert when fully matched).
+
+    Sibling canonical: backend/app/services/risk/execution_plan_persistence.py:102-127
+    (MVP 4.5 Chunk 5, 12-column INSERT shape sustained).
+
+    Args:
+        conn: psycopg2 connection (caller owns commit/rollback per 铁律 32)
+        recon_date: reconciliation trade date
+        severity: 'p0' (total_mv breach > 5%) or 'p1' (significant single-stock > 1%)
+        significant_mismatches: filtered list (diff_pct > STOCK_DIFF_THRESHOLD)
+        total_diff_pct: total股数 diff ratio (0.0-1.0)
+        fill_stats: dict from calc_fill_rate (total_orders / fill_rate / etc)
+        alert_outcome: 'ALERT_FIRED' (DingTalk sent) or 'AUDIT_ONLY' (dispatch error)
+        alert_error: str when alert_outcome='AUDIT_ONLY', else None
+
+    Returns:
+        event_id (UUID str) on success, None when RETURNING row missing.
+
+    Raises:
+        psycopg2.Error: caller decides rollback/retry (helper does not commit).
+    """
+    strategy_id = settings.PAPER_STRATEGY_ID
+
+    # Representative code = largest-diff mismatch (indexed lookup convenience).
+    rep = max(significant_mismatches, key=lambda m: m["diff_pct"], default=None)
+    code = rep["code"] if rep else ""
+    diff_shares = (rep["qmt"] - rep["db"]) if rep else 0
+
+    context_snapshot = {
+        "trade_date": recon_date.isoformat(),
+        "mismatches": significant_mismatches[:10],  # cap防 JSON 巨大
+        "total_diff_pct": round(total_diff_pct, 4),
+        "fill_stats": fill_stats,
+        "alert_error": alert_error,
+    }
+    action_result = {
+        "alert_outcome": alert_outcome,
+        "mismatch_count": len(significant_mismatches),
+    }
+    reason = (
+        f"QMT vs DB mismatch (severity={severity.upper()}): "
+        f"{len(significant_mismatches)} significant + total_diff={total_diff_pct:.1%}"
+    )
+
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO risk_event_log (
+            strategy_id, execution_mode, rule_id, severity, code, shares,
+            reason, context_snapshot, action_taken, action_result, cadence,
+            priority
+        ) VALUES (
+            CAST(%s AS uuid), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        RETURNING id
+        """,
+        (
+            strategy_id,
+            settings.EXECUTION_MODE,
+            "daily_reconciliation"[:50],
+            severity[:10],
+            (code or "")[:12],
+            int(diff_shares),
+            reason[:500],
+            psycopg2.extras.Json(context_snapshot),
+            alert_outcome[:50],
+            psycopg2.extras.Json(action_result),
+            "daily"[:10],  # canonical per migrations/2026_05_11_risk_event_log_realtime.sql:6 (tick/5min/15min/daily)
+            severity.upper()[:4],
+        ),
+    )
+    row = cur.fetchone()
+    return str(row[0]) if row else None
+
+
 def run_reconciliation(recon_date: date) -> None:
     """执行一次对账。"""
     conn = get_sync_conn()
@@ -526,8 +617,13 @@ def run_reconciliation(recon_date: date) -> None:
 
         # 7. 告警 (batch 3.5 P1.1 模式: AlertDispatchError 单 catch, 不阻断对账主流程)
         significant = [m for m in mismatches if m["diff_pct"] > STOCK_DIFF_THRESHOLD]
+        # iter 166 MVP 4.6 Chunk 2: track audit metadata across try/except/else
+        audit_severity: str | None = None
+        audit_outcome = "ALERT_FIRED"
+        audit_error: str | None = None
         try:
             if total_diff > TOTAL_MV_DIFF_THRESHOLD:
+                audit_severity = "p0"
                 send_alert(
                     conn,
                     "P0",
@@ -536,6 +632,7 @@ def run_reconciliation(recon_date: date) -> None:
                     f"差异股票: {json.dumps(significant[:5], ensure_ascii=False)}",
                 )
             elif significant:
+                audit_severity = "p1"
                 send_alert(
                     conn,
                     "P1",
@@ -544,9 +641,44 @@ def run_reconciliation(recon_date: date) -> None:
                     f"{json.dumps(significant[:5], ensure_ascii=False)}",
                 )
         except AlertDispatchError as e:
+            audit_outcome = "AUDIT_ONLY"
+            audit_error = str(e)[:200]
             logger.error("[Observability] AlertDispatchError — 对账告警未送达: %s", e)
         else:
-            logger.info("[Reconciliation] 对账一致 ✓")
+            if audit_severity is None:
+                logger.info("[Reconciliation] 对账一致 ✓")
+
+        # 7b. iter 166 MVP 4.6 Chunk 2: risk_event_log audit row (Phase J §1.3 wire).
+        # One row per call WITH mismatches; matched runs have no audit row.
+        # Failure of this INSERT does not abort scheduler_task_log bookkeeping —
+        # alert was already dispatched (if ALERT_FIRED), audit is supplementary.
+        if audit_severity is not None:
+            try:
+                event_id = _persist_mismatch_audit(
+                    conn=conn,
+                    recon_date=recon_date,
+                    severity=audit_severity,
+                    significant_mismatches=significant,
+                    total_diff_pct=total_diff,
+                    fill_stats=fill_stats,
+                    alert_outcome=audit_outcome,
+                    alert_error=audit_error,
+                )
+                logger.info(
+                    "[Reconciliation] risk_event_log audit inserted: event_id=%s severity=%s outcome=%s",
+                    event_id,
+                    audit_severity,
+                    audit_outcome,
+                )
+            except Exception as audit_err:  # noqa: BLE001
+                # silent_ok (铁律 33): audit INSERT failure does NOT block
+                # scheduler_task_log main bookkeeping. Mismatch was already
+                # alerted via DingTalk (if ALERT_FIRED). Audit row is
+                # supplementary; logged for ops follow-up.
+                logger.error(
+                    "[Reconciliation] risk_event_log INSERT failed (audit supplementary, main flow continues): %s",
+                    audit_err,
+                )
 
         # 8. 写入scheduler_task_log
         cur = conn.cursor()
