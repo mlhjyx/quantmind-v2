@@ -536,3 +536,77 @@ This 3-iter cluster (170/171/+iter 169 origin) validates LL-209 §v9.49 SOP and 
 
 ### ⚠️ user veto/redirect surface (§4.1 — async, non-blocking)
 Loop shipped MVP 4.5 6-chunk complete (Phase J §1.1+§1.2 backend-only ✅) + MVP 4.6 5-iter chain (Phase J §1.3 backend-only ✅) + LL-209 + LL-210 sediment family (reality re-grounding + 三态 SOP) + 3 ARCHIVE verdicts (W4-F cron + factor T+1 + retroactive W2-X cluster) + multi-agent fan-out 常态化 validated. Red lines 5/5 sustained 28+ days, 0 trading. main HEAD `4dbe1ff`. **Tier A§5 Servy blocker user touchpoint required** for runtime-verified ship flip (elevated PowerShell `Stop-Service ... -Force; Start-Service ...` for QuantMind-Celery + CeleryBeat, then psql verify scheduler_task_log meta_monitor rows ≥1 within 5 min). If you want the loop to (a) iter 173 = Phase J §1.4 RAG consumer design (recommended, non-Servy-dependent), (b) iter 173 = Servy elevated restart trigger guidance / runbook prep (user touchpoint coming), (c) iter 173 = W4-X audit doc batch (pre-push smoke hook scope gap + LL-188 drift hook tune candidate), (d) iter 173 = Tier B Wave 5 MVP 5.1 PT 状态 page start (parallel-eligible per QPB), (e) something specific — say so. Otherwise the loop continues with **Phase J §1.4 RAG consumer design doc start** as planned iter 173.
+
+---
+
+## Digest #14 — 2026-05-26 (iterations 170-179, MVP 4.7 RAG consumer 6-iter chain + LL-211 SOP codification + 2nd diagnostic validation)
+
+### Cluster coverage (10-iter window, iter 170-179)
+
+| iter | scope | artifact | LL-210 ship 三态 |
+|---|---|---|---|
+| 170 | W4-F cron 8435756b regression triage | `W4_F_CRON_8435756B_REGRESSION_AUDIT_2026_05_26.md` ARCHIVE verdict (session-scoped CronCreate, NOT a bug) | doc-sediment ✅ |
+| 171 | factor T+1 NATURAL_LAG ARCHIVE → LATER DISCONFIRMED iter 175 → ROOT CAUSE iter 179 | `STATUS_REPORT_2026_05_26_iter_171_factor_t1_natural_lag.md` (verdict reasoning was incomplete) | doc-sediment ✅ → revised |
+| 172 | digest #13 iter 130-171 cluster | `L4R_DIGEST_LOG.md` append (~83 LOC) | doc-sediment ✅ |
+| 173 | MVP 4.7 design doc Phase J §1.4 | `docs/mvp/MVP_4_7_rag_consumer_design.md` (≤2 pages, 5-chunk decomposition, multi-agent fan-out: Explore + architect parallel ~85s wallclock) | doc-sediment ✅ |
+| 174 | MVP 4.7 Chunk 1 BGE-M3 embedding backfill | PR #503 (`23092e9`) — Beat task + standalone CLI + lazy singleton + Beat schedule; reviewer cycle 1 caught P0 (pgvector cast missing) + same-iter fix per §v9.39 + 7th regression-guard test; cycle 2 APPROVE | backend-only ✅ |
+| 175 | MVP 4.7 Chunk 2 shared `rag_context_builder` PR #504 + **§v9.49 cycle DISCONFIRMS iter 171 NATURAL_LAG verdict** + LL-211 4-layer SOP codification | PR #504 (`24e6a94`) + `STATUS_REPORT_iter_175_factor_stalled_archive_revision.md` + LL-211 append | backend-only ✅ + doc-sediment ✅ |
+| 176 | MVP 4.7 Chunk 3 NewsClassifier RAG wire | PR #505 (`609ce28`) — service-level rag DI + compose_query(title+content[:200]) + 5 TDD tests + 58 existing tests 0 regression | backend-only ✅ |
+| 177 | MVP 4.7 Chunk 4 Bull/Bear/Judge RAG wire (3 agents collapsed) | PR #506 (`5aebf00`) — service-level rag DI + 1× retrieve shared across 3 agents (saves 2 BGE-M3 retrieves per call) + 7 TDD + 24 existing 0 regression; reviewer P2-1 silent RAG degradation on None indicators (fail-soft mitigated, deferred follow-up) | backend-only ✅ |
+| 178 | MVP 4.7 Chunk 5 closure (4 yamls + smoke + STATUS_REPORT) | PR #507 (`335f1b6`) — `{rag_context}` placeholder added to 4 production yamls + 3 @pytest.mark.smoke tests on real yamls + closure STATUS_REPORT; 97 tests PASS post-yaml 0 regression | backend-only ✅ |
+| 179 | LL-211 4-layer SOP diagnostic on compute_daily_ic.py | `STATUS_REPORT_iter_179_compute_daily_ic_ll211_diagnostic.md` — Layer 1+2+3 ✓, Layer 4 ✗ SILENT FAILURE (script log "upserted=52" but factor_ic_history max_td stalled at 5-22); root cause hypothesis: DataPipeline.ingest() returns success result without raising on FK/validation; iter 175 NATURAL_LAG verdict FINAL revision (root cause exposed) | doc-sediment ✅ |
+
+### Highlights (high-impact cumulative)
+
+**LL-209 + LL-210 + LL-211 sediment family complete** (iter 168→175):
+- LL-209 (iter 168): §v9.49 reality re-grounding SOP — verify CLAIMED-DONE / CLAIMED-STATE via direct OS / DB / API query, NOT audit doc claims. 4-step SOP (OS service / DB row count / script behavior / cross-cite).
+- LL-210 (iter 169): backend-only vs runtime-verified ship 三态 distinction. 3-tier classification with cited evidence at iter close.
+- LL-211 (iter 175): 4-layer verify SOP for time-gated phenomena verdicts — scheduler trigger / trigger success / application execution / side-effect surface. ARCHIVE verdicts on layers 1+2 alone = WRONG by construction.
+
+**MVP 4.7 Phase J §1.4 ✅ COMPLETE 6-iter chain (iter 173-178)**:
+- 5 chunks shipped (design + BGE-M3 backfill + shared rag_context_builder + 4 RAG consumers wire across NewsClassifier/Bull/Bear/Judge + closure with 4 yamls + smoke + STATUS_REPORT)
+- 24 new tests cumulative + 4 yamls backward-compat verified + 0 regression on 97 existing
+- Architect-designed sibling pattern: service-level rag DI + 1× retrieve shared across agents + compose_query callback + fail-soft "数据不足:" placeholder
+- runtime-verified pending Servy unblock per LL-210 (Tier A§5 user touchpoint required)
+
+**§v9.69 multi-agent fan-out 常态化 validated cumulative** (user directive iter 166):
+- iter 170: 2-agent (provenance + persistence model)
+- iter 171: 1-agent psql + verdict revision
+- iter 173: 2-agent (Explore + architect parallel) for MVP 4.7 design
+- iter 174-177: per-chunk Explore + reviewer cycles (~10 agents cumulative across MVP 4.7 chain)
+- iter 179: 1-agent Explore + LL-211 SOP diagnostic
+- Estimated ~8-12h saved vs sequential across this 10-iter window
+
+**iter 175→179 chain demonstrates LL-211 retrospective value**:
+- iter 171 made NATURAL_LAG ARCHIVE verdict from Layer 1+2 reasoning only ("schtask fired Last Result=0, next fire will compute, expected lag is BY DESIGN")
+- iter 175 §v9.49 cycle (5-iter post-170 cadence) caught Layer 4 absent ("factor_values max_td still 5-22") — DISCONFIRMED verdict + codified LL-211 SOP
+- iter 179 LL-211 diagnostic application — confirmed Layer 3 ✓ EXECUTED (script log proves run), Layer 4 ✗ SILENT FAILURE (DB has no rows) — surfaced DataPipeline.ingest() silent failure hypothesis as root cause
+- 4-day verdict drift caught + true root cause exposed via Layer 4 SOP
+
+**Servy blocker compound effect sustained 28+ iters** (Tier A§5):
+- iter 169+ #1: MVP 4.5/4.6/4.7 closure all backend-only ✅, runtime-verified pending
+- iter 175+179 finding: compute_daily_ic.py Layer 4 silent failure is **separate** Servy issue (script runs but ingest silently fails; not Servy worker stale bytecode)
+- All closures sustained pending user elevated PowerShell touchpoint
+
+### Implement : archive : defer ratio (post iter 179 cumulative since digest #13)
+~10-iter window (170-179): **4 implement** (MVP 4.7 PRs #503/#504/#505/#506) + **3 archive** (W4-F iter 170 + factor T+1 NATURAL_LAG iter 171 → revised) + **1 closure** (PR #507 iter 178) + **2 diagnostic** (iter 175 §v9.49 + iter 179 LL-211) = ~40% IMPLEMENT-light, audit/sediment-heavy reflecting MVP 4.7 chunk-by-chunk discipline + LL-211 retrospective work.
+
+### Key cross-refs (digest #14 depends on)
+- **LL-209** (§v9.49 reality re-grounding SOP)
+- **LL-210** (backend-only vs runtime-verified ship 三态)
+- **LL-211** (4-layer verify SOP for time-gated verdicts)
+- MVP 4.7 design `docs/mvp/MVP_4_7_rag_consumer_design.md` (iter 173)
+- iter 175 STATUS_REPORT `STATUS_REPORT_iter_175_factor_stalled_archive_revision.md`
+- iter 178 MVP 4.7 closure `STATUS_REPORT_2026_05_26_mvp47_closure.md`
+- iter 179 LL-211 diagnostic `STATUS_REPORT_iter_179_compute_daily_ic_ll211_diagnostic.md`
+- W4-F cron iter 170 `W4_F_CRON_8435756B_REGRESSION_AUDIT_2026_05_26.md`
+
+### Recommended iter 181+
+- **(a) Apply Option A fix to compute_daily_ic.py** (~20 LOC, sibling iter 165 daily_reconciliation env_ssot pattern + 铁律 33 fail-loud + scheduler_task_log row for monitoring consistency) — **high impact, narrow scope** (recommended)
+- **(b) Phase J §1.5 trade event StreamBus design start** (Tier A§1 next backlog, multi-week scope)
+- **(c) DataPipeline.ingest() instrumentation** (Option B from iter 179, broader scope multi-iter sub-chain)
+- **(d) §v9.49 reality cycle post-180** (5-iter cadence, ~iter 185)
+- **(e) iter 177 reviewer P2-1 fix** — silent RAG degradation on None indicators (1-line null-guard mirror agents.py:178-184)
+
+### ⚠️ user veto/redirect surface (§4.1 — async, non-blocking)
+Loop shipped MVP 4.7 Phase J §1.4 complete (4 of 5 Phase J chunks closed: §1.1/§1.2/§1.3/§1.4 backend-only ✅; §1.5 NEXT) + LL-211 SOP codified + 2 validated diagnostic applications (iter 175 codification + iter 179 catches compute_daily_ic Layer 4 silent failure). Red lines 5/5 sustained 28+ days. main HEAD `eaf6a9f`. **Tier A§5 Servy blocker user touchpoint sustained** for runtime-verified ship flip across MVP 4.5/4.6/4.7. iter 181+ candidate options (a) through (e) above. Otherwise loop continues with **option (a) — apply Option A fix to compute_daily_ic.py** as planned iter 181 (sibling iter 165 pattern, narrow scope, high impact closing the iter 179 finding).
