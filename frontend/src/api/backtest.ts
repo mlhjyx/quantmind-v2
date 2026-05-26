@@ -203,7 +203,63 @@ export async function listBacktestHistory(strategyId?: string): Promise<Backtest
   }));
 }
 
-export async function compareBacktests(runIds: string[]): Promise<{ results: BacktestResult[] }> {
-  const res = await apiClient.post<{ results: BacktestResult[] }>("/backtest/compare", { run_ids: runIds });
+// ── iter 207 MVP 5.3 C2: BacktestCompare page wrappers ──────────────────────
+
+/**
+ * Single run summary from POST /api/backtest/compare (iter 206 PR #516 extended).
+ *
+ * Includes reproducibility seal (config_yaml_hash + git_commit per 铁律 15) +
+ * factor_list + annual_turnover + sortino_ratio.
+ */
+export interface CompareRunSummary {
+  run_id: string;
+  strategy_id: string | null;
+  run_name: string | null;
+  status: string;
+  start_date: string;
+  end_date: string;
+  annual_return: number | null;
+  sharpe_ratio: number | null;
+  max_drawdown: number | null;
+  calmar_ratio: number | null;
+  total_turnover: number | null;
+  win_rate: number | null;
+  // iter 206 PR #516 additions
+  annual_turnover: number | null;
+  sortino_ratio: number | null;
+  factor_list: string[];
+  config_yaml_hash: string | null;
+  git_commit: string | null;
+}
+
+/**
+ * Fetch side-by-side summary for 2-3 backtest runs.
+ *
+ * iter 206 PR #516: backend returns plain list (not wrapped). Wrapper returns
+ * normalized typed list for BacktestCompare page consumption.
+ */
+export async function compareBacktests(runIds: string[]): Promise<CompareRunSummary[]> {
+  const res = await apiClient.post<CompareRunSummary[]>("/backtest/compare", {
+    run_ids: runIds,
+  });
+  return res.data;
+}
+
+export interface BacktestNavPoint {
+  trade_date: string;
+  nav: number;
+  cash: number;
+  market_value: number;
+  daily_return: number | null;
+  benchmark_nav: number | null;
+  excess_return: number | null;
+  drawdown: number | null;
+}
+
+/** Fetch full NAV series for a single backtest run (used by BacktestCompare S3/S4). */
+export async function getNavSeries(runId: string): Promise<BacktestNavPoint[]> {
+  const res = await apiClient.get<BacktestNavPoint[]>(
+    `/backtest/${runId}/nav`,
+  );
   return res.data;
 }

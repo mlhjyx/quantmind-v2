@@ -55,6 +55,9 @@ export const router = createBrowserRouter([
       // Backtest
       { path: "backtest/config", element: lazyPage(() => import("@/pages/BacktestConfig")) },
       { path: "backtest/history", element: lazyPage(() => import("@/pages/StrategyLibrary")) },
+      // iter 207 MVP 5.3 — Wave 5 sub-MVP 3/5 — 回测结果对比页
+      // MUST be before /backtest/:runId to avoid path conflict
+      { path: "backtest/compare", element: lazyPage(() => import("@/pages/BacktestCompare")) },
       { path: "backtest/:runId", element: lazyPage(() => import("@/pages/BacktestRunner")) },
       { path: "backtest/:runId/result", element: lazyPage(() => import("@/pages/BacktestResults")) },
 
