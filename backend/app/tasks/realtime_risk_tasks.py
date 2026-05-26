@@ -36,12 +36,15 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from app.config import settings
 from app.services.risk.realtime_context_builder import (
     PositionSourceError,
     RealtimeRiskContextBuilder,
 )
 from app.tasks.celery_app import celery_app
 from backend.qm_platform.risk.dynamic_threshold.cache import RedisThresholdCache
+from backend.qm_platform.risk.interface import RuleResult
+from backend.qm_platform.risk.realtime.alert import AlertDispatcher, _rule_severity_str
 from backend.qm_platform.risk.realtime.engine import RealtimeRiskEngine
 from backend.qm_platform.risk.realtime.rule_registry import register_all_realtime_rules
 
@@ -52,6 +55,79 @@ logger = logging.getLogger("celery.realtime_risk_tasks")
 # registration (cheap, < 10ms).
 _engine: RealtimeRiskEngine | None = None
 _context_builder: RealtimeRiskContextBuilder | None = None
+_dispatcher: AlertDispatcher | None = None  # iter 156 Chunk 4
+
+
+def _send_alert_via_dingtalk(result: RuleResult) -> bool:
+    """send_fn callback for AlertDispatcher — adapts RuleResult → send_with_dedup.
+
+    iter 156 Chunk 4 — P0 immediate path via existing dingtalk_alert.send_with_dedup
+    (alert_dedup table dedup window per severity default: p0=5min/p1=30min/p2=60min).
+
+    Paper-mode guard: when EXECUTION_MODE='paper', the send_with_dedup helper
+    itself reads `DINGTALK_ALERTS_ENABLED` and writes audit row even when
+    DingTalk send is disabled (reason='alerts_disabled'). Pure paper-mode
+    does NOT spam real DingTalk webhook unless DINGTALK_ALERTS_ENABLED=true.
+
+    Returns:
+        bool — True if delivered or audit-row-written (dispatch counts it as
+        success). False on httpx.HTTPError / unexpected exception.
+    """
+    from app.services.dingtalk_alert import send_with_dedup  # noqa: PLC0415
+
+    severity = _rule_severity_str(result) or "p2"  # default conservative
+    # severity must be in enum p0/p1/p2/info per send_with_dedup
+    if severity not in ("p0", "p1", "p2", "info"):
+        severity = "p2"
+
+    dedup_key = f"realtime_risk:{result.rule_id}:{result.code or 'portfolio'}"
+    title = f"L1 {result.rule_id} 触发 ({severity.upper()})"
+    body = (
+        f"**Rule**: {result.rule_id}\n"
+        f"**Code**: {result.code or '组合级'}\n"
+        f"**Shares**: {result.shares}\n"
+        f"**Reason**: {result.reason}\n"
+        f"**Metrics**: {result.metrics}"
+    )
+
+    try:
+        # send_with_dedup writes alert_dedup audit row even if DingTalk disabled
+        # (it returns {'sent': False, 'reason': 'alerts_disabled'} silently).
+        # Pass conn=None so it uses its own get_conn (Beat task transaction
+        # owner — 铁律 32 handled in Chunk 5 where DB writes wire deeper).
+        outcome = send_with_dedup(
+            dedup_key=dedup_key,
+            severity=severity,  # type: ignore[arg-type]
+            source="realtime_risk_engine",
+            title=title,
+            body=body,
+            conn=None,
+        )
+        return bool(outcome.get("sent") or outcome.get("reason") == "dedup_suppressed")
+    except Exception as e:  # noqa: BLE001 — sustained Chunk 4 fail-soft
+        # silent_ok: failure to deliver should NOT crash the realtime_risk_tick task
+        # (engine evaluation already complete; alert delivery is best-effort).
+        # AlertDispatcher.dispatch counts as send_failed but task continues.
+        logger.warning(
+            "[realtime-risk-beat] send_with_dedup failed rule=%s code=%s: %s: %s",
+            result.rule_id,
+            result.code,
+            type(e).__name__,
+            e,
+        )
+        return False
+
+
+def _get_dispatcher() -> AlertDispatcher:
+    """Lazy singleton AlertDispatcher with _send_alert_via_dingtalk send_fn."""
+    global _dispatcher
+    if _dispatcher is None:
+        _dispatcher = AlertDispatcher(send_fn=_send_alert_via_dingtalk)
+        logger.info(
+            "[realtime-risk-beat] AlertDispatcher bootstrapped "
+            "(P0 immediate / P1+P2 buffered, paper-mode honors DINGTALK_ALERTS_ENABLED)"
+        )
+    return _dispatcher
 
 
 def _get_engine() -> RealtimeRiskEngine:
@@ -195,11 +271,29 @@ def realtime_risk_tick() -> dict[str, Any]:
         all_results = tick_results + five_min_results
         triggered = [r for r in all_results if r is not None]
 
+        # ── iter 156 Chunk 4: AlertDispatcher P0/P1/P2 wire ──
+        # P0 immediate dispatch via _send_alert_via_dingtalk → send_with_dedup.
+        # P1+P2 buffered; flush on 5min boundary (P1) + future 15min boundary (P2).
+        # paper-mode honored: send_with_dedup itself reads DINGTALK_ALERTS_ENABLED.
+        dispatcher = _get_dispatcher()
+        p0_immediate = dispatcher.dispatch(triggered)
+
+        # Flush P1 buffer on 5min boundary
+        p1_flushed_count = 0
+        if _audit_start.minute % 5 == 0:
+            p1_flushed_rules = dispatcher.flush("5min")
+            for r in p1_flushed_rules:
+                if _send_alert_via_dingtalk(r):
+                    p1_flushed_count += 1
+
         result = {
             "ok": True,
             "evaluated_tick": len(tick_results),
             "evaluated_5min": len(five_min_results),
             "triggered": len(triggered),
+            "p0_immediate_sent": p0_immediate,
+            "p1_flushed_sent": p1_flushed_count,
+            "execution_mode": settings.EXECUTION_MODE,
             "triggered_rules": [r.rule_id for r in triggered][:10],  # cap display
             "positions": len(ctx.positions),
             "portfolio_nav": ctx.portfolio_nav,
