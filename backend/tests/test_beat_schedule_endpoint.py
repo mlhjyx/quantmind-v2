@@ -7,6 +7,14 @@ Coverage:
 - DB error during last_fire query → degraded mode (entries still returned)
 
 Mock strategy: patch CELERY_BEAT_SCHEDULE + AsyncSession + ASGITransport.
+
+Patch target: `app.tasks.beat_schedule.CELERY_BEAT_SCHEDULE` (source module
+attribute) — NOT `app.api.system.CELERY_BEAT_SCHEDULE`. The endpoint uses
+`from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE` INSIDE the function
+body (lazy import), which rebinds to function-local scope on each call. Patching
+the source module is correct; patching `app.api.system` fails because the
+attribute doesn't exist at module-level (lazy import never sets module attr).
+Reviewer iter 210 P1 recommendation was incorrect for this pattern.
 """
 
 from typing import Any

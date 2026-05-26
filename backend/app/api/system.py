@@ -364,13 +364,19 @@ async def get_beat_schedule(
     """
     try:
         # Lazy import to keep module loadable in unit-test isolation (sibling
-        # qm_platform.calendar 铁律-34 exception pattern).
-        from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE  # noqa: PLC0415
-    except Exception:
+        # qm_platform.calendar 铁律-34 exception pattern). Bound to local scope
+        # so `app.api.system.CELERY_BEAT_SCHEDULE` patch target is stable in tests.
+        from app.tasks.beat_schedule import (  # noqa: PLC0415
+            CELERY_BEAT_SCHEDULE,
+        )
+    except Exception as exc:
+        # Reviewer P1 iter 210: `from exc` preserves import error identity
+        # (ModuleNotFoundError vs AttributeError vs ImportError) for upstream
+        # async middleware / Sentry __cause__ inspection.
         logger.exception("CELERY_BEAT_SCHEDULE import failed")
-        raise HTTPException(  # noqa: B904
+        raise HTTPException(
             status_code=500, detail="Beat schedule config unavailable"
-        ) from None
+        ) from exc
 
     if not CELERY_BEAT_SCHEDULE:
         return {"entries": [], "total_count": 0}
