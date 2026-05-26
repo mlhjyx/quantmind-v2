@@ -7704,3 +7704,53 @@ Reality re-grounding output should map to one of these 4 verdicts. Items that do
 **Cross-ref**: LL-194 (anti-assumption SOP family parent), LL-207 (Audit Explore enumeration systematic miss — sibling shape: document state lags code state), LL-209 (§v9.49 SOP, parent of this extension), LL-210 (deployment state — sibling distinction), LL-211 (4-layer SOP — sibling extension), 铁律 25 (改什么读什么 — applied to backlog text: read-current-state-before-action), §v9.49 reality re-grounding cycle. iter 191/192/193 STATUS_REPORTs (3 retrospective verdicts).
 
 **Sediment trigger**: 2026-05-26 iter 193 cross-domain MID backlog 100% triage completion. 30-iter retrospective (164-193) cumulative 8 §v9.49 applications + ~43% stale-find rate validates SOP structural value. Future audit phase backlog accumulation MUST apply LL-212 verdict taxonomy + 4-source cross-verify before scheduling iter implementation work. Without LL-212 extension, backlog accumulation drift (sustained ~43% stale references) wastes 30-iter window equivalents on already-closed scope.
+
+
+## LL-213 — Frontend API wrapper TS types MUST match backend response shape — design-time verify via reviewer agent + §v9.49 cycle (2026-05-26 iter 198-215 cumulative)
+
+**Pattern observed across iter 198-215 (17-iter span)**: 3 cumulative cases of frontend API wrapper TS type ≠ backend response shape, all caught by reviewer agents during §v9.49 reality re-grounding:
+
+| iter | Wrapper file | Drift | Silent bug | Catch |
+|---|---|---|---|---|
+| 198 | `frontend/src/api/system.ts` SystemHealth | Backend returns `{pg/redis/celery: {ok: bool, ...}}` but TS type had `{postgres/redis/celery: {status: "ok"\|"error"}}` | SystemSettings + IndustryAndSystem rendered "always down" via fallback (Array.isArray check failed silently) | iter 198 reviewer during MVP 5.1 frontend impl |
+| 211 | `frontend/src/api/system.ts` fetchSchedulerTasks | Backend returns `{platform, task_count, tasks: [...]}` object but TS type declared `SchedulerTask[]` array | SystemSettings SchedulerTab silently empty (Array.isArray(object) = false → setTasks([])) | iter 209 design-time architect agent during MVP 5.5 fan-out |
+| 215 | `frontend/src/components/risk/RiskEventTracePanel.tsx` HeatmapBar | Backend `TIMESTAMPTZ::text` produces "YYYY-MM-DD HH:MM:SS+TZ" (space separator) but `new Date()` returns Invalid Date in Safari (non-ISO 8601) | HeatmapBar silently zero-filled all 24 buckets on Safari (try/catch swallowed Invalid Date) | iter 215 reviewer during MVP 5.4 frontend impl |
+
+**根因**: 3 distinct sub-patterns:
+1. **Field renaming drift** (iter 198): backend column / Python dict key changes don't propagate to TS type
+2. **Response shape drift** (iter 211): backend wraps array in `{...metadata, tasks: [...]}` envelope, TS type expects unwrapped
+3. **Cross-browser parsing drift** (iter 215): backend serialization format works in some browsers (Chrome/Firefox) but not others (Safari)
+
+All 3 share the same anti-pattern: **TS type declaration is a CLAIM about backend response shape, but the claim is never verified design-time** unless a reviewer agent reads both sides + cross-references against actual browser parsing semantics.
+
+**改进措施**: 3-layer verification SOP for frontend API wrapper:
+
+1. **Type declaration phase**: write TS type alongside wrapper function (sibling LL-035 api-layer rule — types stay in api/ layer)
+
+2. **Design-time reviewer pass**: when adding new wrapper, MUST spawn reviewer agent with prompt asking:
+   - "Read both `frontend/src/api/X.ts` wrapper + `backend/app/api/X.py` endpoint code"
+   - "Verify TS types match actual backend serialization shape"
+   - "Flag any field name / shape / type mismatch"
+   - "Consider browser parsing semantics if datetime/JSON serialization involved"
+
+3. **Cross-browser awareness for datetime**: if backend returns `TIMESTAMPTZ::text` or any non-ISO 8601 timestamp format:
+   - Either backend formats with explicit `T` separator (`to_char` or `isoformat()`)
+   - OR frontend wrapper normalizes via `.replace(' ', 'T')` before `new Date()`
+   - Document choice in wrapper docstring
+
+**Verdict taxonomy alignment** (LL-212):
+- All 3 cases verdict = **DISCONFIRMED** (TS type was wrong claim, fixed iter 198/211/215)
+- Same-iter §v9.39 fix-flow applied for all (reviewer REQUEST_CHANGES → fix → re-build → PR)
+
+**执行状态**: ✅ codified iter 218 LL-213. 3 historical cases retroactively documented. Future MVPs: reviewer agent spawn for new api/ wrappers becomes mandatory checklist item (sibling 铁律 42 PR + reviewer mandate, sibling LL-035 api-layer enforcement).
+
+**Heuristic backref**: #1 Anti-Assumption SOP family (LL-194/207/208/209/210/211/212). LL-213 extends LL-035 (api-layer routing) with type-shape verification semantics. Sibling SOPs:
+- LL-035: API calls via api/ layer (structural rule)
+- LL-209: §v9.49 reality re-grounding (manifest claims)
+- LL-211: 4-layer SOP for time-gated phenomena (scheduler / app exec / side-effect verify)
+- LL-212: backlog item §v9.49 + verdict taxonomy
+- **LL-213 (this entry)**: frontend wrapper × backend response shape design-time verify
+
+**Cross-ref**: LL-035 (parent — API layer routing) / LL-187 (Phase H W1-6 component reuse, sibling sustained pattern) / LL-194 (anti-assumption parent) / LL-209+212 (§v9.49 SOP family) / 铁律 25 (改什么读什么 — applied to type declaration: read actual backend before declaring type) / 铁律 41 (Asia/Shanghai timezone — applied to cross-browser date parsing) / 铁律 42 (AI reviewer mandate — reviewer agent catches these design-time). iter 198/211/215 closure STATUS_REPORTs + iter 217 digest #17.
+
+**Sediment trigger**: 2026-05-26 iter 217 digest #17. 3 cumulative cases proven over 17-iter span (iter 198→215) validates pattern + SOP extension. Without LL-213 SOP, type drift accumulates silently in production — Safari Invalid Date case (iter 215) was the most subtle (silent zero-fill, cross-browser-only, no error indicator), proving design-time reviewer pass is the only reliable catch mechanism.
