@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons, ChartTooltip } from "@/components/shared";
+import { RiskEventTracePanel } from "@/components/risk/RiskEventTracePanel";
 import { SafetyControlPanel } from "@/components/safety/SafetyControlPanel";
 import { fetchCircuitBreakerState } from "@/api/dashboard";
 import type { CircuitBreakerState } from "@/types/dashboard";
@@ -466,7 +467,7 @@ export default function RiskManagement() {
     <>
       <PageHeader title="风控管理" titleEn="Risk Management">
         <TabButtons
-          tabs={["风控总览", "状态历史", "压力测试", "限额监控", "紧急控制", "实时事件"]}
+          tabs={["风控总览", "状态历史", "压力测试", "限额监控", "紧急控制", "实时事件", "事件追踪"]}
           active={tab}
           onChange={setTab}
         />
@@ -614,6 +615,9 @@ export default function RiskManagement() {
         {tab === "状态历史" && <RiskStatusHistoryPanel />}
 
         {tab === "实时事件" && <LiveRiskEventsPanel />}
+
+        {/* iter 215 MVP 5.4 — Wave 5 sub-MVP 4/5 risk event trace 7th tab */}
+        {tab === "事件追踪" && <RiskEventTracePanel />}
 
         {tab === "限额监控" && (
           <Card>
