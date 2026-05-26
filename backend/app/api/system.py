@@ -343,6 +343,78 @@ async def get_streams_status() -> dict[str, Any]:
     return {"streams": bus.all_streams_status()}
 
 
+@router.get("/scheduler-task-log")
+async def get_scheduler_task_log(
+    limit: int = 20,
+    task_name: str | None = None,
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """iter 197 MVP 5.1 Chunk 1 — Recent scheduler_task_log rows for PtStatus page S5.
+
+    Returns rows from scheduler_task_log table sorted by schedule_time DESC.
+    Index-optimized via idx_scheduler_log_date.
+
+    Args:
+        limit: max rows to return (default 20, clamped to [1, 100]).
+        task_name: optional exact-match filter on task_name column.
+        session: AsyncSession DB dependency.
+
+    Returns:
+        {tasks: [{id, task_name, status, schedule_time, start_time, end_time,
+                  duration_sec, error_message}], total_count: int}
+    """
+    # Clamp limit (sibling-faithful contract — silently clamp instead of 422
+    # so frontend with rogue limit gets best-effort response)
+    safe_limit = max(1, min(int(limit), 100))
+
+    where_clause = ""
+    params: dict[str, Any] = {"limit": safe_limit}
+    if task_name:
+        where_clause = "WHERE task_name = :task_name"
+        params["task_name"] = task_name
+
+    main_sql = (
+        f"SELECT id::text AS id, task_name, status, "  # noqa: S608 — fixed where_clause from whitelist
+        f"schedule_time::text AS schedule_time, "
+        f"start_time::text AS start_time, "
+        f"end_time::text AS end_time, "
+        f"duration_sec, error_message "
+        f"FROM scheduler_task_log {where_clause} "
+        f"ORDER BY schedule_time DESC LIMIT :limit"
+    )
+    count_sql = f"SELECT COUNT(*) FROM scheduler_task_log {where_clause}"  # noqa: S608
+
+    try:
+        result = await session.execute(text(main_sql), params)
+        rows = result.fetchall()
+        tasks = [
+            {
+                "id": row.id,
+                "task_name": row.task_name,
+                "status": row.status,
+                "schedule_time": row.schedule_time,
+                "start_time": row.start_time,
+                "end_time": row.end_time,
+                "duration_sec": row.duration_sec,
+                "error_message": row.error_message,
+            }
+            for row in rows
+        ]
+        # Pass only task_name param (no limit) for count query
+        count_params = {"task_name": task_name} if task_name else {}
+        count_result = await session.execute(text(count_sql), count_params)
+        total_count = int(count_result.scalar() or 0)
+        return {"tasks": tasks, "total_count": total_count}
+    except Exception:
+        logger.exception("查询 scheduler_task_log 失败")
+        # fail-loud per 铁律 33 — return empty + 200 OK is silent; raise 500.
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        raise HTTPException(  # noqa: B904
+            status_code=500, detail="scheduler_task_log query failed"
+        )
+
+
 @router.get("/scheduler")
 async def get_scheduler_status() -> dict[str, Any]:
     """查询 Windows Task Scheduler 中 QM- 前缀计划任务状态。
