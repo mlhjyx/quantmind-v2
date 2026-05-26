@@ -81,6 +81,10 @@ export const router = createBrowserRouter([
       // PT Graduation
       { path: "pt-graduation", element: lazyPage(() => import("@/pages/PTGraduation")) },
 
+      // PT Status (MVP 5.1 iter 198 — Wave 5 sub-MVP 1/5, operational dashboard
+      // complementary to PTGraduation gate metrics, sibling to SystemSettings config view)
+      { path: "pt-status", element: lazyPage(() => import("@/pages/PtStatus")) },
+
       // Implemented pages
       { path: "portfolio", element: lazyPage(() => import("@/pages/Portfolio")) },
       { path: "risk", element: lazyPage(() => import("@/pages/RiskManagement")) },
