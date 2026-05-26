@@ -12,6 +12,7 @@ import {
   ArrowLeftRight,
   GraduationCap,
   Activity,
+  Scale,
   Settings,
   ClipboardCheck,
 } from "lucide-react";
@@ -55,7 +56,10 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: BarChart3, label: "回测分析", path: "/backtest/config" },
       { icon: Library, label: "策略库", path: "/backtest/history" },
       // iter 207 MVP 5.3 — Wave 5 sub-MVP 3/5 — 回测结果对比页
-      { icon: ArrowLeftRight, label: "回测对比", path: "/backtest/compare" },
+      // Reviewer P2 iter 207: use Library (distinct from ArrowLeftRight already
+      // used by /execution) — actually Library used by 策略库. Use Scale icon
+      // to convey "comparison/weighing" semantic, distinct from existing.
+      { icon: Scale, label: "回测对比", path: "/backtest/compare" },
     ],
   },
   {

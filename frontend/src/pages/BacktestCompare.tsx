@@ -12,7 +12,7 @@
  * Design ref: docs/mvp/MVP_5_3_backtest_compare.md (iter 205)
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
@@ -233,7 +233,15 @@ function NavDrawdownSection({ runIds, runs }: { runIds: string[]; runs: CompareR
 
   const anyLoading = navQueries.some((q) => q.isLoading);
   const firstError = navQueries.find((q) => q.error)?.error;
-  const navSeries: BacktestNavPoint[][] = navQueries.map((q) => q.data ?? []);
+
+  // Reviewer P1 iter 207: memoize navSeries with stable deps (navQueries.data refs
+  // are reference-stable per TanStack Query when data unchanged). Without this,
+  // .map(...) creates new array ref every render, defeating downstream useMemo.
+  const navSeries: BacktestNavPoint[][] = useMemo(
+    () => navQueries.map((q) => q.data ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navQueries.map((q) => q.data).join("|")],
+  );
 
   // Build ECharts option for NAV overlay (rebase 100)
   const navOption = useMemo(() => {
@@ -267,7 +275,9 @@ function NavDrawdownSection({ runIds, runs }: { runIds: string[]; runs: CompareR
           type: "line",
           data,
           symbol: "none",
-          itemStyle: { color: RUN_COLORS[i] },
+          // Reviewer P2 iter 207: modulo guards against future MAX_RUNS bump
+          // without updating RUN_COLORS array.
+          itemStyle: { color: RUN_COLORS[i % RUN_COLORS.length] },
           connectNulls: false,
         };
       }),
@@ -293,6 +303,9 @@ function NavDrawdownSection({ runIds, runs }: { runIds: string[]; runs: CompareR
       },
       tooltip: { trigger: "axis" },
       legend: { textStyle: { color: "#cbd5e1", fontSize: 10 }, top: 0 },
+      // Reviewer P3 iter 207: dataZoom sync with NAV chart for usability over
+      // multi-year ranges (sibling NAV chart pattern).
+      dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 5 }],
       series: navSeries.map((points, i) => {
         const data = allDates.map((d) => {
           const p = points.find((x) => x.trade_date === d);
@@ -304,7 +317,7 @@ function NavDrawdownSection({ runIds, runs }: { runIds: string[]; runs: CompareR
           data,
           symbol: "none",
           areaStyle: { opacity: 0.2 },
-          itemStyle: { color: RUN_COLORS[i] },
+          itemStyle: { color: RUN_COLORS[i % RUN_COLORS.length] },
           connectNulls: false,
         };
       }),
@@ -367,6 +380,16 @@ export default function BacktestCompare() {
     .filter(Boolean)
     .slice(0, MAX_RUNS);
   const [selectedRuns, setSelectedRuns] = useState<string[]>(initialRuns);
+
+  // Reviewer P3 iter 207: sync URL → state on browser back/forward navigation.
+  // Without this useEffect, state stays stale relative to URL after history nav.
+  const urlRunsStr = searchParams.get("runs") || "";
+  useEffect(() => {
+    const urlRuns = urlRunsStr.split(",").filter(Boolean).slice(0, MAX_RUNS);
+    setSelectedRuns((prev) =>
+      prev.join(",") === urlRuns.join(",") ? prev : urlRuns,
+    );
+  }, [urlRunsStr]);
 
   function updateRuns(next: string[]) {
     setSelectedRuns(next);
