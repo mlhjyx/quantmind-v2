@@ -30,6 +30,7 @@
 | 06 | [`06_beat_monitoring_sop.md`](06_beat_monitoring_sop.md) | CeleryBeat schedule health 4-layer verify (Servy CLI status + process timestamp + celerybeat-schedule.dat shelve introspect + celery-beat-stderr.log ticking) — X9 Beat Stopped silent drift reverse case sediment | 0 (read-only verify) |
 | 07 | [`07_registry_status_count_sop.md`](07_registry_status_count_sop.md) | ADR `docs/adr/REGISTRY.md` status distribution count automation — committed/reserved/gap count update 沿用 PR add row 体例, N×N drift cross-verify (REGISTRY + ADR-DRAFT + V3 + LL backlog) ADR-022 反 silent overwrite (sub-PR 8b-cadence-A reviewer HIGH 5-07 sediment) | 0 (doc-only) |
 | 08 | [`08_adr_partial_closure_monitoring_sop.md`](08_adr_partial_closure_monitoring_sop.md) | ADR partial closure cumulative drift 监控 (`→ ADR-XXX (committed, partial)` 体例 + 残余 sub-task tracking + 3 source cross-verify), 反 forgotten 漂移 (ADR-039 + ADR-043 partial closure sediment) | 0 (doc-only) |
+| 09 | [`09_servy_elevated_restart_phase_j_unblock.md`](09_servy_elevated_restart_phase_j_unblock.md) | Phase J 4-MVP runtime-verified ship unblock — elevated PowerShell Servy stop/start sequence + 5-MVP verification queries (scheduler_task_log + redis XINFO GROUPS), 一次操作 flip 4 个 LL-210 三态 gate (MVP 4.5/4.6/4.7/4.8). Tier A§5 sustained 28+ iter blocker closure. | 0 (Servy capacity ops + 0 .env / yaml / DB row mutation + 5/5 红线 sustained) |
 
 ## 添加新 runbook
 
