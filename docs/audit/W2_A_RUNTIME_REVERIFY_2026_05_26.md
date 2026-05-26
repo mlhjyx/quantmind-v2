@@ -35,17 +35,52 @@ Other tasks with rows confirming PG + envelope path works for OLD code:
 
 ---
 
-## §2 Action taken (post-merge X9 restart)
+## §2 Action attempted (post-merge X9 restart — BLOCKED iter 143 update)
 
-User explicit authorization 2026-05-26 03:00 SH ("restart celery and celery-beat").
+User explicit authorization 2026-05-26 13:18 SH ("restart celery and celery-beat").
 
+**iter 142 attempt 1 (Servy stop+sleep+start)**: Servy CLI returned "Service started successfully" + status "Running" for both QuantMind-Celery + QuantMind-CeleryBeat → APPEARED successful.
+
+**iter 143 verification revealed false-positive**: PG query for `meta_monitor` past 7d returned 0 rows. Beat log shows `meta-monitor-tick` dispatched at 13:20:00 + 13:25:00 BUT Celery worker logs show 0 `meta_monitor` task receipt. Python process inspection (`Get-CimInstance Win32_Process`) shows ALL python.exe PIDs have CreationDate `2026-05-25 23:43` — **14 hours old, NOT post-restart**.
+
+Root cause: Servy `stop`/`restart` commands report success but don't actually stop the underlying python.exe Celery worker process. `sc.exe stop QuantMind-Celery` requires elevated shell ("OpenService FAILED 5: Access is denied"). Non-elevated CC session cannot force Celery worker restart.
+
+**iter 143 attempt 2 (sc.exe native)**: blocked Access Denied (non-elevated). Servy `restart` also `Failed to restart service`.
+
+**Sustained blocker**: Celery worker still running pre-iter-132 bytecode. iter 132+134 audit envelope code NOT actually deployed. Status remains **backend-only ship** per §v9.48 三态 enforcement.
+
+### Resolution options for user (action required, elevated shell)
+
+Option (a) — elevated PowerShell:
+```powershell
+# Run as Administrator
+Stop-Service QuantMind-Celery -Force
+Start-Sleep -Seconds 35
+Start-Service QuantMind-Celery
+# Repeat for QuantMind-CeleryBeat
 ```
-Servy restart QuantMind-Celery (graceful 30s)
-Servy restart QuantMind-CeleryBeat
-→ both Service status: Running
+
+Option (b) — kill python.exe processes (last resort, may corrupt graceful shutdown):
+```powershell
+# Run as Administrator - identify Celery worker via cmdline pattern
+Get-CimInstance Win32_Process | Where-Object {
+  $_.Name -eq 'python.exe' -and $_.CommandLine -like '*celery*worker*'
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+# Servy will auto-restart per service config
 ```
 
-Service status verified post-restart: both `Running`. Beat schedule will fire `meta_monitor_tick` on next 5-min boundary.
+Option (c) — Windows service restart via Services.msc UI (manual, elevation prompt auto-handled).
+
+**Post-restart verification SOP**: after elevated restart, run:
+```sql
+SELECT task_name, status, start_time, duration_sec, result_json
+FROM scheduler_task_log
+WHERE task_name = 'meta_monitor'
+  AND start_time >= '<restart-timestamp>'
+ORDER BY start_time DESC LIMIT 5;
+```
+
+Expected: ≥1 row within 5min of restart. If still 0 → deeper bug (task name mismatch / module import failure / Beat schedule misconfigure) → escalate.
 
 ---
 
