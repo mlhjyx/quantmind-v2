@@ -1102,6 +1102,10 @@ async def compare_strategies(
             raise HTTPException(status_code=400, detail=f"无效的 run_id: {rid_str}") from err
 
         run = await _get_run_or_404(session, rid)
+        # iter 206 MVP 5.3 C1: +5 fields per design doc §2.1 Option C Hybrid.
+        # Reproducibility seal (config_yaml_hash + git_commit per 铁律 15) +
+        # factor_list + annual_turnover + sortino_ratio for MetricComparisonTable.
+        # All from existing _get_run_or_404 SELECT *, 0 new query.
         results.append(
             {
                 "run_id": str(run["run_id"]),
@@ -1116,6 +1120,12 @@ async def compare_strategies(
                 "calmar_ratio": run.get("calmar_ratio"),
                 "total_turnover": run.get("total_turnover"),
                 "win_rate": run.get("win_rate"),
+                # MVP 5.3 C1 additions (5 fields):
+                "annual_turnover": run.get("annual_turnover"),
+                "sortino_ratio": run.get("sortino_ratio"),
+                "factor_list": run.get("factor_list") or [],
+                "config_yaml_hash": run.get("config_yaml_hash"),
+                "git_commit": run.get("git_commit"),
             }
         )
 
