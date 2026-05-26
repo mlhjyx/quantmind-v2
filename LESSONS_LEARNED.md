@@ -7651,3 +7651,56 @@ ARCHIVE verdicts on the basis of layers 1+2 alone (without 3+4) are **WRONG by c
 **Cross-ref**: LL-194 (anti-assumption SOP family), LL-208 (T+1 IC lookahead — LL-211 extends with 4-layer post-fire verify), LL-209 (§v9.49 reality re-grounding SOP codified), LL-210 (backend-only vs runtime-verified ship 三态 — sibling shape: "code merged" vs "code deployed"), 铁律 25 (改什么读什么 → 改什么状态读什么 application layer), 铁律 10b (smoke test 生产入口真启动验证 — sibling 4-layer verification mandate), §v9.49 reality re-grounding cycle (operational SOP). iter 171 STATUS_REPORT (`STATUS_REPORT_2026_05_26_iter_171_factor_t1_natural_lag.md`) — verdict REVISED via this LL.
 
 **Sediment trigger**: 2026-05-26 iter 175 §v9.49 reality re-grounding cycle. 4-day masking window (iter 171→175) was the cost of incomplete verdict reasoning at iter 171. ~4 iter wasted ARCHIVE state before reality cycle caught it. Future audit-driven phase ARCHIVE verdicts on time-gated phenomena MUST apply LL-211 4-layer verification BEFORE declaring ARCHIVE. Without LL-211 SOP, audit chain backlog accumulates wrong ARCHIVE verdicts that mask real production issues.
+
+
+## LL-212 — §v9.49 reality re-grounding SOP EXTENSION: apply to ALL backlog items (not just manifest claims) — backlog hygiene SOP (2026-05-26 iter 191-193 retrospective)
+
+**Pattern observed across iter 164-193 (30-iter span)**: §v9.49 reality re-grounding SOP (LL-209) was originally codified for manifest claims (PHASE_J_DEFER_MANIFEST §1.3 stale claim catch at iter 164). Over 30-iter span the SOP was applied 8 cumulative times with the following verdict distribution:
+
+| iter | scope | verdict |
+|---|---|---|
+| 164 | PHASE_J §1.3 manifest "Disabled since 4-29" | CONFIRMED (schtask was fine) |
+| 175 | factor T+1 NATURAL_LAG ARCHIVE iter 171 | DISCONFIRMED (Layer 4 silent failure) |
+| 179 | compute_daily_ic.py Layer 4 silent failure | DISCONFIRMED (root cause: DataPipeline.ingest fail-soft) |
+| 183 | PHASE_J §1.5 manifest "no event publish" | DISCONFIRMED (outbox publisher already wires) |
+| 188 | Servy services "running" status | CONFIRMED (expected blocker, stale code ~21h) |
+| 191 | Calendar singleton conn bug backlog | ARCHIVED (stale — Plan 1+1.5+D all closed) |
+| 192 | F9 DEFER triage | REAFFIRM DEFER (intentional, 2/3 conditions sustained pending) |
+| 193 | Plan 2.5 SimBroker backlog | ARCHIVED (stale — P1-39 closed 5-19 via DEV_PAPER_BROKER.md) |
+
+**Distribution**: 2 CONFIRMED + 3 DISCONFIRMED + 2 ARCHIVED + 1 REAFFIRM DEFER. **Critical finding**: 3 of 7 cross-domain MID backlog items (~43%) triaged at iter 191-193 were STALE or INTENTIONAL DEFER references requiring §v9.49 re-grounding rather than implementation work. Without LL-209 SOP applied, ~43% of backlog effort would have been wasted on already-closed scope.
+
+**根因**: LL-209 was codified at iter 168 for the narrow case of manifest claims (PHASE_J_DEFER_MANIFEST stale text). The 30-iter retrospective reveals the SOP scope is MUCH broader — applies to ANY claim about system state derived from a document rather than fresh OS/DB/code query:
+- Manifest claims (LL-209 original scope)
+- ARCHIVE verdicts (iter 175 + iter 179 — time-gated reasoning insufficient per LL-211)
+- Cross-domain MID backlog references (iter 191/193 — stale references where underlying issues were closed by sibling work)
+- Defer-with-cite items (iter 192 — defer conditions may newly meet post-Phase-J)
+- Reality status (iter 188 — service "running" ≠ code current)
+
+All 5 cases share the same anti-pattern: **document text lags actual system state**. §v9.49 reality re-grounding catches this universally if applied to ALL backlog items.
+
+**改进措施**: §v9.49 reality re-grounding SOP EXTENSION — apply to ALL backlog items BEFORE scheduling implementation work:
+
+1. **For backlog items dated > 7 days prior**: MANDATORY §v9.49 reality re-grounding cycle BEFORE iter scheduling
+2. **For backlog items dated > 30 days prior**: HIGH-PRIORITY §v9.49 cycle, default verdict expectation = stale unless reality re-grounding confirms otherwise
+3. **For ALL backlog items**: investigation must include 4-source cross-verify: defining doc (if exists) + production code (grep for references) + test coverage (grep) + git log (recent closure commits)
+
+**Verdict taxonomy** (iter 191-193 codified):
+- **FIX**: implementable problem, scope ≤2 iter → ship via PR/direct push
+- **ARCHIVE**: stale reference, underlying issue closed elsewhere → STATUS_REPORT documents closure cite
+- **REAFFIRM DEFER**: intentional defer with comprehensive defer doc + pending user direction → STATUS_REPORT updates condition status table
+- **DISCONFIRMED**: previous verdict wrong → STATUS_REPORT revises + LL append if pattern
+
+Reality re-grounding output should map to one of these 4 verdicts. Items that don't map suggest the SOP was insufficient (scope underrun) → escalate to multi-agent fan-out (Explore + architect parallel per §v9.69) before scheduling.
+
+**执行状态**: ✅ codified iter 193 STATUS_REPORT (`docs/audit/STATUS_REPORT_2026_05_26_iter_193_plan_25_simbroker_archive.md` §5 cumulative §v9.49 table) + iter 191/192/193 STATUS_REPORTs document each verdict with cite source + 4-source cross-verify trail. Post iter 193: cross-domain MID backlog 7/7 = **100% triaged** with verdict taxonomy correctly applied (4 FIX + 2 ARCHIVE + 1 REAFFIRM DEFER + 0 DISCONFIRMED in current backlog). 8 §v9.49 SOP applications validated structurally healthy backlog hygiene.
+
+**Heuristic backref**: #1 Anti-Assumption SOP family (LL-194/207/208/209/210/211). LL-212 extends LL-209 scope from "manifest claims" to "ALL backlog items". Sibling SOPs:
+- LL-209: §v9.49 reality re-grounding (manifest claims original scope)
+- LL-210: backend-only vs runtime-verified ship 三态 (deployment state distinction)
+- LL-211: 4-layer SOP for time-gated phenomena (scheduler ≠ application ≠ side-effect)
+- **LL-212 (this entry)**: SOP scope extension to backlog items + verdict taxonomy codification
+
+**Cross-ref**: LL-194 (anti-assumption SOP family parent), LL-207 (Audit Explore enumeration systematic miss — sibling shape: document state lags code state), LL-209 (§v9.49 SOP, parent of this extension), LL-210 (deployment state — sibling distinction), LL-211 (4-layer SOP — sibling extension), 铁律 25 (改什么读什么 — applied to backlog text: read-current-state-before-action), §v9.49 reality re-grounding cycle. iter 191/192/193 STATUS_REPORTs (3 retrospective verdicts).
+
+**Sediment trigger**: 2026-05-26 iter 193 cross-domain MID backlog 100% triage completion. 30-iter retrospective (164-193) cumulative 8 §v9.49 applications + ~43% stale-find rate validates SOP structural value. Future audit phase backlog accumulation MUST apply LL-212 verdict taxonomy + 4-source cross-verify before scheduling iter implementation work. Without LL-212 extension, backlog accumulation drift (sustained ~43% stale references) wastes 30-iter window equivalents on already-closed scope.
