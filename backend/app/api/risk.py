@@ -844,7 +844,9 @@ async def get_risk_events_rule_ids(
 @router.get("/events")
 async def get_risk_events(
     severity: str | None = Query(default=None, description="p0/p1/p2/info filter"),
-    rule_id: str | None = Query(default=None, description="exact rule_id filter"),
+    rule_id: str | None = Query(
+        default=None, max_length=128, description="exact rule_id filter (max 128 chars)"
+    ),
     hours: int = Query(default=24, ge=1, le=720, description="time window in hours (max 30 days)"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -862,8 +864,14 @@ async def get_risk_events(
     Returns:
         {events: [{...core fields + optional chain object}], total_count: int}
     """
-    # Build WHERE clause from whitelist of filters
-    where_parts = [f"triggered_at > NOW() - INTERVAL '{int(hours)} hours'"]
+    # Build WHERE clause from whitelist of filters.
+    # Reviewer P1 iter 214: set `rel.` prefix at construction time (not post-hoc
+    # `.replace("triggered_at", "rel.triggered_at")` which had double-replace trap
+    # if future filter clauses ever contain literal "triggered_at" → "rel.rel.").
+    # Reviewer P2 iter 214: int(hours) cast + Query(ge=1, le=720) bounds prevent
+    # injection; INTERVAL syntax can't accept bound param in SQLAlchemy/psycopg2,
+    # so f-string interpolation is the canonical form here.
+    where_parts = [f"rel.triggered_at > NOW() - INTERVAL '{int(hours)} hours'"]
     params: dict[str, Any] = {"limit": limit, "offset": offset}
     if severity:
         where_parts.append("rel.severity = :severity")
@@ -872,7 +880,7 @@ async def get_risk_events(
         where_parts.append("rel.rule_id = :rule_id")
         params["rule_id"] = rule_id
 
-    where_clause = "WHERE " + " AND ".join(where_parts).replace("triggered_at", "rel.triggered_at")
+    where_clause = "WHERE " + " AND ".join(where_parts)
 
     chain_select = ""
     chain_join = ""
