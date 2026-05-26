@@ -70,6 +70,40 @@ class _RouterProtocol(Protocol):
     ) -> LLMResponse: ...
 
 
+def _compose_regime_query(indicators: MarketIndicators) -> str:
+    """iter 182 — RAG query string from MarketIndicators snapshot with null-guard.
+
+    Mirrors `_format_indicators_for_prompt` agents.py:170-184 null-guard pattern.
+    MarketIndicators allows None for any numeric field (interface.py:79-84 source
+    feed timeout tolerance); raw `:.4f` format on None raises TypeError → silent
+    RAG degradation (build_rag_context outer try/except catches it, but RAG
+    context lost for that classify call). Fixes iter 177 reviewer P2-1.
+
+    Returns:
+        str query for RAG retrieve — None fields render as "null", numeric fields
+        formatted with appropriate precision (sse/hs300/iv .4f; north_flow .2f;
+        breadth_up/breadth_down as int str).
+    """
+    def _fmt_f4(x: float | None) -> str:
+        return "null" if x is None else f"{x:.4f}"
+
+    def _fmt_f2(x: float | None) -> str:
+        return "null" if x is None else f"{x:.2f}"
+
+    def _fmt_int(x: int | None) -> str:
+        return "null" if x is None else str(x)
+
+    return (
+        f"市场 regime classify @ {indicators.timestamp.isoformat()} "
+        f"SSE={_fmt_f4(indicators.sse_return)} "
+        f"HS300={_fmt_f4(indicators.hs300_return)} "
+        f"breadth_up={_fmt_int(indicators.breadth_up)} "
+        f"breadth_down={_fmt_int(indicators.breadth_down)} "
+        f"north_flow={_fmt_f2(indicators.north_flow_cny)} "
+        f"iv_50etf={_fmt_f4(indicators.iv_50etf)}"
+    )
+
+
 class MarketRegimeService:
     """V3 §5.3 Bull/Bear regime detection orchestrator (V4-Pro × 3 debate).
 
@@ -147,19 +181,20 @@ class MarketRegimeService:
         # retrieves per call). compose_query derived from indicators snapshot —
         # all 3 agents see the same historical context per V3 §5.4 design intent
         # (L1 push augmentation, NOT per-agent specialization).
+        # iter 182: compose_query extracted to `_compose_regime_query` module
+        # helper with null-guard (sibling agents.py:170-184 pattern). Fixes
+        # iter 177 reviewer P2-1 silent RAG degradation on None indicators
+        # (MarketIndicators allows None fields per interface.py:79-84 source
+        # feed timeout tolerance).
         rag_context = ""
         if self._rag is not None:
             from app.services.risk.rag_context_builder import build_rag_context  # noqa: PLC0415
 
-            def _compose() -> str:
-                return (
-                    f"市场 regime classify @ {indicators.timestamp.isoformat()} "
-                    f"SSE={indicators.sse_return:.4f} HS300={indicators.hs300_return:.4f} "
-                    f"breadth_up={indicators.breadth_up} breadth_down={indicators.breadth_down} "
-                    f"north_flow={indicators.north_flow_cny} iv_50etf={indicators.iv_50etf}"
-                )
-
-            rag_context = build_rag_context(self._rag, compose_query=_compose, k=5)
+            rag_context = build_rag_context(
+                self._rag,
+                compose_query=lambda: _compose_regime_query(indicators),
+                k=5,
+            )
 
         bull_args, bull_cost = self._bull.find_arguments(
             indicators, decision_id=bull_id, rag_context=rag_context
