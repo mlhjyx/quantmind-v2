@@ -41,6 +41,7 @@ from app.services.risk.realtime_context_builder import (
     RealtimeRiskContextBuilder,
 )
 from app.tasks.celery_app import celery_app
+from backend.qm_platform.risk.dynamic_threshold.cache import RedisThresholdCache
 from backend.qm_platform.risk.realtime.engine import RealtimeRiskEngine
 from backend.qm_platform.risk.realtime.rule_registry import register_all_realtime_rules
 
@@ -54,12 +55,28 @@ _context_builder: RealtimeRiskContextBuilder | None = None
 
 
 def _get_engine() -> RealtimeRiskEngine:
-    """Lazy singleton RealtimeRiskEngine with 10 rules pre-registered."""
+    """Lazy singleton RealtimeRiskEngine with 10 rules + DynamicThreshold cache.
+
+    iter 155 Chunk 3 — wire RedisThresholdCache into engine. The cache is
+    populated by existing `risk-dynamic-threshold-5min` Beat task
+    (DynamicThresholdEngine writes per-rule per-code thresholds, 5min TTL).
+    Engine `_apply_dynamic_thresholds` (engine.py:98-99) reads via cache.get()
+    and calls rule.update_threshold(); when cache is None or returns None,
+    engine gracefully skips threshold update (rule uses static fallback).
+
+    Sustained MVP 4.5 §3 Chunk 3 spec — RedisThresholdCache constructed lazy
+    (no Redis client injected → cache._ensure_redis() lazy-connects).
+    """
     global _engine
     if _engine is None:
         _engine = RealtimeRiskEngine()
         register_all_realtime_rules(_engine)
-        logger.info("[realtime-risk-beat] Engine bootstrapped with 10 rules")
+        # iter 155 Chunk 3: wire DynamicThreshold cache (S7→S5 sustained)
+        threshold_cache = RedisThresholdCache()  # lazy redis init, DI-compatible
+        _engine.set_threshold_cache(threshold_cache)
+        logger.info(
+            "[realtime-risk-beat] Engine bootstrapped: 10 rules + RedisThresholdCache wired"
+        )
     return _engine
 
 
