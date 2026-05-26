@@ -412,11 +412,17 @@ async def get_ic_monitoring(
 
     Architecture per docs/mvp/MVP_5_2_ic_monitoring_decay.md §2.1.
     """
+    # Reviewer P2 iter 202: pool case-normalize prevents silent empty results from
+    # case mismatches (DB stores 'CORE' uppercase per factor_registry seed).
+    pool_normalized = pool.upper() if pool else None
+
+    # SAFE: where_clause built from literal constants only. User-supplied values
+    # (pool_normalized) always bound via named params (:pool), never interpolated.
     where_clause = "WHERE r.status IN ('active', 'warning', 'critical', 'candidate')"
     params: dict[str, Any] = {}
-    if pool:
+    if pool_normalized:
         where_clause += " AND r.pool = :pool"
-        params["pool"] = pool
+        params["pool"] = pool_normalized
 
     sql = f"""
         SELECT r.name, r.status, r.pool, r.ic_decay_ratio, r.category,
@@ -435,11 +441,14 @@ async def get_ic_monitoring(
     try:
         result = await session.execute(text(sql), params)
         rows = result.fetchall()
-    except Exception:
+    except Exception as exc:
         logger.exception("ic-monitoring query failed")
+        # Reviewer P1 iter 202: `from exc` preserves exception chain for upstream
+        # middleware __cause__ inspection. Sibling iter 199 scheduler-task-log used
+        # `from None`; this endpoint preserves chain for richer error handling.
         raise HTTPException(
             status_code=500, detail="ic-monitoring query failed"
-        ) from None
+        ) from exc
 
     decay_heatmap = [
         {
