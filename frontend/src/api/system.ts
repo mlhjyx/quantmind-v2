@@ -78,8 +78,60 @@ export async function fetchDataSources(): Promise<DataSource[]> {
   return data;
 }
 
+/**
+ * iter 210 MVP 5.5 C1 §v9.49 finding #11 fix: backend returns
+ * `{platform, task_count, tasks: [...]}` object, NOT a plain array.
+ * Previous wrapper typed as `SchedulerTask[]` directly → SystemSettings
+ * SchedulerTab silently rendered empty (Array.isArray(object) = false).
+ *
+ * Sibling iter 198 SystemHealth type drift pattern.
+ */
+interface SchedulerResponseRaw {
+  platform: string;
+  task_count: number;
+  tasks: Array<{
+    task_name: string;
+    schedule: string;
+    last_run: string | null;
+    next_run: string | null;
+    status: string;
+    last_result_code: number | null;
+  }>;
+}
+
 export async function fetchSchedulerTasks(): Promise<SchedulerTask[]> {
-  const { data } = await apiClient.get<SchedulerTask[]>("/system/scheduler");
+  const { data } = await apiClient.get<SchedulerResponseRaw>("/system/scheduler");
+  // Map raw backend shape to SchedulerTask interface
+  return (data?.tasks ?? []).map((t) => ({
+    name: t.task_name,
+    display_name: t.task_name.replace(/^QM-?/, ""), // strip QM- prefix for display
+    schedule: t.schedule || "",
+    last_run: t.last_run,
+    last_status: t.status as SchedulerTask["last_status"],
+    next_run: t.next_run,
+    enabled: true, // QM-* tasks shown only when enabled
+  }));
+}
+
+// ── iter 210 MVP 5.5 C1: Celery Beat schedule introspection ────────────────
+
+export interface BeatScheduleEntry {
+  beat_key: string;
+  task_name: string;
+  schedule_display: string;
+  expires_sec: number | null;
+  queue: string | null;
+  last_fire_time: string | null;
+  last_fire_status: string | null;
+}
+
+export interface BeatScheduleResponse {
+  entries: BeatScheduleEntry[];
+  total_count: number;
+}
+
+export async function fetchBeatSchedule(): Promise<BeatScheduleResponse> {
+  const { data } = await apiClient.get<BeatScheduleResponse>("/system/beat-schedule");
   return data;
 }
 
