@@ -85,3 +85,36 @@ All NEGATIVE (audit-only, 0 broker / 0 .env / 0 yaml / 0 DB mutation / 0 product
 - W3-F ✅ (iter 151 LL-207 sediment)
 - W3-G ✅ (iter 152 THIS audit) — NEW finding surfaced post-W2 closure
 - W3-A/B/C/D/E pending
+
+---
+
+## §7 R2 follow-up — schtasks /Query result (iter 153 R2 closure)
+
+PowerShell `schtasks.exe /Query /V /TN QuantMind_DailyIC /FO LIST` fresh 2026-05-26 14:22 SH:
+
+| Field | Value |
+|---|---|
+| TaskName | `\QuantMind_DailyIC` |
+| Status | **Ready** (Enabled) |
+| **Last Run Time** | **2026-05-25 18:00:00** (Monday) |
+| **Last Result** | **0 (SUCCESS)** ✅ |
+| Next Run Time | 2026-05-26 18:00:00 (今晚 Tuesday) |
+| Task To Run | `D:\quantmind-v2\.venv\Scripts\python.exe D:\quantmind-v2\scripts\compute_daily_ic.py --core --days 30` |
+| Logon Mode | Interactive only |
+| Stop Task If Runs | 00:15:00 timeout |
+
+**Revised verdict** (iter 153 finding revises iter 152 P1):
+
+schtask QuantMind_DailyIC is **HEALTHY** — ran Monday 5-25 18:00 with exit 0 success.
+
+Root cause for factor_values max_td=2026-05-22 stale is **upstream data ingestion gap**, NOT schtask failure:
+- `klines_daily` + `daily_basic` Tushare ingest for trade_date=2026-05-25 likely NOT YET WRITTEN to DB at 18:00 SH window when compute_daily_ic.py ran
+- compute_daily_ic.py would silently SKIP missing-data trade_dates and exit 0
+- 5-26 today data won't be in Tushare until at least 17:00-18:00 SH today
+
+**Revised recommendation** (R3+R4 superseded by this finding):
+- R5 (DEFER) — Audit `klines_daily` + `daily_basic` table max trade_date to confirm upstream ingest health. Likely both also max=2026-05-22 if same upstream gap.
+- R6 (DEFER) — Investigate Tushare API rate or schedule (likely Beat task `daily_data_ingest` for klines_daily ran but data wasn't ready at fire time on 5-25)
+- R7 (DEFER) — Add COMMENT to compute_daily_ic.py:N if exiting with "no new data" path — should fail-loud via DingTalk (sustained iter 27 BAU pattern) when expected day's data still missing 2+h post-ingestion window
+
+**iter 152 P1 → iter 153 P1 revised to P2** (operational, not critical — natural data pipeline retry mechanic exists, today's 18:00 schtask will catch up).
