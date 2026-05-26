@@ -7469,3 +7469,33 @@ def test_xyz(mock_conn):
 **Cross-ref**: LL-198 (factory default fetchone=(0,) root cause), LL-199 (sibling iter 80 test reconciliation cluster context), LL-204 (Celery Beat 双层防护 — same fail-loud spirit, audit envelope), LL-205 (Frontend fail-loud render guard — same canonical replacement spirit, mock vs nullable state), 铁律 23 (单一职责), 铁律 24 (设计文档按抽象层级聚焦 — Blueprint §9 sediment trigger).
 
 **Sediment trigger**: 2026-05-25 iter 110-124 conftest migration loop closure. 0 deferred-without-rationale — 12/12 scoped (7 migrated + 3 keep-local + 2 Plan mode user-aligned). Pattern validated across 7 disparate shapes (bare / fetchall override / tuple-return method / id-iter / 2-query setup / factory + fetchall=[] / factory + rowcounts). 未来 fixture refactor / multi-file mock helper consolidation 任务沿用本 LL canonical.
+
+---
+
+## LL-207 — Audit Explore enumeration systematic miss: sub-component + inline apiClient grep SOP refresh (2026-05-26 W2-F iter 135-150 retrospective)
+
+**Pattern essence**:
+
+W2-F FRONTEND_INTEGRATION_AUDIT (iter 135) used Explore subagent to enumerate 32 backend endpoints' frontend wire status across 4 scopes (V3 risk / Wave 4 observability+attribution / approval queue / PT operator). Verdict: 21/32 (66%) DARK. **3 ARCHIVE iters surfaced subsequent (iter 138 F3 / iter 142 F4 / iter 143 F10) proved the audit verdict WRONG** — those endpoints were already wired but Explore enumeration missed them due to systematic grep gaps:
+
+- **F3 LiveRiskEventsPanel** (RiskManagement.tsx:33-87): wired via `useRiskEventsSSE` hook + SSE backend. Explore enumeration looked for top-level page-export consumption but missed **sub-component function definitions within page files** (LiveRiskEventsPanel is `function LiveRiskEventsPanel()` declared inside RiskManagement.tsx, not a separate file).
+- **F4 Wave 4 Observability** (SystemSettings.tsx:72,329,405): wired via `fetchDataSources` + `fetchSchedulerTasks` + `fetchSystemHealth` wrapper calls. Explore caught the wrapper imports but **failed to count line-level call sites across the 858-LOC settings page** (3 wrappers were ALL consumed but enumeration treated as "0 page consumer" since no top-level export annotation).
+- **F10 Portfolio analytics** (Portfolio.tsx:74,76 + DashboardAstock.tsx:516): wired via inline `apiClient.get<...>("/portfolio/holdings")` AND `apiClient.get<...>("/portfolio/sector-distribution")`. Explore enumeration looked for **dedicated wrapper function imports** (e.g., `fetchHoldings`) and missed inline apiClient.get sites.
+
+**SOP refresh** (future Explore-driven frontend wire audits MUST include):
+
+1. **Sub-component grep**: `rg "^function [A-Z]\w+" frontend/src/pages/<page>.tsx` to find inner functions that may consume endpoints.
+2. **Inline apiClient call sites**: `rg "apiClient\.(get|post|put|delete)<.+>\([\"']/<endpoint-prefix>" frontend/src --include='*.tsx'` to catch inline calls that bypass dedicated wrappers.
+3. **Hook-based consumption**: `rg "use[A-Z]\w*SSE\|use[A-Z]\w*Query" frontend/src/pages` for React Query / SSE hook consumers (e.g., useRiskEventsSSE).
+4. **Wrapper call-site counting**: when wrapper exists (e.g., `fetchPositions`), `rg "fetchPositions\(" frontend/src --include='*.tsx'` to count actual call sites, NOT just `import { fetchPositions }`.
+
+**iter 135-150 retrospective metrics**:
+- W2-F 10 findings → 6 implement + **3 archive (F3+F4+F10 all reality already wired)** + 1 defer
+- Archive ratio 30% indicates audit Explore enumeration had **30% false-DARK rate** in this campaign
+- 5 audit Explore-driven enumerations (W2-A/B/C/D/F all used Explore) — Week 3 candidate to re-verify W2-B/C path drift findings using SOP refresh above (concurrent session may surface additional ARCHIVE pre-existing wires)
+
+**Heuristic backref**: #1 Anti-Assumption SOP (LL-194 verify retrospective claim pre-commit — applies to Explore subagent enumeration as `claim`) / #14 Documentation Lying (W2-F audit doc verdict 32/21 DARK was self-published "documentation" of audit truth, but reality diverged 30%) / LL-194 sub-pattern (Explore enumeration verdict = `retrospective claim about repo state` — same pre-commit verify rule applies).
+
+**Cross-ref**: LL-194 (verify retrospective bug claim pre-fix — Explore enumeration verdict is a retrospective claim type), W2-F audit doc 3 ARCHIVE discoveries (F3 iter 138 / F4 iter 142 / F10 iter 143), 铁律 25 (代码变更前必读当前代码验证 — Explore audit verdict ≠ verified code state, secondary grep required pre-claim).
+
+**Sediment trigger**: 2026-05-26 Audit Week 2 W2-F campaign closure (iter 135-148, 10/10 findings closed). 30% audit false-DARK rate is **single largest governance signal in Week 2** — applies retroactively to validate Week 3 W3-B (qm_platform migration audit) + W3-D (V3 §S6 outbox DDL) which surfaced similar PATH_DRIFT / DDL_GAP claims — those claims need SOP-refresh re-verification before downstream design or impl iters.
