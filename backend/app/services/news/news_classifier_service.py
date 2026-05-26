@@ -193,18 +193,25 @@ class NewsClassifierService:
         router: _RouterProtocol,
         *,
         prompt_path: Path | None = None,
+        rag: Any | None = None,
     ) -> None:
         """Initialize NewsClassifierService.
 
         Args:
             router: BudgetAwareRouter | LiteLLMRouter (沿用 get_llm_router factory 真返).
             prompt_path: optional yaml prompt path 覆盖 (默认 DEFAULT_PROMPT_PATH).
+            rag: optional RiskMemoryRAG instance (iter 176 MVP 4.7 Chunk 3 wire) —
+                when provided, classify() invokes `build_rag_context` to inject top-5
+                similar memory hits into the LLM prompt template ({rag_context}
+                placeholder). When None (default), rag_context resolves to empty
+                string (backward-compat for tests + pre-RAG callers).
 
         Raises:
             PromptLoadError: yaml file 不存在 / parse 失败 / schema 缺 required key.
         """
         self._router = router
         self._prompt = self._load_prompt(prompt_path or DEFAULT_PROMPT_PATH)
+        self._rag = rag
 
     @staticmethod
     def _load_prompt(path: Path) -> dict[str, Any]:
@@ -275,7 +282,27 @@ class NewsClassifierService:
         return self._parse_response(response)
 
     def _build_messages(self, item: NewsItem) -> list[LLMMessage]:
-        """Build LLM messages from NewsItem + yaml prompt template."""
+        """Build LLM messages from NewsItem + yaml prompt template.
+
+        iter 176 MVP 4.7 Chunk 3: when self._rag DI provided, retrieve top-5
+        similar memory hits via shared `build_rag_context` helper (Phase J §1.4
+        V3 §5.4 L1 push augmentation). rag_context is always included as a format
+        kwarg (empty string when rag is None) so optional `{rag_context}`
+        placeholder in yaml templates resolves correctly without breaking
+        backward-compat for yaml templates that omit the placeholder.
+        """
+        # iter 176: compute RAG context (empty string when rag DI absent)
+        rag_context = ""
+        if self._rag is not None:
+            from app.services.risk.rag_context_builder import build_rag_context  # noqa: PLC0415
+
+            content_snippet = (item.content or "")[:200]
+            rag_context = build_rag_context(
+                self._rag,
+                compose_query=lambda: f"{item.title} {content_snippet}",
+                k=5,
+            )
+
         system_content = self._prompt["system_prompt"]
         user_content = self._prompt["user_template"].format(
             source=item.source,
@@ -285,6 +312,7 @@ class NewsClassifierService:
             url=(item.url or ""),
             symbol_id=(item.symbol_id or ""),
             lang=item.lang,
+            rag_context=rag_context,
         )
         return [
             LLMMessage(role="system", content=system_content),
