@@ -18,9 +18,9 @@ l4_sweep polling, ~33% improvement).
 
 from __future__ import annotations
 
-import json
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import redis
@@ -102,6 +102,10 @@ def trade_event_risk_consumer_tick() -> dict[str, Any]:
     Fail-soft per-event (铁律 33): engine raise on 1 event → log + continue.
     Whole task crash → audit 'failed' row + re-raise to Celery retry.
     """
+    # Reviewer P1 fix iter 184: capture start_time as datetime for audit envelope
+    # end_time + duration_sec computation (sibling realtime_risk_tasks._write_scheduler_log_safe
+    # canonical pattern, LL-204).
+    start_time = datetime.now(UTC)
     t0 = time.time()
     r = _get_redis()
     events = consume_fill_events(r, count=100, block_ms=0)
@@ -111,8 +115,8 @@ def trade_event_risk_consumer_tick() -> dict[str, Any]:
 
     for event in events:
         try:
-            summary = _process_fill_event(event)
-            processed.append(summary)
+            event_summary = _process_fill_event(event)
+            processed.append(event_summary)
             ack_fill_event(r, event["event_id"])
         except Exception as e:  # noqa: BLE001 — fail-soft per event per 铁律 33
             logger.error(
@@ -132,33 +136,63 @@ def trade_event_risk_consumer_tick() -> dict[str, Any]:
         "p0_total": sum(p.get("p0_count", 0) for p in processed),
         "elapsed_sec": round(time.time() - t0, 3),
     }
+    if failures:
+        summary["failures"] = failures
 
-    # Audit envelope: scheduler_task_log row (sibling LL-204 canonical).
-    try:
-        conn = get_sync_conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO scheduler_task_log
-                       (task_name, market, schedule_time, start_time, status,
-                        error_message, result_json)
-                       VALUES ('trade_event_risk_consumer', 'astock', NOW(), NOW(),
-                               %s, %s, %s)""",
-                    (
-                        "success" if not failures else "partial",
-                        ("; ".join(failures))[:500] if failures else None,
-                        json.dumps(summary),
-                    ),
-                )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception as audit_err:  # noqa: BLE001
-        # silent_ok per 铁律 33: audit failure does NOT block main flow.
-        logger.error(
-            "[trade-event-consumer] audit log failed: %s", audit_err
-        )
+    # Audit envelope: scheduler_task_log row (sibling realtime_risk_tasks
+    # _write_scheduler_log_safe LL-204 canonical, reviewer P1 fix iter 184 —
+    # includes end_time + duration_sec for SLA monitoring queries).
+    _write_scheduler_log_safe(
+        task_name="trade_event_risk_consumer",
+        start_time=start_time,
+        status="success" if not failures else "partial",
+        result_json=summary,
+    )
 
     if events:
         logger.info("[trade-event-consumer] %s", summary)
     return summary
+
+
+def _write_scheduler_log_safe(
+    task_name: str,
+    start_time: datetime,
+    status: str,
+    result_json: dict | None,
+) -> None:
+    """Best-effort scheduler_task_log INSERT (silent_ok per 铁律 33).
+
+    Module-local copy of canonical pattern from
+    `realtime_risk_tasks._write_scheduler_log_safe` (LL-204 + LL-206:
+    "promote to shared service when 5+ callers" — currently 2 callers).
+    Reviewer P1 fix iter 184: includes end_time + duration_sec.
+    """
+    import psycopg2.extras  # noqa: PLC0415
+
+    end_time = datetime.now(UTC)
+    duration_sec = int((end_time - start_time).total_seconds())
+    try:
+        with get_sync_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, end_time,
+                    duration_sec, status, result_json)
+                   VALUES (%s, 'astock', %s, %s, %s, %s, %s, %s)""",
+                (
+                    task_name,
+                    start_time,
+                    start_time,
+                    end_time,
+                    duration_sec,
+                    status,
+                    psycopg2.extras.Json(result_json or {}),
+                ),
+            )
+    except Exception as e:  # noqa: BLE001
+        # silent_ok per 铁律 33: audit failure does NOT block main flow.
+        logger.warning(
+            "[scheduler_task_log] write failed task=%s: %s: %s",
+            task_name,
+            type(e).__name__,
+            e,
+        )

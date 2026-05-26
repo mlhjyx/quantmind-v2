@@ -16,17 +16,31 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import socket
 from typing import Any
 
 import redis
-
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 STREAM_NAME = "qm:fill:executed"
 CONSUMER_GROUP = "risk-engine-fill-consumer"
-DEFAULT_CONSUMER_NAME = "consumer-1"
+
+
+def _default_consumer_name() -> str:
+    """Reviewer P2-2 fix iter 184: unique consumer identity per worker process.
+
+    Was hardcoded 'consumer-1' which breaks XPENDING/XCLAIM crash-recovery when
+    multi-worker. Derived from hostname + pid so each Celery worker process
+    has stable unique identity within the risk-engine-fill-consumer group.
+    """
+    return f"{socket.gethostname()}-{os.getpid()}"
+
+
+# Module-level evaluated at first access (still lazy if caller imports module
+# without invoking consume_fill_events). Stable per-process.
+DEFAULT_CONSUMER_NAME = _default_consumer_name()
 
 
 def _ensure_consumer_group(r: redis.Redis, stream: str, group: str) -> None:
@@ -44,7 +58,7 @@ def _ensure_consumer_group(r: redis.Redis, stream: str, group: str) -> None:
 
 
 def consume_fill_events(
-    r: redis.Redis | None = None,
+    r: redis.Redis,
     *,
     consumer_name: str = DEFAULT_CONSUMER_NAME,
     count: int = 100,
@@ -55,18 +69,20 @@ def consume_fill_events(
     Returns list of {event_id, data, stream} dicts. Auto-creates consumer group.
     Caller MUST XACK after processing via `ack_fill_event` helper.
 
+    Reviewer P2-1 fix iter 184: removed `r=None` default — caller MUST pass
+    redis client (singleton via `trade_event_risk_tasks._get_redis()`) to
+    prevent connection leakage per-invocation in non-task callers.
+
     Args:
-        r: redis.Redis client (None → lazy-create from settings.REDIS_URL)
-        consumer_name: consumer identity within group (for crash recovery via
-            XPENDING / XCLAIM in future iter)
+        r: redis.Redis client (caller-supplied singleton)
+        consumer_name: consumer identity within group (default = hostname+pid;
+            stable per worker process for XPENDING/XCLAIM crash-recovery)
         count: max events per XREADGROUP call (default 100)
         block_ms: blocking timeout in ms (default 0 = non-blocking immediate)
 
     Returns:
         list of {event_id: str, data: dict, stream: str} (empty if no pending)
     """
-    if r is None:
-        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
     _ensure_consumer_group(r, STREAM_NAME, CONSUMER_GROUP)
 
     streams = {STREAM_NAME: ">"}  # ">" = only new messages for this consumer

@@ -149,12 +149,20 @@ def test_task_processes_fill_events_via_engine():
 
 
 def test_task_writes_scheduler_task_log_audit_row():
-    """Audit envelope: scheduler_task_log row with task_name='trade_event_risk_consumer'."""
+    """Audit envelope: scheduler_task_log row with task_name='trade_event_risk_consumer'.
+
+    Reviewer P1 fix iter 184: canonical `_write_scheduler_log_safe` uses compound
+    `with get_sync_conn() as conn, conn.cursor() as cur` — mock must support
+    both context-manager protocols.
+    """
     from app.tasks.trade_event_risk_tasks import trade_event_risk_consumer_tick
 
     mock_redis = MagicMock()
     mock_conn = MagicMock()
     mock_cur = MagicMock()
+    # `with get_sync_conn() as conn` → conn = mock_conn.__enter__()
+    mock_conn.__enter__.return_value = mock_conn
+    # `with conn.cursor() as cur` → cur = mock_conn.cursor().__enter__()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
     with (
@@ -171,8 +179,11 @@ def test_task_writes_scheduler_task_log_audit_row():
     ]
     assert len(insert_calls) == 1
     sql = insert_calls[0].args[0]
-    assert "trade_event_risk_consumer" in sql
+    assert "trade_event_risk_consumer" in (insert_calls[0].args[1][0])  # task_name param
     assert "astock" in sql
+    # Reviewer P1 fix: verify end_time + duration_sec columns present
+    assert "end_time" in sql
+    assert "duration_sec" in sql
 
 
 def test_task_fail_soft_per_event_does_not_crash_whole_task():
