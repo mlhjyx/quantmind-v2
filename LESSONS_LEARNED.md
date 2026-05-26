@@ -7610,3 +7610,42 @@ iter 142 Servy `stop`/`restart` CLI reported success but iter 143 verification p
 **Cross-ref**: LL-209 (§v9.49 reality re-grounding SOP that triggered this finding), LL-194 (anti-assumption — extended here to claim verification), LL-098 (X10 forward-progress offer ban — runtime-verified ✅ ≠ chunk-done ≠ multi-MVP closure), 铁律 25 (改什么读什么 → 改什么状态读什么), 铁律 10b (smoke test生产入口真启动验证 — sibling of runtime-verified mandate), §v9.44 ship 三态 (codified marker spec), §v9.49 reality re-grounding cycle (operational SOP), §v9.57 ops blocker SOP (Servy restart is ops blocker, document + pivot).
 
 **Sediment trigger**: 2026-05-26 iter 169 reality re-grounding cycle. 3-agent parallel fan-out caught 3 drifts in ~85s wallclock; this LL-210 codifies the most impactful drift (ship 三态 honest classification). The Servy blocker has been sustained 27+ iters; without §v9.49 SOP it would have continued masking deploy state behind ✅ closure claims indefinitely. Future audit-driven phase iters MUST apply 三态 marker at iter close (§v9.70 mental hook step ~5.5 new addition candidate). Cluster impact: MVP 4.5 / 4.6 / W4-A / W4-E / W2-A all need retroactive ship-tier annotation in next sediment doc pass.
+
+---
+
+## LL-211 — Reality re-grounding verdicts on time-gated phenomena MUST verify post-fire computation, not just scheduler trigger timing (2026-05-26 iter 175 retrospective revision of iter 171 NATURAL_LAG ARCHIVE)
+
+**事件**: iter 171 (commit `4dbe1ff`) verdict-revised iter 169 Finding #3 (factor_values 1-trading-day T+1 lag) from GENUINE_STALENESS → NATURAL_LAG ARCHIVE via the following time-aware reasoning chain:
+1. klines_daily max_td = 2026-05-26 (Tue) — today's close
+2. factor_values max_td = 2026-05-22 (Fri) per Agent A psql query
+3. Per LL-208 T+1 SOP + calendar-aware subtraction: expected factor_values max_td post 5-25 18:00 schtask fire = 5-22 (matches actual)
+4. Next daily_ic schtask fire = 5-26 18:00 SH (~30 min future from iter 171 wallclock ~17:30 SH)
+5. After 5-26 18:00 fire completes, factor_values max_td should advance to 5-25 (T-1 of 5-26)
+6. **Verdict**: NATURAL_LAG ARCHIVE — lag is BY DESIGN per T+1 IC formula + schtask cron cycle timing
+
+iter 175 §v9.49 reality re-grounding cycle (5-iter post-170 baseline, ~18:05 SH AFTER the predicted 5-26 18:00 schtask fire) verified actual post-fire state:
+- factor_values max_td **STILL 2026-05-22** (NOT advanced to 5-25 as iter 171 predicted)
+- schtask `QuantMind_DailyIC` Last Run 2026-05-26 18:00, Last Result **0** (Windows-success)
+- BUT `scheduler_task_log` past 4h has **0 rows** for daily_ic / ic_rolling / compute_daily_ic task_names
+- All python.exe processes still CreationDate 2026-05-25 23:43 (sustained iter 169 baseline; Servy not restarted)
+
+**Verdict revision**: iter 171 NATURAL_LAG ARCHIVE is **WRONG**. Actual root cause is one of (a) compute_daily_ic.py paper-mode skip path / env-loading silent exit similar to iter 165 daily_reconciliation pre-fix; (b) script crashes after entry but before scheduler_task_log INSERT; (c) scheduler_task_log uses different task_name not captured by filter. Iter 176+ investigation required.
+
+**根因**: iter 171 verdict reasoning was time-aware (factored in next-fire schedule) but did **NOT verify actual post-fire computation output**. The reasoning chain validated necessary conditions (klines available, schtask scheduled, calendar aligned) but NOT sufficient conditions (Python script actually wrote scheduler_task_log row + UPDATEd factor_values). Scheduler success ≠ application success. This is sibling pattern to LL-210 (backend-only ship vs runtime-verified ship): "scheduler trigger" is the upstream signal, "post-fire computation row land" is the actual runtime verification.
+
+**改进措施**: §v9.49 reality re-grounding SOP extension — verdicts on time-gated phenomena (scheduler fires, cron cycles, batch jobs, daily/weekly Beat tasks) MUST verify all 4 layers:
+
+1. **Upstream trigger fired**: schtask Last Run / cron CronList / Celery beat schedule entry active ✓ (necessary)
+2. **Trigger reported success**: schtask LastResult=0 / cron fire log / Beat dispatch log success ✓ (necessary)
+3. **Application executed**: scheduler_task_log row landed / Python stdout log with completion message / @celery_app.task wrapper exit non-zero on success ✓ (necessary)
+4. **Side-effect surface verified**: actual DB row INSERT / UPDATE / file mtime advance / event published ✓ (**SUFFICIENT — only this proves the work actually happened**)
+
+ARCHIVE verdicts on the basis of layers 1+2 alone (without 3+4) are **WRONG by construction**. Time-aware reasoning is necessary but NOT sufficient. The "next fire will compute" framing only justifies ARCHIVE if post-next-fire layer 3+4 verification confirms.
+
+**执行状态**: ✅ codified iter 175 STATUS_REPORT (`docs/audit/STATUS_REPORT_2026_05_26_iter_175_factor_stalled_archive_revision.md`). iter 171 NATURAL_LAG ARCHIVE retroactively REVISED to "needs investigation". iter 176+ candidate: compute_daily_ic.py diagnostic via LL-211 4-layer SOP (apply layer 3+4 verification, identify silent exit / env-loading / task_name drift).
+
+**Heuristic backref**: #1 Anti-Assumption SOP family (LL-194/207/208/209/210). LL-210 sibling pattern (code merge ≠ runtime deployed) directly extends to LL-211 (scheduler trigger ≠ application execution). Both surface "necessary upstream signal but insufficient runtime evidence" anti-pattern.
+
+**Cross-ref**: LL-194 (anti-assumption SOP family), LL-208 (T+1 IC lookahead — LL-211 extends with 4-layer post-fire verify), LL-209 (§v9.49 reality re-grounding SOP codified), LL-210 (backend-only vs runtime-verified ship 三态 — sibling shape: "code merged" vs "code deployed"), 铁律 25 (改什么读什么 → 改什么状态读什么 application layer), 铁律 10b (smoke test 生产入口真启动验证 — sibling 4-layer verification mandate), §v9.49 reality re-grounding cycle (operational SOP). iter 171 STATUS_REPORT (`STATUS_REPORT_2026_05_26_iter_171_factor_t1_natural_lag.md`) — verdict REVISED via this LL.
+
+**Sediment trigger**: 2026-05-26 iter 175 §v9.49 reality re-grounding cycle. 4-day masking window (iter 171→175) was the cost of incomplete verdict reasoning at iter 171. ~4 iter wasted ARCHIVE state before reality cycle caught it. Future audit-driven phase ARCHIVE verdicts on time-gated phenomena MUST apply LL-211 4-layer verification BEFORE declaring ARCHIVE. Without LL-211 SOP, audit chain backlog accumulates wrong ARCHIVE verdicts that mask real production issues.
