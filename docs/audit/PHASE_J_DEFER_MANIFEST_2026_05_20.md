@@ -113,7 +113,30 @@
 
 ---
 
-### §1.5 流 3 → 流 4 Trade Event Publish (5min Polling Gap)
+### §1.5 流 3 → 流 4 Trade Event Publish ✅ CLOSED iter 183-185 (MVP 4.8 backend-only)
+
+**Status iter 185 (2026-05-26)**: ✅ backend-only ✅ closed. Runtime-verified pending Servy unblock.
+
+**Original claim (2026-05-20, STALE per iter 183 §v9.49 catch)**:
+The original "no event publish" framing was REFUTED by architect agent fresh code read iter 183. Outbox publisher (MVP 3.4 batch 5 PR #130 2026-04-28) already wires `qm:fill:executed` Redis Stream since 4-28 via `execution_service.py:266-282` (paper) + `:472-488` (live) OutboxWriter.enqueue calls.
+
+**True gap (discovered iter 183 via Layer 3 code verify)**:
+0 consumer subscribed to `qm:fill:executed` for risk evaluation. `realtime_risk_tasks.py:244-397` 1min Beat builds context from Redis positions but does NOT XREAD from any stream.
+
+**MVP 4.8 closure (iter 183-185)**:
+- iter 183 design doc `docs/mvp/MVP_4_8_streambus_trade_event_consumer.md` (multi-agent fan-out)
+- iter 184 PR #510 (`b80f27f`) — Chunks 1-4 batched: `trade_event_consumer.py` (XREADGROUP helper) + `trade_event_risk_tasks.py` (10s Beat task + audit envelope) + beat_schedule.py + celery_app.py registration. 9 TDD tests + reviewer cycle 1 P1+P2 fixed same-iter (canonical `_write_scheduler_log_safe` adoption + multi-worker consumer_name + caller-supplied redis client).
+- iter 185 closure: this manifest update + CLAUDE.md L18 + STATUS_REPORT
+
+**Latency budget**: outbox 30s + consumer 10s = ~40s worst-case (vs current ~60s `l4_sweep_tasks` polling). ~33% improvement.
+
+**Owner**: ✅ closed iter 183-185 (CC autonomous, batched-iter pattern per user efficiency directive)
+**Effort actual**: ~1h cumulative wallclock vs ~1 week manifest estimate (batched + reality re-grounded scope reduction)
+**Path B-2 prerequisite**: ✅ Code-level wire complete. Live cutover gates remain at `.env` paper→live (separate user authorization).
+
+---
+
+### §1.5 (legacy, sustained for cross-ref) 流 3 → 流 4 Trade Event Publish (5min Polling Gap)
 
 **Source**: Wave 1 Agent D 流 3 cross-flow
 
