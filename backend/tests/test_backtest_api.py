@@ -530,6 +530,84 @@ async def test_compare_two_runs():
 
 
 @pytest.mark.asyncio
+async def test_compare_seal_fields_present():
+    """iter 206 MVP 5.3 C1: extended /compare response includes reproducibility seal
+    (config_yaml_hash + git_commit) + factor_list + annual_turnover + sortino_ratio.
+    """
+    rid1 = _uuid()
+    rid2 = _uuid()
+    run1 = _make_run_row(
+        rid1,
+        config_yaml_hash="abc123def",
+        git_commit="deadbeef",
+        factor_list=["turnover_mean_20", "volatility_20"],
+        annual_turnover=4.5,
+        sortino_ratio=1.8,
+    )
+    run2 = _make_run_row(
+        rid2,
+        config_yaml_hash="999fff",
+        git_commit="cafebabe",
+        factor_list=["bp_ratio", "dv_ttm"],
+        annual_turnover=3.2,
+        sortino_ratio=1.2,
+    )
+
+    session = _mock_session_multi_execute(run1, run2)
+    app.dependency_overrides[_get_session] = lambda: session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(
+                "/api/backtest/compare",
+                json={"run_ids": [rid1, rid2]},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        # Reproducibility seal (铁律 15)
+        assert data[0]["config_yaml_hash"] == "abc123def"
+        assert data[0]["git_commit"] == "deadbeef"
+        assert data[1]["config_yaml_hash"] == "999fff"
+        assert data[1]["git_commit"] == "cafebabe"
+        # New metric fields
+        assert data[0]["annual_turnover"] == 4.5
+        assert data[0]["sortino_ratio"] == 1.8
+        assert data[1]["annual_turnover"] == 3.2
+        assert data[1]["sortino_ratio"] == 1.2
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_compare_factor_list_array():
+    """iter 206 MVP 5.3 C1: factor_list is array, empty list when null/missing."""
+    rid1 = _uuid()
+    rid2 = _uuid()
+    run1 = _make_run_row(
+        rid1, factor_list=["turnover_mean_20", "bp_ratio", "dv_ttm"]
+    )
+    run2 = _make_run_row(rid2, factor_list=None)  # Missing factor_list → []
+
+    session = _mock_session_multi_execute(run1, run2)
+    app.dependency_overrides[_get_session] = lambda: session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(
+                "/api/backtest/compare",
+                json={"run_ids": [rid1, rid2]},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["factor_list"] == ["turnover_mean_20", "bp_ratio", "dv_ttm"]
+        # Missing/null factor_list defaults to empty list (not None) for client safety
+        assert data[1]["factor_list"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
 async def test_compare_single_run_rejected():
     """POST /compare 少于2个run_id应返回422。"""
     session = AsyncMock()
