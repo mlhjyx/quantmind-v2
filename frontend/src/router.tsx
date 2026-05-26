@@ -60,6 +60,9 @@ export const router = createBrowserRouter([
 
       // Factors
       { path: "factors", element: lazyPage(() => import("@/pages/FactorLibrary")) },
+      // iter 203 MVP 5.2 — IC 监控 + 因子衰减可视化 (Wave 5 sub-MVP 2/5)
+      // MUST be before /factors/:id route to avoid path conflict
+      { path: "factors/monitoring", element: lazyPage(() => import("@/pages/IcMonitoring")) },
       { path: "factors/compare/:id1/:id2", element: lazyPage(() => import("@/pages/FactorEvaluation")) },
       { path: "factors/:id", element: lazyPage(() => import("@/pages/FactorEvaluation")) },
 
