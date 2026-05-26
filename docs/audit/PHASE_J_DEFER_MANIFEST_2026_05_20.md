@@ -63,23 +63,32 @@
 
 ---
 
-### §1.3 流 5 daily_reconciliation schtask 复活 (PT 重启 prerequisite)
+### §1.3 流 5 daily_reconciliation schtask + risk_event_log wire ✅ CLOSED iter 164-168 (MVP 4.6)
 
-**Source**: Wave 1 Agent D 流 5
+**Source**: Wave 1 Agent D 流 5 (original 2026-05-20)
+**Status iter 168 (2026-05-26)**: ✅ design + 3 code chunks merged + doc closure shipped
 
-**Real issue**:
-- `qmt_reconciliation_service.py` reconcile 代码完整, DingTalk P1 send_alert + logger.error 全 OK
-- **但**: `scripts/daily_reconciliation.py` schtask **已 Disabled 自 4-29 PT 清仓后**
-- 真后果: mismatch 后**只 DingTalk 单点告警, 无 risk_event_log audit row**, `trade_log` repair 路径 0
+**Original claim (2026-05-20, ~6d stale)**:
+- `scripts/daily_reconciliation.py` schtask 已 Disabled 自 4-29 PT 清仓后
+- 真后果: mismatch 后只 DingTalk 单点告警, 无 risk_event_log audit row
 
-**修法**:
-1. Wave 3 fix1 已修 `daily_reconciliation.py:76` runtime EXECUTION_MODE 强写 → fail-loud
-2. 复活 schtask: `schtasks /Change /TN "QuantMind_DailyReconciliation" /Enable` (留 user 触发)
-3. 加 `risk_event_log` INSERT 路径 (mismatch 时, audit row sediment)
+**Reality re-grounded iter 164** (per §v9.49, fresh `schtasks /Query /TN QuantMind_DailyReconciliation /V`):
+- Scheduled Task State: **Enabled** (NOT Disabled — manifest claim ~6d stale)
+- Last Run Time: 2026-05-26 15:40:01, Last Result: **1** (FATAL exit, not graceful skip)
+- Root cause: `os.environ.get("EXECUTION_MODE")` returned `""` (schtask launches `python.exe` without sourcing `.env`) → fell through paper-mode guard → hit FATAL `sys.exit`
+- Net production impact identical to Disabled (0 reconciliation runs since refactor), but mechanism orthogonal
 
-**Owner**: User (schtask enable) + Backend dev (risk_event_log wire)
-**Effort**: ~30min schtask + ~2h code wire
-**Path B-2 prerequisite**: ✅ **应 wire 后 5-27 Wed live flip**
+**Closure cumulative iter 164-168** (MVP 4.6 4 chunks per `docs/mvp/MVP_4_6_daily_reconciliation_revival.md`):
+- iter 164: MVP 4.6 design doc shipped (`bccd749`, design-only direct push)
+- iter 165 Chunk 1 PR #500 (`ba2cc3e`): `settings.EXECUTION_MODE` replaces `os.environ.get` (SSOT per 铁律 34); removed unused `import os`; 3 TDD tests
+- iter 166 Chunk 2 PR #501 (`6f12f32`): `_persist_mismatch_audit()` helper + wire; sibling pattern `execution_plan_persistence.py:102-127`; 8 TDD tests
+- iter 167 Chunk 3 PR #502 (`360a702`): 5 integration smoke tests covering full `run_reconciliation()` flow
+- iter 168 Chunk 4 (this): manifest §1.3 correction + LL-209 + STATUS_REPORT + CLAUDE.md L18 minor edit (direct push per 铁律 42)
+
+**Owner**: Closed iter 164-168 CC autonomous (0 user touchpoint required)
+**Effort actual**: ~30min design + ~1h per code chunk × 3 + ~30min doc closure = ~3.5h cumulative
+**Path B-2 prerequisite**: ✅ Code-level wire complete. Live cutover gates remain at `.env` paper→live (separate user authorization per ADR-027 / V3 §0.3).
+**Sibling §v9.49 finding (LL-209)**: Manifest reality drift caught pre-implementation via fresh `schtasks /Query` — 5-iter chain demonstrates reality re-grounding SOP value.
 
 ---
 

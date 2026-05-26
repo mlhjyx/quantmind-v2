@@ -7538,3 +7538,37 @@ Weekend gap natural: 5-23 Sat + 5-24 Sun = no market data. Next IC computation t
 **Cross-ref**: LL-194 (audit verdict = retrospective claim type), LL-207 (Audit Explore enumeration systematic miss — sibling audit anti-pattern), W3-G iter 152-153-154 chain (3-iter triage), 铁律 25 (代码变更前必读 — applied to AUDIT side: verdict ≠ verified semantic), 铁律 41 (timezone + trading calendar — applies to "trade_date - 1" subtraction).
 
 **Sediment trigger**: 2026-05-26 iter 152→153→154 audit chain closure. Single 3-iter audit chain consumed ~150 LOC of audit docs + 3 commits to converge from P1 false alarm → ARCHIVE verdict. Future factor pipeline audits MUST run SOP step 1+2 (compute expected max_td via klines - 1 trading day) BEFORE declaring stale. This 3-iter pattern is **structurally same as LL-207 W2-F 30% false-DARK** — initial Explore enumeration / initial audit verdict has systematic blind spot for inherent design semantic.
+
+---
+
+## LL-209 — §v9.49 reality re-grounding SOP catches stale manifest claim BEFORE Chunk implementation: read OS/DB state, not audit doc (2026-05-26 iter 164-168 MVP 4.6 chain retrospective)
+
+**事件**: MVP 4.6 Phase J §1.3 daily_reconciliation revival (iter 164 design) was triggered by `PHASE_J_DEFER_MANIFEST_2026_05_20.md` §1.3 claim that `QuantMind_DailyReconciliation` schtask was "已 Disabled 自 4-29 PT 清仓后". Iter 164 §1 SOP step "fresh-read state" included direct `schtasks /Query /TN QuantMind_DailyReconciliation /V /FO LIST` invocation BEFORE accepting manifest, surfacing 3 reality drifts:
+
+1. Scheduled Task State = **Enabled** (NOT Disabled — manifest claim ~6d stale)
+2. Last Run Time = **2026-05-26 15:40:01** (active runs)
+3. Last Result = **1** (FATAL exit, not graceful skip)
+
+Script's exit=1 root cause: `os.environ.get("EXECUTION_MODE")` reads Windows process env (empty because schtask launches `python.exe` without sourcing `.env`) → falls through paper-mode graceful guard at `scripts/daily_reconciliation.py:91` → hits FATAL `sys.exit` at L93. Net production impact identical to manifest "Disabled" claim (0 reconciliation runs since refactor) but mechanism orthogonal — manifest snapshot was 6d-stale against an OS state that had drifted.
+
+**根因**: Audit/manifest sediment timestamps and live OS/DB state drift independently. Original `PHASE_J_DEFER_MANIFEST` authored 2026-05-20; intervening Wave 3 fix1 modified script guard logic without updating manifest sibling text. Audit docs cannot self-update; they are point-in-time claims that age against live state at a rate proportional to deployment velocity.
+
+**改进措施**: §v9.49 Reality Re-Grounding Cycle codification — at iter start AND every 5-iter / 1-day cadence, sample-verify CLAIMED-DONE / CLAIMED-DISABLED / CLAIMED-STATE artifacts via direct OS / DB / API query, NOT via re-read of audit docs:
+
+1. **OS service / schtask claims**: `schtasks /Query /V /FO LIST` (Windows) or `systemctl status` (Linux) for the exact unit BEFORE accepting "Disabled" / "Stopped" / "Active" claims
+2. **DB row count / state claims**: `psql -c "SELECT ..."` live DB query, NOT cached audit doc number
+3. **Script behavior claims**: invoke script with schtask-equivalent command (no `.env` sourced) and inspect exit code + first 10 log lines
+4. **Cross-cite finding**: any audit doc claim contradicting fresh OS/DB/API state → mark in commit message + LL append + STATUS_REPORT (reality drift sediment per LL-194 anti-assumption family)
+
+**执行状态**: ✅ Active across MVP 4.6 iter 164-168 chain:
+- iter 164 caught 3 reality drifts pre-implementation; reframed Chunk 1 scope from "re-enable schtask" to "env-loading fix"
+- iter 165 Chunk 1 (PR #500 `ba2cc3e`): `settings.EXECUTION_MODE` SSOT fix; 3 TDD tests + 16 existing recon tests pass
+- iter 166 Chunk 2 (PR #501 `6f12f32`): `_persist_mismatch_audit()` helper + wire; 8 TDD tests pass
+- iter 167 Chunk 3 (PR #502 `360a702`): 5 integration smoke tests pass
+- iter 168 Chunk 4 (this iter): manifest §1.3 correction + this LL-209 + STATUS_REPORT + CLAUDE.md L18 minor edit (direct push docs/** per 铁律 42)
+
+**Heuristic backref**: #1 Anti-Assumption SOP (LL-194/207/208 — "verify retrospective claim pre-commit" extended here to "verify manifest current-state claim pre-implementation"). Sibling pattern: LL-208 W3-G factor_values audit 3-iter chain (initial P1 verdict → corrected ARCHIVE via fresh DB query) — same shape, different domain (manifest vs audit doc, schtask vs DB count, OS query vs SQL query).
+
+**Cross-ref**: LL-194 (anti-assumption SOP family), LL-207 (Explore enumeration miss), LL-208 (T+1 IC lookahead), 铁律 25 (改什么读什么 → 改什么状态读什么 OS/DB), 铁律 41 (timezone — schtask Next Run shown in local time, manifest claims undated), `PHASE_J_DEFER_MANIFEST_2026_05_20.md` §1.3 (corrected this iter 168), `CLAUDE.md` L18 (corrected this iter 168).
+
+**Sediment trigger**: 2026-05-26 iter 168 MVP 4.6 closure. The 5-iter chain (164-168) demonstrates one fresh OS query (`schtasks /Query`) at iter start prevented an estimated ~2 days of misdirected implementation (re-enabling schtask already enabled, never investigating exit=1 root cause). §v9.49 reality re-grounding pays off in proportion to: (claim age × claim downstream blast radius). Future MVPs touching schtask / Servy / production state SHOULD invoke this SOP before chunk decomposition.
