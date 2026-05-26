@@ -343,6 +343,96 @@ async def get_streams_status() -> dict[str, Any]:
     return {"streams": bus.all_streams_status()}
 
 
+@router.get("/beat-schedule")
+async def get_beat_schedule(
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """iter 210 MVP 5.5 C1 — Celery Beat schedule introspection for SchedulerDashboard S3.
+
+    Reads live `CELERY_BEAT_SCHEDULE` dict from `app.tasks.beat_schedule` module
+    (single source of truth, 0 hardcoded client drift risk) + LATERAL JOIN
+    `scheduler_task_log` latest row per task_name for last_fire visibility.
+
+    Returns:
+        {
+            "entries": [{beat_key, task_name, schedule_display, expires_sec,
+                         last_fire_time, last_fire_status}],
+            "total_count": int
+        }
+
+    Architecture per docs/mvp/MVP_5_5_scheduler_dashboard.md §2.1.
+    """
+    try:
+        # Lazy import to keep module loadable in unit-test isolation (sibling
+        # qm_platform.calendar 铁律-34 exception pattern). Bound to local scope
+        # so `app.api.system.CELERY_BEAT_SCHEDULE` patch target is stable in tests.
+        from app.tasks.beat_schedule import (  # noqa: PLC0415
+            CELERY_BEAT_SCHEDULE,
+        )
+    except Exception as exc:
+        # Reviewer P1 iter 210: `from exc` preserves import error identity
+        # (ModuleNotFoundError vs AttributeError vs ImportError) for upstream
+        # async middleware / Sentry __cause__ inspection.
+        logger.exception("CELERY_BEAT_SCHEDULE import failed")
+        raise HTTPException(
+            status_code=500, detail="Beat schedule config unavailable"
+        ) from exc
+
+    if not CELERY_BEAT_SCHEDULE:
+        return {"entries": [], "total_count": 0}
+
+    # Collect all task_names referenced in Beat schedule for LATERAL JOIN
+    task_names = sorted(
+        {str(entry.get("task", "")) for entry in CELERY_BEAT_SCHEDULE.values() if entry.get("task")}
+    )
+
+    # Fetch last_fire per task_name from scheduler_task_log (single query, index-optimized)
+    last_fires: dict[str, dict[str, Any]] = {}
+    if task_names:
+        try:
+            # Single query: SELECT DISTINCT ON (task_name) latest row per task
+            sql = """
+                SELECT DISTINCT ON (task_name)
+                    task_name, start_time::text AS start_time, status
+                FROM scheduler_task_log
+                WHERE task_name = ANY(:names)
+                ORDER BY task_name, start_time DESC
+            """
+            result = await session.execute(text(sql), {"names": task_names})
+            for row in result.fetchall():
+                last_fires[row.task_name] = {
+                    "last_fire_time": row.start_time,
+                    "last_fire_status": row.status,
+                }
+        except Exception:
+            logger.exception("scheduler_task_log last_fire query failed")
+            # silent_ok per 铁律 33: degraded mode (no last_fire) > full failure;
+            # the Beat schedule list itself is still useful without last_fire annotation.
+
+    entries = []
+    for beat_key, entry in sorted(CELERY_BEAT_SCHEDULE.items()):
+        task_name = entry.get("task", "")
+        schedule_obj = entry.get("schedule")
+        # crontab.__repr__() gives "<crontab: M H D dM MY (m/h/d/dM/MY)>"; timedelta
+        # gives "X seconds". repr() is best-effort display string.
+        schedule_display = repr(schedule_obj) if schedule_obj is not None else ""
+        options = entry.get("options", {}) or {}
+        fire = last_fires.get(task_name, {})
+        entries.append(
+            {
+                "beat_key": beat_key,
+                "task_name": task_name,
+                "schedule_display": schedule_display,
+                "expires_sec": options.get("expires"),
+                "queue": options.get("queue"),
+                "last_fire_time": fire.get("last_fire_time"),
+                "last_fire_status": fire.get("last_fire_status"),
+            }
+        )
+
+    return {"entries": entries, "total_count": len(entries)}
+
+
 @router.get("/scheduler-task-log")
 async def get_scheduler_task_log(
     limit: int = Query(default=20, ge=1, le=100),
