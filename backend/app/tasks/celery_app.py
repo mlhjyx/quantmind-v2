@@ -99,6 +99,7 @@ celery_app.conf.update(
         "app.tasks.risk_reflector_tasks",  # TB-4b: 2 Beat cadence (Sunday 19:00 weekly + 月 1 日 09:00 monthly) + event_reflection (L1 dispatch, no Beat) RiskReflector V4-Pro 5 维反思 → docs/risk_reflections/ + DingTalk push (ADR-064 + ADR-069 候选)
         "app.tasks.meta_monitor_tasks",  # HC-1b: 5min Beat 元告警 (alert-on-alert) — 5 风控系统失效场景 snapshot → 5 PURE rules → DingTalk push (V3 §13.3, ADR-072 + ADR-073 候选)
         "app.tasks.realtime_risk_tasks",  # Phase J §1.1 Chunk 2 (iter 154): 1min Beat 9-14h trading-hours-only L1 RealtimeRiskEngine production wire (MVP 4.5 §3 Chunk 2, sibling meta_monitor_tasks audit envelope)
+        "app.tasks.embedding_backfill_tasks",  # MVP 4.7 Chunk 1 (iter 174): every-6h Beat BGE-M3 embedding backfill for risk_memory NULL rows (Phase J §1.4, sibling risk_reflector_tasks lazy singleton)
         "app.tasks.llm_cost_audit_tasks",  # Plan v10: 月度 LLM cost audit Beat wire (P0-16 闭环, subprocess wrapper of scripts/llm_cost_monthly_audit.py)
         "app.tasks.slippage_calibration_tasks",  # Plan v10: 季度滑点校准 Beat wire (P0-10 闭环, 铁律 18 季度复核, subprocess wrapper of scripts/bayesian_slippage_calibration.py)
         # iter 31 closes iter 30 hidden defect — PR #459 shipped report_tasks module
