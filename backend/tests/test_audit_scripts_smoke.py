@@ -53,7 +53,18 @@ def run_script(
 ) -> subprocess.CompletedProcess:
     """Run script as subprocess. Returns CompletedProcess."""
     cmd = [sys.executable, str(SCRIPTS_DIR / name)] + (args or [])
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding="utf-8")
+    # iter 234 defense-in-depth (sibling iter 232 fix): errors="replace" prevents
+    # subprocess stdout=None on non-UTF-8 bytes (Windows GBK/cp936 default codec
+    # would raise UnicodeDecodeError); explicit encoding="utf-8" + errors="replace"
+    # is the canonical pattern per LL-213 cross-browser/encoding parsing safety.
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 # ============================================================
