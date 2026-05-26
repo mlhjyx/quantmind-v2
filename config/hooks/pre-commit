@@ -102,7 +102,11 @@ except Exception as e:
     canonical['d_headers'] = 'N/A'
 
 # 5. 测试 baseline (defer to pre-push hook smoke run, 这里仅 cite sprint state baseline)
-canonical['test_baseline'] = '2864 pass / 24 fail (sprint state cite, sustained Session 9 baseline)'
+#    iter 187 W4-A LL-188 hook drift fix: refresh from Session 9 stale baseline
+#    (2864 pass / 24 fail) to CLAUDE.md iter 80 fresh verify 2026-05-25 canonical
+#    (6714 collected / 2 fail, 8+ month progression closing 22 fails / 91.7% reduction).
+#    SSOT: CLAUDE.md §当前进度 §其他状态. Re-sync when CLAUDE.md baseline updates.
+canonical['test_baseline'] = '6714 collected / 2 fail (CLAUDE.md iter 80 fresh verify 2026-05-25 SSOT, 铁律 40 baseline)'
 
 # 6. LL-188 step 0 sediment-drift check (Session 58 round-6 NEW):
 #    Scan staged .md files for red-line claims (EXECUTION_MODE / LIVE_TRADING_DISABLED)
