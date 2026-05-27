@@ -28,7 +28,7 @@ from enum import Enum
 from typing import Protocol
 
 
-class CIPhase(str, Enum):
+class CIPhase(str, Enum):  # noqa: UP042 — StrEnum migration deferred (24 callers, behavior audit pending)
     """5 build-time CI phases (per MVP_4_3_cicd.md §2)."""
 
     PRE_COMMIT = "pre_commit"

@@ -32,7 +32,7 @@ from enum import Enum
 from typing import Protocol
 
 
-class BackupTarget(str, Enum):
+class BackupTarget(str, Enum):  # noqa: UP042 — StrEnum migration deferred (24 callers, behavior audit pending)
     """3 backup targets per MVP_4_4_backup_dr.md §2."""
 
     DB = "db"
