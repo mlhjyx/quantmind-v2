@@ -13,95 +13,107 @@ Closed:
 - `/api/system/health` fixed for DB-session concurrency and slow sub-checks; runtime now returns `overall_status='ok'`.
 - Celery health now reports Windows solo worker liveness through process fallback and includes a warning when `inspect` is skipped.
 - Attribution task import roots and `strategy_id` source fixed; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
+- `memory/project_sprint_state.md` restored as tracked handoff SSOT.
+- Active `.agents/skills` files are versioned, with `.agents/skills/README.md` policy and automated inventory guard.
 
 Still open:
 - `QM-ICMonitor` and `QM-SmokeTest` scheduler disposition.
-- `.agents/skills` version-control policy.
 - QMT Data Service remains stopped intentionally because this batch did not require PT/QMT runtime activation.
 
 ## Executive Summary
 
 QuantMind V2 has broad implementation coverage across backend, frontend, factor research, strategy/backtest, V3 risk, scheduling, observability, backup, CI, and agent governance. The codebase is no longer a prototype: current static inventory shows 157 FastAPI endpoints, 32 frontend routes, 27 Celery Beat entries, 366 backend test files, and a live local stack with PostgreSQL, Redis, FastAPI, Celery Worker, and Celery Beat running.
 
-The project is partially closed, not fully closed. Build and core collect-only checks pass, and the Codex hook layer is now structurally wired. The remaining risk is concentrated in runtime/data/schema closure and governance source-of-truth drift:
+The project is partially closed, not fully closed. Build and core collect-only checks pass, and the Codex hook layer is now structurally wired. The first remediation batch closed the largest runtime/schema/governance blockers from the initial audit; the remaining risk is concentrated in scheduler disposition, intentionally stopped QMT runtime, and later first-fire evidence capture:
 
-- P0: `pipeline_settings` migration is not applied in the local DB, causing `/api/pipeline/status` to return 500 and breaking PipelineConsole pause/automation closure.
-- P1: runtime FastAPI is not aligned with current working-tree routes: code has `/api/system/beat-schedule`, but the running service returns 404.
-- P1: `/api/system/health` timed out under runtime probe, and FastAPI logs show async SQLAlchemy session concurrency errors in `system.py`.
-- P1: Wave 4 attribution closure is not evidenced by data: `daily_attribution` exists but has 0 rows.
-- P1: scheduler state has failed operational tasks (`QM-ICMonitor`, `QM-SmokeTest`) despite high-level health returning pass.
-- P1: document governance still points to a missing `memory/project_sprint_state.md`.
-- P1: `.agents/skills` is the Codex active skill layer, but many new skill files remain untracked while `.claude/skills` is tracked historical state.
+- Closed 2026-05-28: `pipeline_settings` migration applied and `/api/pipeline/status` returned 200.
+- Closed 2026-05-28: runtime FastAPI was reloaded and `/api/system/beat-schedule` returned 27 entries.
+- Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, and fresh runtime probe records `overall_status='ok'`.
+- Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
+- P1: scheduler state still needs disposition for failed operational tasks (`QM-ICMonitor`, `QM-SmokeTest`).
+- Closed 2026-05-28: `memory/project_sprint_state.md` exists and is tracked.
+- Closed 2026-05-28: `.agents/skills` is governed as the active Codex project skill layer; `.claude/skills` remains historical.
 
 ## Evidence Map
 
 | Area | Evidence |
 |---|---|
-| Worktree baseline | `git status --short --branch`: Codex governance package staged; `.agents/skills/...` and `nul` remain untracked. |
+| Worktree baseline | Initial audit saw staged Codex governance plus untracked `.agents/skills/...` and `nul`; remediation later tracked active skills and removed the `nul` noise. |
 | Backend API | Static scan of `backend/app/api/*.py`: 26 API files, 157 route decorators. |
 | Frontend | `frontend/src/router.tsx`: 32 route entries; `frontend/src/pages`: 24 page files; `frontend/src/api`: 15 API wrapper files. |
 | Tests | `backend/tests`: 366 `test_*.py` files; selected collect-only run collected 97 tests. |
 | Runtime services | `powershell -File scripts/service_manager.ps1 status`: Redis, PostgreSQL16, FastAPI, Celery Worker, Celery Beat running; QMT Data Service stopped. |
 | FastAPI health | `GET /api/health`: 200 with `all_pass=true`. |
-| DB snapshot | Read-only SQL: `factor_values=841,507,511`, `factor_ic_history=145,942`, `factor_registry=286`, `strategy_registry=2`, `risk_event_log=3`, `event_outbox=6`, `scheduler_task_log=1,651`, `daily_attribution=0`, `pipeline_settings` missing. |
+| DB snapshot | Initial read-only SQL: `factor_values=841,507,511`, `factor_ic_history=145,942`, `factor_registry=286`, `strategy_registry=2`, `risk_event_log=3`, `event_outbox=6`, `scheduler_task_log=1,651`, `daily_attribution=0`, `pipeline_settings` missing. Remediation addendum supersedes `daily_attribution=0` and `pipeline_settings` missing. |
 | Build | `npm run build -- --mode development`: passed; only large `vendor-echarts` warning. |
 | Git hook | Git Bash `config/hooks/pre-commit`: passed, staged LLM import skipped, 7 staged markdown files warning-only. |
 | Codex hooks | `.codex/hooks.json`: 11 referenced hook files; 0 missing; 0 unwired `.py`; smoke from prior Codex governance audit passed. |
 
 ## Findings
 
-### P0 — Pipeline runtime closure is broken by missing migration
+### Closed 2026-05-28 — Pipeline runtime closure restored
 
-`backend/app/api/pipeline.py` reads `pipeline_settings` for automation level and pause state (`pipeline.py:219`, `pipeline.py:278`, `pipeline.py:429`). The migration exists at `backend/migrations/pipeline_settings.sql`, but read-only DB verification returned `pipeline_settings: exists=False`.
+`backend/app/api/pipeline.py` reads `pipeline_settings` for automation level and pause state (`pipeline.py:219`, `pipeline.py:278`, `pipeline.py:429`). The migration exists at `backend/migrations/pipeline_settings.sql`, but initial read-only DB verification returned `pipeline_settings: exists=False`.
 
-Impact:
+Initial impact:
 - `GET /api/pipeline/status` returned 500.
 - `PipelineConsole` depends on `/pipeline/status`, pause/resume, and automation level (`frontend/src/api/pipeline.ts:115`, `frontend/src/api/pipeline.ts:136`, `frontend/src/api/pipeline.ts:187`, `frontend/src/pages/PipelineConsole.tsx:318`).
 - The pipeline control-plane UI is not runtime-closed until the migration state is reconciled.
 
-Backlog:
-- Apply or reconcile `backend/migrations/pipeline_settings.sql` in a separate DB-mutation plan.
+Remediation:
+- `backend/migrations/pipeline_settings.sql` was applied on 2026-05-28.
+- Singleton row was verified, and `/api/pipeline/status` returned 200 with automation level `L0`.
+
+Follow-up:
 - Add a smoke/health check that fails loudly when required runtime tables are missing.
-- Add an API-level regression for `/api/pipeline/status` against a DB with the singleton row present.
 
-### P1 — Runtime FastAPI routes lag working-tree code
+### Closed 2026-05-28 — Runtime FastAPI routes aligned
 
-Working-tree code defines `/api/system/beat-schedule` at `backend/app/api/system.py:346`, and `SchedulerDashboard` declares it as the S3 data source (`frontend/src/pages/SchedulerDashboard.tsx:7`, `frontend/src/api/system.ts:134`). Runtime probe returned 404 for `GET /api/system/beat-schedule`, while `GET /api/system/scheduler` returned 200.
+Working-tree code defines `/api/system/beat-schedule` at `backend/app/api/system.py:346`, and `SchedulerDashboard` declares it as the S3 data source (`frontend/src/pages/SchedulerDashboard.tsx:7`, `frontend/src/api/system.ts:134`). Initial runtime probe returned 404 for `GET /api/system/beat-schedule`, while `GET /api/system/scheduler` returned 200.
 
-Impact:
+Initial impact:
 - SchedulerDashboard is only partially closed: Windows schtasks render path works, Celery Beat schedule path is unavailable at runtime.
 - This matches the existing status note that Wave 5 runtime verification is pending Servy restart/user touchpoint (`SYSTEM_STATUS.md:11`, `SYSTEM_STATUS.md:39`).
 
-Backlog:
-- After current governance package is committed, run the planned elevated Servy restart walkthrough.
-- Re-probe `/api/system/beat-schedule`, `/api/system/scheduler-task-log`, and SchedulerDashboard after restart.
+Remediation:
+- FastAPI, Celery Worker, and Celery Beat were restarted on 2026-05-28.
+- `GET /api/system/beat-schedule` returned 200 with 27 Beat entries.
+
+Follow-up:
 - Add a small runtime route snapshot check so future route additions cannot be claimed closed before service reload.
 
-### P1 — `/api/system/health` can hang and logs show async session concurrency errors
+### Closed 2026-05-28 — `/api/system/health` bounded and session-safe
 
-Runtime probe of `GET /api/system/health` timed out after 8 seconds. The function concurrently checks PG/Redis/Celery (`backend/app/api/system.py:298-330`). FastAPI logs show SQLAlchemy async session concurrency errors in `system.py` and `pipeline.py`, including "This session is provisioning a new connection; concurrent operations are not permitted".
+Initial runtime probe of `GET /api/system/health` timed out after 8 seconds. FastAPI logs showed SQLAlchemy async session concurrency errors in `system.py` and `pipeline.py`, including "This session is provisioning a new connection; concurrent operations are not permitted".
 
-Impact:
-- Service manager status currently prints an incomplete health section even though `/api/health` passes.
-- Operator-facing detailed health is not reliable enough as a closure gate.
-
-Backlog:
-- Split DB-bound checks so a single `AsyncSession` is not used concurrently.
-- Add timeout/fail-loud wrappers per sub-check and surface partial status instead of hanging.
-- Add a runtime smoke for `/api/system/health` with a hard timeout.
-
-### P1 — Attribution pipeline exists but has no persisted rows
-
-`daily_attribution` table exists, and Beat has `daily-attribution-compute` in code (`backend/app/tasks/beat_schedule.py:507`, `backend/app/tasks/attribution_tasks.py:120`). Read-only DB verification returned `daily_attribution: count=0`.
+Remediation:
+- `backend/app/api/system.py` now runs DB-bound health work sequentially on the request `AsyncSession`.
+- Redis and Celery health probes now run through bounded sync-check wrappers so slow probes degrade/fail-loud instead of hanging the endpoint.
+- Windows Celery solo-worker health can use process fallback before `inspect`, avoiding the known Windows remote-control stall path.
+- Fresh runtime probe on 2026-05-28 returned HTTP 200 within the 8-second probe budget with `overall_status='ok'` and Celery `method='process_fallback'`.
 
 Impact:
+- Operator-facing detailed health is now suitable as a bounded closure gate, with partial component status surfaced instead of endpoint timeout.
+
+Verification:
+- Runtime probe records `GET /api/system/health`: 200 with `overall_status='ok'`.
+- Regression tests cover Celery timeout degradation, Redis timeout critical status, and Windows Celery process fallback.
+
+### Closed 2026-05-28 — Attribution pipeline has persisted evidence
+
+`daily_attribution` table exists, and Beat has `daily-attribution-compute` in code (`backend/app/tasks/beat_schedule.py:507`, `backend/app/tasks/attribution_tasks.py:120`). Initial read-only DB verification returned `daily_attribution: count=0`.
+
+Initial impact:
 - Wave 4 attribution has code and scheduling artifacts but no runtime persistence evidence in this DB.
 - `/api/attribution/latest` returned 404, so Operator UI attribution views can only be considered code-closed, not data-closed.
 
-Backlog:
-- Inspect recent `scheduler_task_log` rows for `daily_attribution_compute` after a service restart and next eligible trading window.
-- Add a backfill/dry-run report path that can prove attribution computation without mutating production tables.
-- Define "0 rows acceptable" conditions explicitly if PT pause means no attribution should be produced.
+Remediation:
+- Attribution task import roots and configured `strategy_id` source were fixed.
+- Manual task apply wrote `daily_attribution.id=2` for configured `PAPER_STRATEGY_ID`.
+- `/api/attribution/latest` returned the persisted row.
+
+Follow-up:
+- Define "0 rows acceptable" conditions explicitly for future PT pause windows where attribution should not be produced.
 
 ### P1 — Scheduler operational status is mixed
 
@@ -116,31 +128,33 @@ Backlog:
 - Add a clear stale/failing task policy in docs and UI.
 - Decide whether `QM-SmokeTest` is retired, broken, or should be re-registered.
 
-### P1 — Sprint handoff SSOT path is missing
+### Closed 2026-05-28 — Sprint handoff SSOT restored
 
-`AGENTS.md` names `memory/project_sprint_state.md` as current handoff SSOT (`AGENTS.md:5`, `AGENTS.md:19`, `AGENTS.md:30`, `AGENTS.md:372`). Repository search found no such file. Multiple docs still reference it.
+`AGENTS.md` names `memory/project_sprint_state.md` as current handoff SSOT (`AGENTS.md:5`, `AGENTS.md:19`, `AGENTS.md:30`, `AGENTS.md:372`). Initial repository search found no such file. Multiple docs still referenced it.
 
-Impact:
+Initial impact:
 - Session-start SOP cannot be followed as written.
 - Audit and implementation agents may anchor to a non-existent handoff source.
 
-Backlog:
-- Decide whether the active handoff source is external, archived, or should be recreated in repo.
-- If external, update AGENTS and fresh-read SOP to say so explicitly.
+Remediation:
+- `memory/project_sprint_state.md` was restored as a tracked minimal handoff.
+
+Follow-up:
 - Add a lightweight doc-path existence check to governance hooks or CI.
 
-### P1 — Skills/agents governance is split across three layers
+### Closed 2026-05-28 — Skills/agents governance is versioned
 
-Tracked historical state includes `.claude/skills` and `.claude/agents`. Codex active state is staged under `.codex/agents` and currently reads project skills from `.agents/skills`. `git status` shows many `.agents/skills/...` files untracked, while `AGENTS.md` now points to `.agents/skills` as the Codex current layer (`AGENTS.md:174`, `AGENTS.md:508`).
+Tracked historical state includes `.claude/skills` and `.claude/agents`. Codex active state is staged under `.codex/agents` and currently reads project skills from `.agents/skills`. Initial `git status` showed many `.agents/skills/...` files untracked, while `AGENTS.md` points to `.agents/skills` as the Codex current layer (`AGENTS.md:174`, `AGENTS.md:508`).
 
-Impact:
+Initial impact:
 - The runtime skill layer can drift from versioned project state.
 - A future clone may get `.codex` hooks/agents but not the `.agents` skills they reference.
 
-Backlog:
-- Decide the version-control policy for `.agents/skills`: track all active project skills, or document them as local-only installed artifacts.
-- Add a skill inventory audit: skill name, path, tracked/untracked, duplicate in `.claude`, active trigger status.
-- Keep `.claude` as historical state unless a separate migration plan is approved.
+Remediation:
+- Active `.agents/skills` files are versioned as project governance assets.
+- `.agents/skills/README.md` documents the policy.
+- `backend/tests/test_codex_governance_inventory.py` verifies the active skills inventory and explicit skill references.
+- `.claude` remains historical state unless a separate migration plan is approved.
 
 ### P2 — CI is useful but not a full closure gate
 
@@ -180,24 +194,24 @@ Backlog:
 
 | Priority | Item | Owner surface | Notes |
 |---|---|---|---|
-| P0 | Apply/reconcile `pipeline_settings` migration | DB + PipelineConsole | Requires separate DB-mutation authorization. |
-| P1 | Servy restart + route runtime re-verify | Ops runtime | Needed to flip Wave 5 runtime-verified status. |
-| P1 | Fix `/api/system/health` timeout/session concurrency | Backend system API | Add sub-check timeouts and avoid concurrent use of one `AsyncSession`. |
+| Closed | Apply/reconcile `pipeline_settings` migration | DB + PipelineConsole | Completed 2026-05-28: migration applied, singleton row verified, `/api/pipeline/status` returned 200. |
+| Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries. |
+| Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers, regression tests, and fresh runtime HTTP 200 evidence. |
 | P1 | Scheduler failure triage | Ops + UI | `QM-ICMonitor` and `QM-SmokeTest` need disposition. |
-| P1 | Attribution evidence policy | Eval/Beat/UI | Decide whether 0 rows is acceptable while PT is paused. |
-| P1 | Handoff SSOT repair | Docs governance | Resolve missing `memory/project_sprint_state.md`. |
-| P1 | `.agents/skills` version policy | Agent governance | Track active skills or mark local-only; avoid hybrid ambiguity. |
+| Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it. Future pause-window 0-row semantics remain a P2 policy refinement. |
+| Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
+| Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
 | P2 | CI advisory-to-blocking roadmap | CI/CD | Promote after baselines and runner assumptions are stable. |
 | P2 | Scanner precision | Frontend governance | Avoid comment-only axios false positives. |
 
 ## Verification Log
 
-- `git status --short --branch`: captured current staged Codex governance package and untracked `.agents/skills` / `nul`.
+- `git status --short --branch`: initial audit captured staged Codex governance package and untracked `.agents/skills` / `nul`; remediation later tracked active skills and removed `nul`.
 - Static API/page/hook/skill/doc maps: completed with inline Python scripts, no repo writes.
 - `powershell -File scripts/service_manager.ps1 status`: completed; service status read-only.
 - `GET /api/health`: 200, `all_pass=true`.
-- `GET /api/system/health`: timeout after 8 seconds.
-- `GET /api/system/beat-schedule`: 404.
+- `GET /api/system/health`: initial probe timed out after 8 seconds; 2026-05-28 remediation verification records 200 with `overall_status='ok'` after bounded-check fix.
+- `GET /api/system/beat-schedule`: initial probe returned 404; 2026-05-28 remediation verification returned 200 with 27 entries.
 - `GET /api/system/scheduler`: 200 with 7 schtasks.
 - Read-only SQL table existence/count probe: completed.
 - `python -m pytest --collect-only -q backend/tests/test_pipeline_status_contract.py backend/tests/test_risk_events_endpoint.py backend/tests/test_trailing_stop.py backend/tests/test_factor_registry.py backend/tests/test_strategy_registry.py`: 97 tests collected.
@@ -209,6 +223,6 @@ Backlog:
 - Did not apply migrations.
 - Did not restart services.
 - Did not edit `.env`, broker code, Servy config, Task Scheduler, or production YAML.
-- Did not stage this audit report.
+- Original audit phase did not stage this audit report; later remediation commits include follow-up corrections.
 - Did not alter `.claude`.
-- Did not change `.agents/skills` or `nul`.
+- Original audit phase did not change `.agents/skills` or `nul`; later remediation tracked active skills and removed `nul`.

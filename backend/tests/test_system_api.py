@@ -307,6 +307,40 @@ class TestHealthEndpoint:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
+    @pytest.mark.asyncio
+    async def test_overall_critical_when_redis_times_out(self):
+        """Redis 检查超时时 endpoint 应返回 critical，而不是挂住请求。"""
+        from app.db import get_db
+
+        mock_session = _make_mock_session()
+        app.dependency_overrides[get_db] = _override_get_db(mock_session)
+        try:
+            with (
+                patch("app.api.system._HEALTH_SYNC_TIMEOUT_SEC", 0.01),
+                patch(
+                    "app.api.system._check_redis", side_effect=lambda: __import__("time").sleep(1)
+                ),
+                patch("app.api.system._check_celery", return_value={"ok": True, "worker_count": 1}),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
+            ):
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.get("/api/system/health")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["overall_status"] == "critical"
+            assert body["redis"]["ok"] is False
+            assert "timeout" in body["redis"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
     def test_check_celery_process_fallback_when_inspect_no_response(self):
         """Windows solo worker liveness should not wait on celery inspect."""
         from app.api import system as system_mod
