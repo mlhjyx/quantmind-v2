@@ -32,6 +32,7 @@ import logging
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
+from app.config import settings
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -161,7 +162,7 @@ def daily_attribution_compute_task(self, trade_date_str: str | None = None) -> d
                 trade_date = _get_sh_trade_date()
 
             # ── Fetch inputs (iter 65 stub; full wiring in follow-up) ──
-            strategy_id = "paper-strategy-default"  # TODO: resolve from settings.PAPER_STRATEGY_ID
+            strategy_id = settings.PAPER_STRATEGY_ID
             nav_change_pct = _fetch_paper_nav_change()
 
             # ── Build attribution (initial: empty dicts, real wiring next iter) ──

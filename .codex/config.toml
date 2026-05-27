@@ -1,0 +1,3 @@
+[mcp_servers.weixin-reader]
+args = ["C:/Users/hd/Desktop/wx-mcp/src/server.py"]
+command = "python"

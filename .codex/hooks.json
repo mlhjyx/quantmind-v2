@@ -1,0 +1,96 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\block_dangerous_git.py'",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\pre_commit_validate.py'",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\redline_pretool_block.py'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\protect_critical_files.py'",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\iron_law_enforce.py'",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\cite_drift_stop_pretool.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\post_edit_lint.py'",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\audit_log.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\session_context_inject.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\verify_completion.py'",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python 'D:\\quantmind-v2\\.codex\\hooks\\sediment_poststop.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

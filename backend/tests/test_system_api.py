@@ -274,6 +274,87 @@ class TestHealthEndpoint:
             app.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
+    async def test_overall_degraded_when_celery_times_out(self):
+        """Celery 检查超时时 endpoint 应返回 degraded，而不是挂住请求。"""
+        from app.db import get_db
+
+        mock_session = _make_mock_session()
+        app.dependency_overrides[get_db] = _override_get_db(mock_session)
+        try:
+            with (
+                patch("app.api.system._HEALTH_SYNC_TIMEOUT_SEC", 0.01),
+                patch("app.api.system._check_redis", return_value={"ok": True}),
+                patch("app.api.system._check_celery", side_effect=lambda: __import__("time").sleep(1)),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
+            ):
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.get("/api/system/health")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["overall_status"] == "degraded"
+            assert body["celery"]["ok"] is False
+            assert "timeout" in body["celery"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_check_celery_process_fallback_when_inspect_no_response(self):
+        """Windows solo worker liveness should not wait on celery inspect."""
+        from app.api import system as system_mod
+
+        fake_proc_parent = MagicMock()
+        fake_proc_parent.info = {
+            "pid": 100,
+            "cmdline": [
+                "python",
+                "-m",
+                "celery",
+                "-A",
+                "app.tasks.celery_app",
+                "worker",
+                "--pool=solo",
+                "-n",
+                "worker-main@XIN",
+            ],
+        }
+        fake_proc_child = MagicMock()
+        fake_proc_child.info = {
+            "pid": 101,
+            "cmdline": [
+                "python",
+                "-m",
+                "celery",
+                "-A",
+                "app.tasks.celery_app",
+                "worker",
+                "--pool=solo",
+                "-n",
+                "worker-main@XIN",
+            ],
+        }
+
+        with (
+            patch("app.api.system.platform.system", return_value="Windows"),
+            patch("app.api.system.subprocess.run") as mock_run,
+            patch("app.api.system.psutil.process_iter", return_value=[fake_proc_parent, fake_proc_child]),
+        ):
+            result = system_mod._check_celery()
+
+        assert result["ok"] is True
+        assert result["method"] == "process_fallback"
+        assert result["worker_count"] == 1
+        assert result["process_count"] == 2
+        assert "skipped" in result["warning"]
+        mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_overall_critical_when_disk_full(self):
         """磁盘空间不足时 overall_status 应为 critical。"""
         from app.db import get_db

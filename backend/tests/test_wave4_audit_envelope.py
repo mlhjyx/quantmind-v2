@@ -172,7 +172,7 @@ class TestAttributionAuditEnvelope:
             result = task_mod.daily_attribution_compute_task.apply(args=[]).get()
 
         assert "trade_date" in result
-        assert result["strategy_id"] == "paper-strategy-default"
+        assert result["strategy_id"] == task_mod.settings.PAPER_STRATEGY_ID
         assert result["row_id"] == 999
 
         # iter 132 PR #484 reviewer P2: single-conn lifecycle regression guard.

@@ -7,6 +7,7 @@ import asyncio
 import os
 import platform
 import subprocess
+from collections.abc import Callable
 from typing import Any
 
 import psutil
@@ -21,6 +22,9 @@ from app.db import get_db
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+
+_HEALTH_DB_TIMEOUT_SEC = 3.0
+_HEALTH_SYNC_TIMEOUT_SEC = 6.0
 
 # ---------------------------------------------------------------------------
 # 数据源状态配置（表名 → 显示名 + 日期字段）
@@ -108,6 +112,15 @@ def _check_celery() -> dict[str, Any]:
     Returns:
         包含 ok 布尔值、worker_count 和可选 error 字符串的字典。
     """
+    process_fallback = _check_celery_worker_processes()
+    if platform.system() == "Windows" and process_fallback["worker_count"] > 0:
+        return {
+            "ok": True,
+            **process_fallback,
+            "method": "process_fallback",
+            "warning": "celery inspect skipped for Windows solo worker",
+        }
+
     try:
         result = subprocess.run(
             [
@@ -122,7 +135,7 @@ def _check_celery() -> dict[str, Any]:
             ],
             capture_output=True,
             text=True,
-            timeout=8,
+            timeout=4,
             cwd=str(_backend_dir()),
         )
         output = result.stdout + result.stderr
@@ -130,13 +143,102 @@ def _check_celery() -> dict[str, Any]:
         if "pong" in output.lower():
             # 统计存活 worker 数
             worker_count = output.lower().count("pong")
-            return {"ok": True, "worker_count": worker_count}
+            return {"ok": True, "worker_count": worker_count, "method": "inspect"}
+        if process_fallback["worker_count"] > 0:
+            return {
+                "ok": True,
+                **process_fallback,
+                "method": "process_fallback",
+                "warning": "celery inspect returned no workers",
+            }
         return {"ok": False, "worker_count": 0, "error": "No workers responded"}
     except subprocess.TimeoutExpired:
+        if process_fallback["worker_count"] > 0:
+            return {
+                "ok": True,
+                **process_fallback,
+                "method": "process_fallback",
+                "warning": "celery inspect timeout",
+            }
         return {"ok": False, "worker_count": 0, "error": "inspect timeout"}
     except Exception as exc:
         logger.exception("Celery worker检查失败")
         return {"ok": False, "worker_count": 0, "error": str(exc)}
+
+
+def _check_celery_worker_processes() -> dict[str, Any]:
+    """Fallback worker liveness check for Windows solo-pool deployments.
+
+    Celery remote control may fail to answer while the Servy-managed solo worker
+    process is present. Count unique worker hostnames from running commands so
+    the health endpoint exposes that distinction instead of collapsing it into
+    "no worker".
+    """
+    workers: dict[str, dict[str, Any]] = {}
+    process_count = 0
+    for proc in psutil.process_iter(["pid", "cmdline"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            continue
+        cmd = " ".join(str(part) for part in cmdline)
+        cmd_lower = cmd.lower()
+        if " -m celery " not in f" {cmd_lower} ":
+            continue
+        if "app.tasks.celery_app" not in cmd_lower or " worker " not in f" {cmd_lower} ":
+            continue
+        if " inspect " in f" {cmd_lower} " or " status " in f" {cmd_lower} ":
+            continue
+
+        process_count += 1
+        worker_name = _extract_celery_worker_name(cmdline) or f"pid:{proc.info['pid']}"
+        workers.setdefault(worker_name, {"name": worker_name, "pid": proc.info["pid"]})
+
+    return {
+        "worker_count": len(workers),
+        "process_count": process_count,
+        "workers": list(workers.values()),
+    }
+
+
+def _extract_celery_worker_name(cmdline: list[str]) -> str | None:
+    """Extract `-n worker@host` or `--hostname worker@host` from a Celery cmdline."""
+    for idx, token in enumerate(cmdline):
+        if token in {"-n", "--hostname"} and idx + 1 < len(cmdline):
+            return cmdline[idx + 1]
+        if token.startswith("--hostname="):
+            return token.split("=", 1)[1]
+    return None
+
+
+async def _with_timeout(
+    label: str,
+    awaitable: Any,
+    timeout_sec: float,
+) -> dict[str, Any]:
+    """Run a health sub-check with a bounded timeout."""
+    try:
+        return await asyncio.wait_for(awaitable, timeout=timeout_sec)
+    except TimeoutError:
+        logger.warning("system_health_check_timeout", check=label, timeout_sec=timeout_sec)
+        return {"ok": False, "error": f"{label} check timeout"}
+
+
+async def _run_sync_check(
+    label: str,
+    func: Callable[[], dict[str, Any]],
+    timeout_sec: float | None = None,
+) -> dict[str, Any]:
+    """Run a synchronous health check in the executor with a bounded timeout."""
+    loop = asyncio.get_running_loop()
+    result = await _with_timeout(
+        label,
+        loop.run_in_executor(None, func),
+        _HEALTH_SYNC_TIMEOUT_SEC if timeout_sec is None else timeout_sec,
+    )
+    if not isinstance(result, dict):
+        return {"ok": False, "error": f"{label} check returned invalid result"}
+    return result
 
 
 def _check_disk() -> dict[str, Any]:
@@ -266,11 +368,11 @@ async def get_datasources(
     Returns:
         数据源状态列表，每项包含 name、table、latest_date、row_count、status。
     """
-    tasks = [
-        _query_datasource(session, cfg["table"], cfg["date_col"])
-        for cfg in _DATASOURCE_TABLE_CONFIG
-    ]
-    results = await asyncio.gather(*tasks)
+    # AsyncSession is not concurrency-safe; run DB reads sequentially on the
+    # request session to avoid "concurrent operations are not permitted".
+    results = []
+    for cfg in _DATASOURCE_TABLE_CONFIG:
+        results.append(await _query_datasource(session, cfg["table"], cfg["date_col"]))
 
     output = []
     for cfg, res in zip(_DATASOURCE_TABLE_CONFIG, results, strict=True):
@@ -306,12 +408,14 @@ async def get_system_health(
     Returns:
         包含 pg、redis、celery、disk、memory、overall_status 的健康报告。
     """
-    # PG/Redis 并发检查
-    pg_result, redis_result = await asyncio.gather(
-        _check_pg(session),
-        asyncio.get_event_loop().run_in_executor(None, _check_redis),
+    # The DB session must not be used concurrently. Run PG first, then execute
+    # blocking external checks with bounded timeouts so this endpoint degrades
+    # instead of hanging behind Celery/Redis probes.
+    pg_result = await _with_timeout("postgresql", _check_pg(session), _HEALTH_DB_TIMEOUT_SEC)
+    redis_result, celery_result = await asyncio.gather(
+        _run_sync_check("redis", _check_redis),
+        _run_sync_check("celery", _check_celery),
     )
-    celery_result = await asyncio.get_event_loop().run_in_executor(None, _check_celery)
     disk_result = _check_disk()
     memory_result = _check_memory()
 

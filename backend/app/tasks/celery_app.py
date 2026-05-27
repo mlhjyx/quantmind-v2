@@ -47,10 +47,14 @@ import logging
 import sys
 from pathlib import Path
 
-# 确保 backend/ 在 sys.path 中，使 engines 模块可被 Celery worker 导入
-_backend_dir = str(Path(__file__).resolve().parent.parent.parent)
-if _backend_dir not in sys.path:
-    sys.path.append(_backend_dir)
+# 确保 project root + backend/ 均在 sys.path:
+# - project root: supports canonical `backend.qm_platform.*`
+# - backend/: supports runtime `app.*` / `engines.*`
+_backend_path = Path(__file__).resolve().parent.parent.parent
+for _path in (_backend_path.parent, _backend_path):
+    _path_str = str(_path)
+    if _path_str not in sys.path:
+        sys.path.append(_path_str)
 
 from celery import Celery
 
