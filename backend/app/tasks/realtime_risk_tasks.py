@@ -325,8 +325,7 @@ def realtime_risk_tick() -> dict[str, Any]:
         l4_plans_persisted = 0
         l4_errors = 0
         p0_actionable = [
-            r for r in triggered
-            if _rule_severity_str(r) == "p0" and r.code and r.shares > 0
+            r for r in triggered if _rule_severity_str(r) == "p0" and r.code and r.shares > 0
         ]
         if p0_actionable:
             from app.services.db import get_sync_conn  # noqa: PLC0415

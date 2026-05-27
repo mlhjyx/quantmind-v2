@@ -58,9 +58,7 @@ def build_rag_context(
     try:
         query = compose_query()
     except Exception as e:  # noqa: BLE001 — fail-soft per-source
-        logger.warning(
-            "[rag-context-builder] compose_query failed (fail-soft): %s", e
-        )
+        logger.warning("[rag-context-builder] compose_query failed (fail-soft): %s", e)
         return f"数据不足: compose_query 失败 ({type(e).__name__}: {e})"
 
     try:

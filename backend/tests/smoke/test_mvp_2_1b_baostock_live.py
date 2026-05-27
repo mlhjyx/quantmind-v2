@@ -59,20 +59,23 @@ print(f'OK baostock live: {len(df)} rows, codes={df["code"].unique().tolist()}')
 @pytest.mark.smoke
 def test_baostock_live_one_stock_fetch() -> None:
     """Live Baostock fetch 贵州茅台 5min bars, validate PASS."""
-    result = subprocess.run(
-        [sys.executable, "-c", _SMOKE_CODE],
-        cwd=str(PROJECT_ROOT),
-        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
-        env={
-            **os.environ,
-            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
-        },
-        capture_output=True,
-        text=True,
-        timeout=60,  # Baostock 网络查询较慢
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _SMOKE_CODE],
+            cwd=str(PROJECT_ROOT),
+            # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+            env={
+                **os.environ,
+                "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,  # Keep below pre-push pytest --timeout=60 so slow network becomes skip.
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired as exc:
+        pytest.skip(f"Baostock live smoke timed out after {exc.timeout}s")
     if result.returncode == 2:
         pytest.skip(f"Baostock unreachable (CI/无网环境): {result.stdout.strip()}")
     if result.returncode != 0:

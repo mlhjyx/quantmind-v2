@@ -536,9 +536,7 @@ def _run(args: argparse.Namespace) -> int:
         # exception so failed-row write doesn't mask original exception
         # (re-raised below). conn.rollback above cleaned aborted-tx state.
         with contextlib.suppress(Exception):
-            _insert_scheduler_task_log(
-                conn, status="failed", error_message=str(e)[:500]
-            )
+            _insert_scheduler_task_log(conn, status="failed", error_message=str(e)[:500])
             conn.commit()
         raise
     finally:

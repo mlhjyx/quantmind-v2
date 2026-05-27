@@ -4,7 +4,7 @@ Concrete CIOrchestrator merging 4 pre-commit checks into a single subprocess-
 wrapped orchestrator:
   1. `ruff check` — lint enforcement
   2. `ruff format --check` — formatting consistency
-  3. `pytest --collect-only` — test discovery sanity (no execution)
+  3. `pytest --collect-only` — lightweight CI/platform discovery sanity
   4. `scripts/check_llm_imports.sh --staged` — S2/PR-219 LLM import allowlist
 
 Each check runs sequentially via subprocess.run with configurable timeout.
@@ -27,6 +27,17 @@ from dataclasses import dataclass, field
 from backend.qm_platform.ci.orchestrator import CIPhase, CIResult
 
 DEFAULT_TIMEOUT_SECONDS = 30
+PYTEST_COLLECT_TIMEOUT_SECONDS = 300
+PYTEST_COLLECT_TARGETS = [
+    "backend/tests/test_qm_platform_ci_orchestrator.py",
+    "backend/tests/test_qm_platform_ci_precommit.py",
+    "backend/tests/test_qm_platform_ci_prepush.py",
+    "backend/tests/test_qm_platform_ci_matrix.py",
+    "backend/tests/test_qm_platform_ci_regression.py",
+    "backend/tests/test_qm_platform_ci_review.py",
+    "backend/tests/test_qm_platform_ci_entry_script.py",
+    "backend/tests/test_platform_skeleton.py",
+]
 
 # DI hook signature: (cmd_list, timeout_seconds) -> CompletedProcess-like obj
 # (returncode + stdout + stderr attributes)
@@ -39,6 +50,8 @@ def _default_runner(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
     )
@@ -58,7 +71,11 @@ def default_checks() -> list[PreCommitCheck]:
     return [
         PreCommitCheck(name="ruff_check", cmd=["ruff", "check", "."]),
         PreCommitCheck(name="ruff_format", cmd=["ruff", "format", "--check", "."]),
-        PreCommitCheck(name="pytest_collect", cmd=["pytest", "--collect-only", "-q"]),
+        PreCommitCheck(
+            name="pytest_collect",
+            cmd=["pytest", "--collect-only", "-q", *PYTEST_COLLECT_TARGETS],
+            timeout_seconds=PYTEST_COLLECT_TIMEOUT_SECONDS,
+        ),
         PreCommitCheck(
             name="check_llm_imports",
             cmd=["bash", "scripts/check_llm_imports.sh", "--staged"],
@@ -145,6 +162,8 @@ class PreCommitOrchestrator:
 
 __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
+    "PYTEST_COLLECT_TIMEOUT_SECONDS",
+    "PYTEST_COLLECT_TARGETS",
     "PreCommitCheck",
     "PreCommitOrchestrator",
     "SubprocessRunner",

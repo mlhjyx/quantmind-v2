@@ -14,6 +14,8 @@ import pytest
 from backend.qm_platform.ci.orchestrator import CIOrchestrator, CIPhase, CIResult
 from backend.qm_platform.ci.precommit import (
     DEFAULT_TIMEOUT_SECONDS,
+    PYTEST_COLLECT_TARGETS,
+    PYTEST_COLLECT_TIMEOUT_SECONDS,
     PreCommitCheck,
     PreCommitOrchestrator,
     default_checks,
@@ -39,6 +41,14 @@ def test_default_checks_returns_four_canonical_checks():
 def test_default_timeout_constant():
     """DEFAULT_TIMEOUT_SECONDS is 30 (per spec §4 sub-iter 2)."""
     assert DEFAULT_TIMEOUT_SECONDS == 30
+    assert PYTEST_COLLECT_TIMEOUT_SECONDS == 300
+
+
+def test_pytest_collect_uses_lightweight_targets():
+    """Collect gate stays bounded to CI/platform contract tests."""
+    pytest_check = next(c for c in default_checks() if c.name == "pytest_collect")
+    assert pytest_check.cmd[:3] == ["pytest", "--collect-only", "-q"]
+    assert pytest_check.cmd[3:] == PYTEST_COLLECT_TARGETS
 
 
 def test_precommit_check_frozen():

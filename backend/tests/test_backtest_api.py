@@ -584,9 +584,7 @@ async def test_compare_factor_list_array():
     """iter 206 MVP 5.3 C1: factor_list is array, empty list when null/missing."""
     rid1 = _uuid()
     rid2 = _uuid()
-    run1 = _make_run_row(
-        rid1, factor_list=["turnover_mean_20", "bp_ratio", "dv_ttm"]
-    )
+    run1 = _make_run_row(rid1, factor_list=["turnover_mean_20", "bp_ratio", "dv_ttm"])
     run2 = _make_run_row(rid2, factor_list=None)  # Missing factor_list → []
 
     session = _mock_session_multi_execute(run1, run2)

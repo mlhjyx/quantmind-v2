@@ -87,21 +87,15 @@ class TestMockConnFactoryBuilder:
         conn = factory()
         assert isinstance(conn, MagicMock)
 
-    def test_fetchone_queue_consumed_iter_style(
-        self, mock_conn_factory_builder
-    ) -> None:
-        factory = mock_conn_factory_builder(
-            fetchone_queue=[("draft",), ("live",), None]
-        )
+    def test_fetchone_queue_consumed_iter_style(self, mock_conn_factory_builder) -> None:
+        factory = mock_conn_factory_builder(fetchone_queue=[("draft",), ("live",), None])
         conn = factory()
         cursor = conn.cursor()
         assert cursor.fetchone() == ("draft",)
         assert cursor.fetchone() == ("live",)
         assert cursor.fetchone() is None
 
-    def test_factory_exposes_conn_and_cursor_attrs(
-        self, mock_conn_factory_builder
-    ) -> None:
+    def test_factory_exposes_conn_and_cursor_attrs(self, mock_conn_factory_builder) -> None:
         """Sustained sibling pattern from test_strategy_registry.py."""
         factory = mock_conn_factory_builder()
         assert hasattr(factory, "_conn")
@@ -109,9 +103,7 @@ class TestMockConnFactoryBuilder:
         assert isinstance(factory._conn, MagicMock)
         assert isinstance(factory._cursor, MagicMock)
 
-    def test_rowcounts_queue_consumed_iter_style(
-        self, mock_conn_factory_builder
-    ) -> None:
+    def test_rowcounts_queue_consumed_iter_style(self, mock_conn_factory_builder) -> None:
         factory = mock_conn_factory_builder(rowcounts=[1, 1, 0])
         conn = factory()
         cursor = conn.cursor()
@@ -159,33 +151,25 @@ class TestAssertNoDbWrites:
         # Must not raise
         assert_no_db_writes(mock_conn)
 
-    def test_fails_on_insert(
-        self, mock_conn: MagicMock, assert_no_db_writes
-    ) -> None:
+    def test_fails_on_insert(self, mock_conn: MagicMock, assert_no_db_writes) -> None:
         cursor = mock_conn.cursor()
         cursor.execute("INSERT INTO strategy (name) VALUES ('foo')")
         with pytest.raises(AssertionError, match="no DB writes"):
             assert_no_db_writes(mock_conn)
 
-    def test_fails_on_update(
-        self, mock_conn: MagicMock, assert_no_db_writes
-    ) -> None:
+    def test_fails_on_update(self, mock_conn: MagicMock, assert_no_db_writes) -> None:
         cursor = mock_conn.cursor()
         cursor.execute("UPDATE strategy SET status='live'")
         with pytest.raises(AssertionError, match="no DB writes"):
             assert_no_db_writes(mock_conn)
 
-    def test_fails_on_delete(
-        self, mock_conn: MagicMock, assert_no_db_writes
-    ) -> None:
+    def test_fails_on_delete(self, mock_conn: MagicMock, assert_no_db_writes) -> None:
         cursor = mock_conn.cursor()
         cursor.execute("DELETE FROM strategy WHERE id = 1")
         with pytest.raises(AssertionError, match="no DB writes"):
             assert_no_db_writes(mock_conn)
 
-    def test_passes_on_zero_execute_calls(
-        self, mock_conn: MagicMock, assert_no_db_writes
-    ) -> None:
+    def test_passes_on_zero_execute_calls(self, mock_conn: MagicMock, assert_no_db_writes) -> None:
         # No execute at all → no writes by vacuous truth
         assert_no_db_writes(mock_conn)
 

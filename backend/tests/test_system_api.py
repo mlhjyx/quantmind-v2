@@ -284,7 +284,9 @@ class TestHealthEndpoint:
             with (
                 patch("app.api.system._HEALTH_SYNC_TIMEOUT_SEC", 0.01),
                 patch("app.api.system._check_redis", return_value={"ok": True}),
-                patch("app.api.system._check_celery", side_effect=lambda: __import__("time").sleep(1)),
+                patch(
+                    "app.api.system._check_celery", side_effect=lambda: __import__("time").sleep(1)
+                ),
                 patch(
                     "app.api.system._check_disk",
                     return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
@@ -343,7 +345,10 @@ class TestHealthEndpoint:
         with (
             patch("app.api.system.platform.system", return_value="Windows"),
             patch("app.api.system.subprocess.run") as mock_run,
-            patch("app.api.system.psutil.process_iter", return_value=[fake_proc_parent, fake_proc_child]),
+            patch(
+                "app.api.system.psutil.process_iter",
+                return_value=[fake_proc_parent, fake_proc_child],
+            ),
         ):
             result = system_mod._check_celery()
 

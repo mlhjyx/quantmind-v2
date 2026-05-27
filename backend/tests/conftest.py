@@ -240,9 +240,7 @@ def _assert_no_db_writes_impl(conn: MagicMock) -> None:
         sql_upper = str(sql).lstrip().upper()
         if sql_upper.startswith(write_prefixes):
             bad_calls.append(str(sql)[:80])
-    assert not bad_calls, (
-        f"Expected no DB writes but found {len(bad_calls)}: {bad_calls!r}"
-    )
+    assert not bad_calls, f"Expected no DB writes but found {len(bad_calls)}: {bad_calls!r}"
 
 
 @pytest.fixture

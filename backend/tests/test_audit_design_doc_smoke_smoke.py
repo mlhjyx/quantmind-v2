@@ -43,6 +43,8 @@ def test_script_dry_run_no_crash():
         [sys.executable, str(SCRIPT), "--help"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
     )
     # 0 = argparse --help OK

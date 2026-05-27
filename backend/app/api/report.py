@@ -320,10 +320,7 @@ async def list_strategy_reports(
     if execution_mode is not None and execution_mode not in ("paper", "live"):
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"execution_mode must be None or 'paper'/'live', "
-                f"got {execution_mode!r}"
-            ),
+            detail=(f"execution_mode must be None or 'paper'/'live', got {execution_mode!r}"),
         )
 
     try:

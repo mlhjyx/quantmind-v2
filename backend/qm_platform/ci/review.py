@@ -36,6 +36,8 @@ def _default_runner(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
     )

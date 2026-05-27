@@ -142,4 +142,6 @@ def test_insert_scheduler_task_log_truncates_long_error_message():
     cdi._insert_scheduler_task_log(conn, status="failed", error_message=long_err)
 
     params = cur.execute.call_args.args[1]
-    assert len(params[1]) <= 500, f"error_message must be truncated to ≤500, got len={len(params[1])}"
+    assert len(params[1]) <= 500, (
+        f"error_message must be truncated to ≤500, got len={len(params[1])}"
+    )

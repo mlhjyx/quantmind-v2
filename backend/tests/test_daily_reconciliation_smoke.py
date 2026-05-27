@@ -109,9 +109,7 @@ def _default_fill_stats():
 class TestDailyReconciliationSmoke:
     """Integration smoke: run_reconciliation() end-to-end in mocked-live mode."""
 
-    def test_happy_path_matched_positions_writes_only_scheduler_log(
-        self, patched_dependencies
-    ):
+    def test_happy_path_matched_positions_writes_only_scheduler_log(self, patched_dependencies):
         """Matched QMT/DB positions → 0 risk_event_log INSERT, 1 scheduler_task_log."""
         _conn, cur, send_alert_mock = patched_dependencies
         qmt_pos = {"600519": 100}
@@ -131,9 +129,7 @@ class TestDailyReconciliationSmoke:
         assert len(inserts["scheduler_task_log"]) == 1
         send_alert_mock.assert_not_called()
 
-    def test_p0_total_mv_breach_inserts_audit_and_scheduler_log(
-        self, patched_dependencies
-    ):
+    def test_p0_total_mv_breach_inserts_audit_and_scheduler_log(self, patched_dependencies):
         """Total股数 diff > 5% (TOTAL_MV_DIFF_THRESHOLD) → severity='p0' audit + send_alert P0."""
         _conn, cur, send_alert_mock = patched_dependencies
         # QMT total 100股, DB total 700股 → total_diff = 600/100 = 6.0 > 0.05.
@@ -159,9 +155,7 @@ class TestDailyReconciliationSmoke:
         send_alert_mock.assert_called_once()
         assert send_alert_mock.call_args.args[1] == "P0"
 
-    def test_p1_significant_single_stock_mismatch_inserts_audit(
-        self, patched_dependencies
-    ):
+    def test_p1_significant_single_stock_mismatch_inserts_audit(self, patched_dependencies):
         """Single-stock diff > 1% but total < 5% → severity='p1' audit + send_alert P1."""
         _conn, cur, send_alert_mock = patched_dependencies
         # QMT total 200股, DB total 195股 → total_diff = 5/200 = 0.025 < 0.05.
@@ -218,9 +212,7 @@ class TestDailyReconciliationSmoke:
         ctx = ctx_json.adapted if hasattr(ctx_json, "adapted") else ctx_json
         assert "502" in ctx.get("alert_error", "")
 
-    def test_audit_insert_failure_does_not_block_scheduler_log(
-        self, patched_dependencies
-    ):
+    def test_audit_insert_failure_does_not_block_scheduler_log(self, patched_dependencies):
         """_persist_mismatch_audit raise → scheduler_task_log still written (铁律 33 silent_ok)."""
         import psycopg2
 

@@ -165,7 +165,9 @@ async def test_pause_when_already_paused_is_idempotent(
 @pytest.mark.asyncio
 async def test_resume_when_paused_clears_state(client: AsyncClient, override_local: Any) -> None:
     """POST /resume clears paused_at + paused_reason."""
-    session = _mock_session([_insert_placeholder()])  # resume body uses 1 execute (UPSERT), no SELECT
+    session = _mock_session(
+        [_insert_placeholder()]
+    )  # resume body uses 1 execute (UPSERT), no SELECT
     app.dependency_overrides[get_db] = lambda: session
     try:
         response = await client.post("/api/pipeline/resume")

@@ -28,10 +28,23 @@ import psycopg2
 sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 PASS_17 = [
-    "a158_cord30", "a158_vsump60", "amihud_20", "bp_ratio", "dv_ttm",
-    "ep_ratio", "gap_frequency_20", "large_order_ratio", "price_volume_corr_20",
-    "relative_volume_20", "reversal_20", "reversal_60", "rsrs_raw_18",
-    "turnover_mean_20", "up_days_ratio_20", "volatility_20", "volume_std_20",
+    "a158_cord30",
+    "a158_vsump60",
+    "amihud_20",
+    "bp_ratio",
+    "dv_ttm",
+    "ep_ratio",
+    "gap_frequency_20",
+    "large_order_ratio",
+    "price_volume_corr_20",
+    "relative_volume_20",
+    "reversal_20",
+    "reversal_60",
+    "rsrs_raw_18",
+    "turnover_mean_20",
+    "up_days_ratio_20",
+    "volatility_20",
+    "volume_std_20",
 ]
 
 DATE_START = "2020-07-01"
@@ -42,8 +55,10 @@ OUTPUT = CACHE_DIR / "features_17factor.parquet"
 
 def get_conn():
     return psycopg2.connect(
-        host="127.0.0.1", port=5432,
-        dbname="quantmind_v2", user="xin",
+        host="127.0.0.1",
+        port=5432,
+        dbname="quantmind_v2",
+        user="xin",
         password=os.environ.get("QM_DB_PASSWORD", "quantmind"),
     )
 
@@ -58,7 +73,8 @@ def load_factors(conn) -> pd.DataFrame:
             "FROM factor_values "
             "WHERE factor_name = %s AND neutral_value IS NOT NULL "
             "AND trade_date BETWEEN %s AND %s",
-            conn, params=(factor, DATE_START, DATE_END),
+            conn,
+            params=(factor, DATE_START, DATE_END),
         )
         df = df.rename(columns={"neutral_value": factor})
         df[factor] = df[factor].astype("float32")
@@ -69,8 +85,10 @@ def load_factors(conn) -> pd.DataFrame:
             all_factors = all_factors.merge(df, on=["code", "trade_date"], how="outer")
 
         mem_mb = all_factors.memory_usage(deep=True).sum() / 1e6
-        print(f"  [{i+1}/{len(PASS_17)}] {factor}: {len(df)} rows, "
-              f"merged={len(all_factors)} rows, {mem_mb:.0f}MB, {time.time()-t0:.1f}s")
+        print(
+            f"  [{i + 1}/{len(PASS_17)}] {factor}: {len(df)} rows, "
+            f"merged={len(all_factors)} rows, {mem_mb:.0f}MB, {time.time() - t0:.1f}s"
+        )
         del df
         gc.collect()
 
@@ -94,9 +112,10 @@ def compute_target(conn, start_date: str, end_date: str) -> pd.DataFrame:
         "FROM klines_daily "
         "WHERE trade_date >= %s AND adj_factor IS NOT NULL AND volume > 0 "
         "ORDER BY code, trade_date",
-        conn, params=(start_date,),
+        conn,
+        params=(start_date,),
     )
-    print(f"  Stock data: {len(df_stock)} rows, {time.time()-t0:.1f}s")
+    print(f"  Stock data: {len(df_stock)} rows, {time.time() - t0:.1f}s")
 
     # 计算 adj_price = close * adj_factor
     df_stock["adj_price"] = (df_stock["close"] * df_stock["adj_factor"]).astype("float64")
@@ -127,7 +146,8 @@ def compute_target(conn, start_date: str, end_date: str) -> pd.DataFrame:
         "SELECT trade_date, close FROM index_daily "
         "WHERE index_code = '000300.SH' AND trade_date >= %s "
         "ORDER BY trade_date",
-        conn, params=(start_date,),
+        conn,
+        params=(start_date,),
     )
     df_index["trade_date"] = pd.to_datetime(df_index["trade_date"])
     df_index["close_t20"] = df_index["close"].shift(-20)
@@ -149,7 +169,7 @@ def compute_target(conn, start_date: str, end_date: str) -> pd.DataFrame:
     ).astype("float32")
 
     result = merged[["code", "trade_date", "label"]].copy()
-    print(f"  Target computed: {len(result)} rows, {time.time()-t0:.1f}s")
+    print(f"  Target computed: {len(result)} rows, {time.time() - t0:.1f}s")
 
     del df_stock, df_index, merged
     gc.collect()
@@ -187,9 +207,11 @@ def main():
     # 确保trade_date是date对象 (ml_engine._load_from_parquet期望)
     merged["trade_date"] = merged["trade_date"].dt.date
 
-    print(f"  Final: {merged.shape}, {merged['code'].nunique()} stocks, "
-          f"{merged['trade_date'].nunique()} days")
-    print(f"  Memory: {merged.memory_usage(deep=True).sum()/1e6:.0f}MB")
+    print(
+        f"  Final: {merged.shape}, {merged['code'].nunique()} stocks, "
+        f"{merged['trade_date'].nunique()} days"
+    )
+    print(f"  Memory: {merged.memory_usage(deep=True).sum() / 1e6:.0f}MB")
 
     # 检查列完整性
     missing = [f for f in PASS_17 if f not in merged.columns]
@@ -199,7 +221,7 @@ def main():
     merged.to_parquet(OUTPUT, index=False)
     file_size = OUTPUT.stat().st_size / 1e6
     print(f"\n  Saved to {OUTPUT} ({file_size:.0f}MB)")
-    print(f"  Total elapsed: {time.time()-t_start:.0f}s")
+    print(f"  Total elapsed: {time.time() - t_start:.0f}s")
 
     del factors_df, target_df, merged
     gc.collect()

@@ -423,9 +423,9 @@ class TestNotificationServiceSync:
         # startswith check 避免 'updated_at' 之类 column name 触发 substring 误报.
         for call in conn.cursor().execute.call_args_list:
             sql = call.args[0].lstrip().upper() if call.args else ""
-            assert not sql.startswith(
-                ("INSERT", "UPDATE", "DELETE")
-            ), f"P3 不应触发写操作, 但发现: {sql[:80]}..."
+            assert not sql.startswith(("INSERT", "UPDATE", "DELETE")), (
+                f"P3 不应触发写操作, 但发现: {sql[:80]}..."
+            )
 
     def test_send_sync_p2_throttled_after_repeat(self):
         """P2短时间内重复发送应被节流（第二次不写DB）。"""

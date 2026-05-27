@@ -478,9 +478,7 @@ async def get_beat_schedule(
         # (ModuleNotFoundError vs AttributeError vs ImportError) for upstream
         # async middleware / Sentry __cause__ inspection.
         logger.exception("CELERY_BEAT_SCHEDULE import failed")
-        raise HTTPException(
-            status_code=500, detail="Beat schedule config unavailable"
-        ) from exc
+        raise HTTPException(status_code=500, detail="Beat schedule config unavailable") from exc
 
     if not CELERY_BEAT_SCHEDULE:
         return {"entries": [], "total_count": 0}
@@ -604,9 +602,7 @@ async def get_scheduler_task_log(
         # fail-loud per 铁律 33 — return empty + 200 OK is silent; raise 500.
         # iter 199 reviewer P2 cleanup: `from None` drops `noqa: B904` suppression —
         # logger.exception already captured chain at line above, intentionally break here.
-        raise HTTPException(
-            status_code=500, detail="scheduler_task_log query failed"
-        ) from None
+        raise HTTPException(status_code=500, detail="scheduler_task_log query failed") from None
 
 
 @router.get("/scheduler")

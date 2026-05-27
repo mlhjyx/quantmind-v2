@@ -33,6 +33,7 @@ from app.main import app  # noqa: E402
 def _override_get_db(mock_session: Any):
     async def _dep():
         yield mock_session
+
     return _dep
 
 
@@ -118,8 +119,13 @@ class TestBeatScheduleEndpoint:
             # Verify 7 schema fields
             e0 = data["entries"][0]
             for field in (
-                "beat_key", "task_name", "schedule_display",
-                "expires_sec", "queue", "last_fire_time", "last_fire_status",
+                "beat_key",
+                "task_name",
+                "schedule_display",
+                "expires_sec",
+                "queue",
+                "last_fire_time",
+                "last_fire_status",
             ):
                 assert field in e0, f"missing field: {field}"
             assert e0["queue"] == "default"

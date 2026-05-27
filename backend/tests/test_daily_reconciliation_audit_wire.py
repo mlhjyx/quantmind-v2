@@ -97,7 +97,9 @@ def test_persist_mismatch_audit_p0_severity_inserts_correct_row(
     assert params[2] == "daily_reconciliation"
     assert params[3] == "p0"
     assert params[8] == "ALERT_FIRED"
-    assert params[10] == "daily"  # canonical per migrations/2026_05_11_risk_event_log_realtime.sql:6
+    assert (
+        params[10] == "daily"
+    )  # canonical per migrations/2026_05_11_risk_event_log_realtime.sql:6
     assert params[11] == "P0"
 
 
@@ -175,13 +177,10 @@ def test_persist_mismatch_audit_alert_only_outcome_carries_error(
     assert ctx_dict["alert_error"] == "DingTalk webhook 502 Bad Gateway"
 
 
-def test_persist_mismatch_audit_caps_mismatches_to_10(
-    recon_date, sample_fill_stats
-):
+def test_persist_mismatch_audit_caps_mismatches_to_10(recon_date, sample_fill_stats):
     """context_snapshot.mismatches truncated to 10 entries (防 JSON 巨大)."""
     big_mismatches = [
-        {"code": f"60050{i:04d}", "qmt": 100 * i, "db": 50 * i, "diff_pct": 0.5}
-        for i in range(25)
+        {"code": f"60050{i:04d}", "qmt": 100 * i, "db": 50 * i, "diff_pct": 0.5} for i in range(25)
     ]
     conn, cur = _make_mock_conn()
 
@@ -206,9 +205,7 @@ def test_persist_mismatch_audit_caps_mismatches_to_10(
     assert action_dict["mismatch_count"] == 25
 
 
-def test_persist_mismatch_audit_representative_code_is_largest_diff(
-    recon_date, sample_fill_stats
-):
+def test_persist_mismatch_audit_representative_code_is_largest_diff(recon_date, sample_fill_stats):
     """`code` column populated from largest diff_pct mismatch (representative for indexed lookup)."""
     mismatches = [
         {"code": "600519", "qmt": 100, "db": 110, "diff_pct": 0.09},
@@ -235,9 +232,7 @@ def test_persist_mismatch_audit_representative_code_is_largest_diff(
     assert params[5] == -50
 
 
-def test_persist_mismatch_audit_does_not_commit(
-    recon_date, sample_mismatches, sample_fill_stats
-):
+def test_persist_mismatch_audit_does_not_commit(recon_date, sample_mismatches, sample_fill_stats):
     """铁律 32: helper does not call conn.commit() — caller owns transaction."""
     conn, _cur = _make_mock_conn()
 

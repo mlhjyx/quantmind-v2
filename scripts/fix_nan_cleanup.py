@@ -2,6 +2,7 @@
 
 Uses date-partitioned approach for TimescaleDB partition pruning.
 """
+
 import os
 
 import psycopg2
@@ -23,19 +24,29 @@ cur.execute("""
     ORDER BY trade_date
 """)
 dates = [r[0] for r in cur.fetchall()]
-print(f"Found NaN on {len(dates)} dates: {dates[:5]}...{dates[-5:]}" if len(dates) > 10 else f"Found NaN on {len(dates)} dates: {dates}")
+print(
+    f"Found NaN on {len(dates)} dates: {dates[:5]}...{dates[-5:]}"
+    if len(dates) > 10
+    else f"Found NaN on {len(dates)} dates: {dates}"
+)
 
 total_fixed = 0
 for d in dates:
-    cur.execute("""
+    cur.execute(
+        """
         UPDATE factor_values SET neutral_value = NULL
         WHERE trade_date = %s AND neutral_value = 'NaN'::float
-    """, (d,))
+    """,
+        (d,),
+    )
     n1 = cur.rowcount
-    cur.execute("""
+    cur.execute(
+        """
         UPDATE factor_values SET raw_value = NULL
         WHERE trade_date = %s AND raw_value = 'NaN'::float
-    """, (d,))
+    """,
+        (d,),
+    )
     n2 = cur.rowcount
     total_fixed += n1 + n2
     if n1 + n2 > 0:

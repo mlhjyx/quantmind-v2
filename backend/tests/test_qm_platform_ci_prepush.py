@@ -15,6 +15,7 @@ from backend.qm_platform.ci.orchestrator import CIOrchestrator, CIPhase, CIResul
 from backend.qm_platform.ci.prepush import (
     DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS,
     DEFAULT_SMOKE_TIMEOUT_SECONDS,
+    SMOKE_COLLECT_ONLY_ENV,
     X10_HARD_PATTERNS,
     PrePushCheck,
     PrePushOrchestrator,
@@ -89,6 +90,34 @@ def test_default_subprocess_checks_two_entries():
     checks = default_subprocess_checks()
     names = [c.name for c in checks]
     assert names == ["smoke_test", "datapipeline_guard"]
+
+
+def test_smoke_check_matches_git_hook_scope():
+    """CI pre-push smoke scope mirrors config/hooks/pre-push."""
+    smoke_check = next(c for c in default_subprocess_checks() if c.name == "smoke_test")
+    assert smoke_check.cmd == [
+        "pytest",
+        "backend/tests/",
+        "-m",
+        "smoke and not live_tushare",
+        "--tb=line",
+        "-q",
+        "--timeout=60",
+    ]
+
+
+def test_smoke_check_collect_only_mode_for_github(monkeypatch):
+    """GitHub-hosted CI can collect smoke wiring without live services."""
+    monkeypatch.setenv(SMOKE_COLLECT_ONLY_ENV, "1")
+    smoke_check = next(c for c in default_subprocess_checks() if c.name == "smoke_test")
+    assert smoke_check.cmd == [
+        "pytest",
+        "backend/tests/",
+        "--collect-only",
+        "-q",
+        "-m",
+        "smoke and not live_tushare",
+    ]
 
 
 def test_default_smoke_timeout_90s():

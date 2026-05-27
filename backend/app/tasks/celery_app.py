@@ -184,9 +184,7 @@ def _verify_beat_task_registration(*_args, **_kwargs) -> None:
             sorted(missing),
         )
         missing_sorted = sorted(missing)
-        raise RuntimeError(
-            f"Beat task(s) not registered at worker/beat init: {missing_sorted}"
-        )
+        raise RuntimeError(f"Beat task(s) not registered at worker/beat init: {missing_sorted}")
     logger.info("[BeatRegistration] all %d Beat-scheduled tasks registered", len(expected))
 
 

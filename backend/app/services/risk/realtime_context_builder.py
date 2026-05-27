@@ -112,7 +112,7 @@ class RealtimeRiskContextBuilder:
                 code=code,
                 shares=shares,
                 entry_price=0.0,  # MVP Chunk 1: placeholder; engine rules skip
-                peak_price=0.0,   # MVP Chunk 1: placeholder; engine rules skip
+                peak_price=0.0,  # MVP Chunk 1: placeholder; engine rules skip
                 current_price=float(prices_raw.get(code, 0.0)),
                 entry_date=None,  # MVP Chunk 1: placeholder
             )
@@ -137,7 +137,9 @@ class RealtimeRiskContextBuilder:
             portfolio_nav=portfolio_nav,
         )
 
-    def build_realtime_dict(self, positions: tuple[Position, ...]) -> dict[str, dict[str, Any]] | None:
+    def build_realtime_dict(
+        self, positions: tuple[Position, ...]
+    ) -> dict[str, dict[str, Any]] | None:
         """Build realtime extension dict for engine.on_tick (S5+ rules).
 
         Per RiskContext.realtime spec (interface.py:64-67):

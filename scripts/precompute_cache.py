@@ -38,8 +38,10 @@ END_DATE = date(2026, 6, 30)  # 支持120d forward return
 
 def get_conn():
     return psycopg2.connect(
-        dbname="quantmind_v2", user="xin",
-        password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost"
+        dbname="quantmind_v2",
+        user="xin",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"),
+        host="localhost",
     )
 
 

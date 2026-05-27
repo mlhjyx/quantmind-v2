@@ -26,6 +26,7 @@ from app.main import app  # noqa: E402
 def _override_get_db(mock_session: Any):
     async def _dep():
         yield mock_session
+
     return _dep
 
 
@@ -128,9 +129,18 @@ class TestRiskEventsEndpoint:
 
             e0 = data["events"][0]
             for field in (
-                "id", "strategy_id", "rule_id", "severity", "triggered_at",
-                "code", "shares", "reason", "action_taken",
-                "cadence", "priority", "detection_latency_ms",
+                "id",
+                "strategy_id",
+                "rule_id",
+                "severity",
+                "triggered_at",
+                "code",
+                "shares",
+                "reason",
+                "action_taken",
+                "cadence",
+                "priority",
+                "detection_latency_ms",
             ):
                 assert field in e0, f"missing field: {field}"
             assert e0["rule_id"] == "pms_l1"

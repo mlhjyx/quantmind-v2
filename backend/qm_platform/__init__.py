@@ -1,211 +1,111 @@
-"""QuantMind Core Platform (QCP) SDK — 12 Frameworks 统一导出.
+"""QuantMind Core Platform (QCP) SDK — lightweight public exports.
 
-Applications (PT / GP / Research / AI 闭环 / Forex) 必须通过本 SDK 消费 Platform 能力.
-禁止 Application 跨 Framework import / 裸访问 Infrastructure.
-
-组织:
-  - Framework #1 Data         → backend.qm_platform.data
-  - Framework #2 Factor       → backend.qm_platform.factor
-  - Framework #3 Strategy     → backend.qm_platform.strategy
-  - Framework #4 Eval         → backend.qm_platform.eval
-  - Framework #5 Backtest     → backend.qm_platform.backtest
-  - Framework #6 Signal/Exec  → backend.qm_platform.signal
-  - Framework #7 Observability→ backend.qm_platform.observability
-  - Framework #8 Config       → backend.qm_platform.config
-  - Framework #9 CI/Test      → backend.qm_platform.ci
-  - Framework #10 Knowledge   → backend.qm_platform.knowledge
-  - Framework #11 Resource    → backend.qm_platform.resource
-  - Framework #12 Backup & DR → backend.qm_platform.backup
-
-详见 docs/QUANTMIND_PLATFORM_BLUEPRINT.md Part 2.
-
-实施状态: v1.0 骨架 (MVP 1.1, 2026-04-18), 所有 interface 抛 NotImplementedError.
+Applications (PT / GP / Research / AI closure / Forex) consume Platform
+capabilities through this SDK. The package initializer must stay lightweight:
+CI imports `backend.qm_platform.ci.*` on minimal runners that do not install
+data-science dependencies, so public SDK symbols are resolved lazily.
 """
 
-from ._types import (
-    BacktestMode,
-    Order,
-    Priority,
-    ResourceProfile,
-    Severity,
-    Signal,
-    Verdict,
-)
-from .backtest.interface import (
-    BacktestConfig,
-    BacktestRegistry,
-    BacktestResult,
-    BacktestRunner,
-    BatchBacktestExecutor,
-)
-from .backup.interface import (
-    BackupManager,
-    BackupResult,
-    DisasterRecoveryRunner,
-    RestoreResult,
-)
-from .ci.interface import (
-    CoverageGate,
-    SmokeTestSuite,
-    TestRunner,
-    TestSummary,
-)
-from .config.interface import (
-    ConfigAuditor,
-    ConfigLoader,
-    ConfigSchema,
-    FeatureFlag,
-)
-from .data.interface import (
-    DataAccessLayer,
-    DataContract,
-    DataSource,
-    FactorCacheProtocol,
-    ValidationResult,
-)
-from .eval.interface import (
-    EvaluationPipeline,
-    GateResult,
-    StrategyEvaluator,
-)
-from .factor.interface import (
-    FactorLifecycleMonitor,
-    FactorMeta,
-    FactorOnboardingPipeline,
-    FactorRegistry,
-    FactorSpec,
-    FactorStatus,
-    OnboardResult,
-    TransitionDecision,
-)
-from .knowledge.interface import (
-    ADRRecord,
-    ADRRegistry,
-    ExperimentRecord,
-    ExperimentRegistry,
-    FailedDirectionDB,
-    FailedDirectionRecord,
-)
-from .observability.interface import (
-    Alert,
-    AlertRouter,
-    EventBus,
-    Metric,
-    MetricExporter,
-)
-from .resource.interface import (
-    AdmissionController,
-    AdmissionResult,
-    BudgetGuard,
-    ResourceManager,
-    ResourceSnapshot,
-    requires_resources,
-)
-from .signal.interface import (
-    AuditChain,
-    ExecutionAuditTrail,
-    OrderRouter,
-    SignalPipeline,
-)
-from .strategy.allocator import EqualWeightAllocator
-from .strategy.interface import (
-    CapitalAllocator,
-    RebalanceFreq,
-    Strategy,
-    StrategyContext,
-    StrategyRegistry,
-    StrategyStatus,
-)
-from .strategy.registry import (
-    DBStrategyRegistry,
-    StrategyNotFound,
-    StrategyRegistryIntegrityError,
-)
+from __future__ import annotations
 
-__all__ = [
+from importlib import import_module
+from typing import Any
+
+_EXPORTS: dict[str, str] = {
     # _types (shared)
-    "Signal",
-    "Order",
-    "Verdict",
-    "BacktestMode",
-    "Severity",
-    "ResourceProfile",
-    "Priority",
+    "Signal": "backend.qm_platform._types",
+    "Order": "backend.qm_platform._types",
+    "Verdict": "backend.qm_platform._types",
+    "BacktestMode": "backend.qm_platform._types",
+    "Severity": "backend.qm_platform._types",
+    "ResourceProfile": "backend.qm_platform._types",
+    "Priority": "backend.qm_platform._types",
     # Framework #1 Data
-    "DataSource",
-    "DataContract",
-    "DataAccessLayer",
-    "FactorCacheProtocol",
-    "ValidationResult",
+    "DataSource": "backend.qm_platform.data.interface",
+    "DataContract": "backend.qm_platform.data.interface",
+    "DataAccessLayer": "backend.qm_platform.data.interface",
+    "FactorCacheProtocol": "backend.qm_platform.data.interface",
+    "ValidationResult": "backend.qm_platform.data.interface",
     # Framework #2 Factor
-    "FactorRegistry",
-    "FactorOnboardingPipeline",
-    "FactorLifecycleMonitor",
-    "FactorSpec",
-    "FactorMeta",
-    "FactorStatus",
-    "OnboardResult",
-    "TransitionDecision",
+    "FactorRegistry": "backend.qm_platform.factor.interface",
+    "FactorOnboardingPipeline": "backend.qm_platform.factor.interface",
+    "FactorLifecycleMonitor": "backend.qm_platform.factor.interface",
+    "FactorSpec": "backend.qm_platform.factor.interface",
+    "FactorMeta": "backend.qm_platform.factor.interface",
+    "FactorStatus": "backend.qm_platform.factor.interface",
+    "OnboardResult": "backend.qm_platform.factor.interface",
+    "TransitionDecision": "backend.qm_platform.factor.interface",
     # Framework #3 Strategy
-    "Strategy",
-    "StrategyRegistry",
-    "CapitalAllocator",
-    "RebalanceFreq",
-    "StrategyStatus",
-    "StrategyContext",
-    # MVP 3.2 批 1 concretes:
-    "DBStrategyRegistry",
-    "EqualWeightAllocator",
-    "StrategyNotFound",
-    "StrategyRegistryIntegrityError",
+    "Strategy": "backend.qm_platform.strategy.interface",
+    "StrategyRegistry": "backend.qm_platform.strategy.interface",
+    "CapitalAllocator": "backend.qm_platform.strategy.interface",
+    "RebalanceFreq": "backend.qm_platform.strategy.interface",
+    "StrategyStatus": "backend.qm_platform.strategy.interface",
+    "StrategyContext": "backend.qm_platform.strategy.interface",
+    "DBStrategyRegistry": "backend.qm_platform.strategy.registry",
+    "EqualWeightAllocator": "backend.qm_platform.strategy.allocator",
+    "StrategyNotFound": "backend.qm_platform.strategy.registry",
+    "StrategyRegistryIntegrityError": "backend.qm_platform.strategy.registry",
     # Framework #4 Eval
-    "EvaluationPipeline",
-    "StrategyEvaluator",
-    "GateResult",
+    "EvaluationPipeline": "backend.qm_platform.eval.interface",
+    "StrategyEvaluator": "backend.qm_platform.eval.interface",
+    "GateResult": "backend.qm_platform.eval.interface",
     # Framework #5 Backtest
-    "BacktestRunner",
-    "BacktestRegistry",
-    "BatchBacktestExecutor",
-    "BacktestConfig",
-    "BacktestResult",
+    "BacktestRunner": "backend.qm_platform.backtest.interface",
+    "BacktestRegistry": "backend.qm_platform.backtest.interface",
+    "BatchBacktestExecutor": "backend.qm_platform.backtest.interface",
+    "BacktestConfig": "backend.qm_platform.backtest.interface",
+    "BacktestResult": "backend.qm_platform.backtest.interface",
     # Framework #6 Signal/Exec
-    "SignalPipeline",
-    "OrderRouter",
-    "ExecutionAuditTrail",
-    "AuditChain",
+    "SignalPipeline": "backend.qm_platform.signal.interface",
+    "OrderRouter": "backend.qm_platform.signal.interface",
+    "ExecutionAuditTrail": "backend.qm_platform.signal.interface",
+    "AuditChain": "backend.qm_platform.signal.interface",
     # Framework #7 Observability
-    "MetricExporter",
-    "AlertRouter",
-    "EventBus",
-    "Metric",
-    "Alert",
+    "MetricExporter": "backend.qm_platform.observability.interface",
+    "AlertRouter": "backend.qm_platform.observability.interface",
+    "EventBus": "backend.qm_platform.observability.interface",
+    "Metric": "backend.qm_platform.observability.interface",
+    "Alert": "backend.qm_platform.observability.interface",
     # Framework #8 Config
-    "ConfigSchema",
-    "ConfigLoader",
-    "ConfigAuditor",
-    "FeatureFlag",
+    "ConfigSchema": "backend.qm_platform.config.interface",
+    "ConfigLoader": "backend.qm_platform.config.interface",
+    "ConfigAuditor": "backend.qm_platform.config.interface",
+    "FeatureFlag": "backend.qm_platform.config.interface",
     # Framework #9 CI/Test
-    "TestRunner",
-    "CoverageGate",
-    "SmokeTestSuite",
-    "TestSummary",
+    "TestRunner": "backend.qm_platform.ci.interface",
+    "CoverageGate": "backend.qm_platform.ci.interface",
+    "SmokeTestSuite": "backend.qm_platform.ci.interface",
+    "TestSummary": "backend.qm_platform.ci.interface",
     # Framework #10 Knowledge
-    "ExperimentRegistry",
-    "FailedDirectionDB",
-    "ADRRegistry",
-    "ExperimentRecord",
-    "FailedDirectionRecord",
-    "ADRRecord",
+    "ExperimentRegistry": "backend.qm_platform.knowledge.interface",
+    "FailedDirectionDB": "backend.qm_platform.knowledge.interface",
+    "ADRRegistry": "backend.qm_platform.knowledge.interface",
+    "ExperimentRecord": "backend.qm_platform.knowledge.interface",
+    "FailedDirectionRecord": "backend.qm_platform.knowledge.interface",
+    "ADRRecord": "backend.qm_platform.knowledge.interface",
     # Framework #11 Resource
-    "ResourceManager",
-    "AdmissionController",
-    "BudgetGuard",
-    "AdmissionResult",
-    "ResourceSnapshot",
-    "requires_resources",
+    "ResourceManager": "backend.qm_platform.resource.interface",
+    "AdmissionController": "backend.qm_platform.resource.interface",
+    "BudgetGuard": "backend.qm_platform.resource.interface",
+    "AdmissionResult": "backend.qm_platform.resource.interface",
+    "ResourceSnapshot": "backend.qm_platform.resource.interface",
+    "requires_resources": "backend.qm_platform.resource.interface",
     # Framework #12 Backup & DR
-    "BackupManager",
-    "DisasterRecoveryRunner",
-    "BackupResult",
-    "RestoreResult",
-]
+    "BackupManager": "backend.qm_platform.backup.interface",
+    "DisasterRecoveryRunner": "backend.qm_platform.backup.interface",
+    "BackupResult": "backend.qm_platform.backup.interface",
+    "RestoreResult": "backend.qm_platform.backup.interface",
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve public SDK exports lazily to keep package import dependency-light."""
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value

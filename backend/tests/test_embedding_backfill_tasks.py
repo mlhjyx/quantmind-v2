@@ -70,7 +70,8 @@ def test_backfill_finds_null_embedding_rows(mock_conn_with_rows, mock_embedding_
 
     # cursor.execute called at least once with SELECT against risk_memory
     select_calls = [
-        c for c in cur.execute.call_args_list
+        c
+        for c in cur.execute.call_args_list
         if c.args and "SELECT" in c.args[0] and "risk_memory" in c.args[0]
     ]
     assert len(select_calls) >= 1, "Expected SELECT against risk_memory"
@@ -85,9 +86,7 @@ def test_backfill_finds_null_embedding_rows(mock_conn_with_rows, mock_embedding_
     assert result["processed"] == 3
 
 
-def test_backfill_batch_encodes_via_embedding_service(
-    mock_conn_with_rows, mock_embedding_service
-):
+def test_backfill_batch_encodes_via_embedding_service(mock_conn_with_rows, mock_embedding_service):
     """Each row's lesson text passed to embedding_service.encode."""
     from app.tasks.embedding_backfill_tasks import backfill_risk_memory_embeddings
 
@@ -106,14 +105,10 @@ def test_backfill_batch_encodes_via_embedding_service(
     assert mock_embedding_service.encode.call_count == 3
     # First call args contain the first lesson text
     first_call = mock_embedding_service.encode.call_args_list[0]
-    assert "limit_down" in first_call.args[0] or "limit_down" in first_call.kwargs.get(
-        "text", ""
-    )
+    assert "limit_down" in first_call.args[0] or "limit_down" in first_call.kwargs.get("text", "")
 
 
-def test_backfill_updates_rows_idempotent(
-    mock_conn_with_rows, mock_embedding_service
-):
+def test_backfill_updates_rows_idempotent(mock_conn_with_rows, mock_embedding_service):
     """UPDATE must include WHERE embedding IS NULL for idempotent re-run safety."""
     from app.tasks.embedding_backfill_tasks import backfill_risk_memory_embeddings
 
@@ -130,7 +125,8 @@ def test_backfill_updates_rows_idempotent(
 
     # cursor.execute called with UPDATE for each row
     update_calls = [
-        c for c in cur.execute.call_args_list
+        c
+        for c in cur.execute.call_args_list
         if c.args and "UPDATE" in c.args[0] and "risk_memory" in c.args[0]
     ]
     assert len(update_calls) == 3, f"Expected 3 UPDATE calls, got {len(update_calls)}"
@@ -162,10 +158,7 @@ def test_backfill_empty_when_no_null_rows(mock_conn_empty, mock_embedding_servic
     assert result["processed"] == 0
     mock_embedding_service.encode.assert_not_called()
     # No UPDATE calls
-    update_calls = [
-        c for c in cur.execute.call_args_list
-        if c.args and "UPDATE" in c.args[0]
-    ]
+    update_calls = [c for c in cur.execute.call_args_list if c.args and "UPDATE" in c.args[0]]
     assert len(update_calls) == 0
 
 
@@ -191,9 +184,7 @@ def test_backfill_returns_metadata_dict(mock_conn_with_rows, mock_embedding_serv
     assert result.get("embedding_dim") == 1024
 
 
-def test_backfill_closes_connection_on_success(
-    mock_conn_with_rows, mock_embedding_service
-):
+def test_backfill_closes_connection_on_success(mock_conn_with_rows, mock_embedding_service):
     """conn.close called once after successful backfill (resource cleanup)."""
     from app.tasks.embedding_backfill_tasks import backfill_risk_memory_embeddings
 
@@ -211,9 +202,7 @@ def test_backfill_closes_connection_on_success(
     conn.close.assert_called_once()
 
 
-def test_backfill_uses_pgvector_cast_and_text_literal(
-    mock_conn_with_rows, mock_embedding_service
-):
+def test_backfill_uses_pgvector_cast_and_text_literal(mock_conn_with_rows, mock_embedding_service):
     """Reviewer P0 regression guard (iter 174): UPDATE must use `%s::vector` cast +
     bind value must be a pgvector text literal (str starting with `[`), NOT a raw
     tuple. psycopg2 cannot adapt tuple → pgvector; canonical pattern from
@@ -237,7 +226,8 @@ def test_backfill_uses_pgvector_cast_and_text_literal(
         backfill_risk_memory_embeddings(batch_size=100)
 
     update_calls = [
-        c for c in cur.execute.call_args_list
+        c
+        for c in cur.execute.call_args_list
         if c.args and "UPDATE" in c.args[0] and "risk_memory" in c.args[0]
     ]
     assert len(update_calls) == 3

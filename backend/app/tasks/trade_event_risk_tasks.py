@@ -69,11 +69,7 @@ def _process_fill_event(event: dict[str, Any]) -> dict[str, Any]:
         engine = _get_engine()
         results = engine.on_tick(context)
 
-        p0_count = sum(
-            1
-            for r in results
-            if str(getattr(r, "severity", "")).lower() == "p0"
-        )
+        p0_count = sum(1 for r in results if str(getattr(r, "severity", "")).lower() == "p0")
 
         return {
             "event_id": event["event_id"],
@@ -125,9 +121,7 @@ def trade_event_risk_consumer_tick() -> dict[str, Any]:
                 e,
                 exc_info=True,
             )
-            failures.append(
-                f"{event.get('event_id')}: {type(e).__name__}: {e}"[:200]
-            )
+            failures.append(f"{event.get('event_id')}: {type(e).__name__}: {e}"[:200])
 
     summary = {
         "events_consumed": len(events),

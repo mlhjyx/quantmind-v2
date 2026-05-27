@@ -127,8 +127,14 @@ class TestSchedulerTaskLogEndpoint:
             t0 = data["tasks"][0]
             # All 8 schema fields present
             for field in (
-                "id", "task_name", "status", "schedule_time",
-                "start_time", "end_time", "duration_sec", "error_message",
+                "id",
+                "task_name",
+                "status",
+                "schedule_time",
+                "start_time",
+                "end_time",
+                "duration_sec",
+                "error_message",
             ):
                 assert field in t0, f"missing field: {field}"
             assert t0["task_name"] == "realtime_risk_engine_tick"
