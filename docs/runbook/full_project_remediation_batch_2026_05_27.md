@@ -24,6 +24,7 @@
 | B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
 | B7 | Full-project governance objective | Governance control | Completed: objective and completion criteria captured in `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`. |
 | B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
+| B9 | API O7 pipeline logs orphan | Backend/API closure | Completed: `GET /api/pipeline/{run_id}/logs` Redis HTTP backfill implemented and tested; PN-005 writer/WS remain enhancement backlog. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -140,3 +141,25 @@ Result:
   the current count baseline and to keep the old matrix body as historical evidence.
 - Updated `SYSTEM_STATUS.md` §13 to describe the risk-control design file as a
   retired redirect stub with the archive path.
+
+## B9 — Pipeline Logs HTTP Backfill
+
+Evidence:
+- `frontend/src/api/pipeline.ts::getPipelineLogs()` called
+  `GET /api/pipeline/{run_id}/logs`.
+- `docs/API_COVERAGE.md` and `docs/design/PN_005_pipeline_log_history_subsystem.md`
+  classified this as the last sustained frontend-only orphan.
+
+Result:
+- Added `PipelineLogEntry` response model and
+  `GET /api/pipeline/{run_id}/logs` in `backend/app/api/pipeline.py`.
+- The endpoint reads Redis list `pipeline:logs:{run_id}`, decodes JSON entries,
+  normalizes `warn` to `warning`, skips malformed rows with a warning, and returns
+  `[]` on Redis transport failure because this is observability-only UI.
+- Removed the stale frontend comment that said the backend endpoint did not exist.
+- Updated API coverage and PN-005 design notes to mark HTTP backfill closed.
+
+Remaining enhancement backlog:
+- Add writer instrumentation in pipeline tasks/services.
+- Add optional `/ws/pipeline/{run_id}` live tailing.
+- Decide whether durable DB history is needed beyond Redis recent logs.

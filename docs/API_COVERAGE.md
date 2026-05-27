@@ -3,10 +3,10 @@
 **Generated**: 2026-05-20
 **Fresh verify addendum**: 2026-05-25 §9 is the current count baseline. The original
 matrix body is retained as historical audit evidence.
-**Current backend surface**: 161 endpoints across 24 router files (§9.1)
+**Current backend surface**: 162 endpoints across 24 router files (§10.1)
 **Current frontend API modules**: 12 files (§9.2)
-**Current frontend-only orphan**: 1 sustained item, `GET /api/pipeline/{run_id}/logs`
-(§6.1 / §9.5)
+**Current frontend-only orphan**: 0 after the 2026-05-28 O7 HTTP backfill closure
+(§10)
 **Methodology**: `@router.(get|post|put|delete|patch)` grep on `backend/app/api/**/*.py` + `apiClient.(get|post|put|delete|patch)` grep on `frontend/src/api/*.ts`
 
 ---
@@ -15,17 +15,18 @@ matrix body is retained as historical audit evidence.
 
 | Metric | Count | % |
 |--------|-------|---|
-| Total backend endpoints | 161 | 100% |
-| Frontend-only orphans (no matching backend) | 1 | — |
+| Total backend endpoints | 162 | 100% |
+| Frontend-only orphans (no matching backend) | 0 | — |
 | Original 2026-05-20 backend endpoints | 148 | historical |
 | Original 2026-05-20 frontend-only orphans | 10 | historical |
 
 **Key findings**:
-- The 2026-05-20 50% backend-only ratio is historical. Use §9 for the current
-  endpoint count and §6.1/§9.5 for current orphan status.
-- Original 10 frontend-only orphans were reconciled to 1 sustained item:
-  `GET /api/pipeline/{run_id}/logs`. The remaining gap is intentionally deferred to
-  `docs/design/PN_005_pipeline_log_history_subsystem.md`.
+- The 2026-05-20 50% backend-only ratio is historical. Use §10 for the current
+  endpoint count and orphan status.
+- Original 10 frontend-only orphans were reconciled to 0. O7
+  `GET /api/pipeline/{run_id}/logs` now has a Redis-backed HTTP endpoint; PN-005
+  writer instrumentation and WebSocket tailing remain tracked as enhancement work,
+  not frontend-only orphan work.
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -690,7 +691,7 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 | O4 | pipeline.ts:122 | POST | `/pipeline/approve/{id}` | Uses old approval path — backend uses `/approval/queue/{item_id}/approve` |
 | O5 | pipeline.ts:126 | POST | `/pipeline/reject/{id}` | Uses old rejection path — backend uses `/approval/queue/{item_id}/reject` |
 | O6 | pipeline.ts:130 | POST | `/pipeline/hold/{id}` | Uses old hold path — backend uses `/approval/queue/{item_id}/hold` |
-| O7 | pipeline.ts:134 | GET | `/pipeline/{runId}/logs` | No logs endpoint in pipeline.py |
+| O7 | pipeline.ts:134 | GET | `/pipeline/{runId}/logs` | **RESOLVED 2026-05-28** — backend HTTP backfill now exists; see §10 |
 | O8 | pipeline.ts:139 | PUT | `/pipeline/automation-level` | No automation-level endpoint in pipeline.py |
 | O9 | factors.ts:200 | POST | `/factors/health` | Backend has GET `/api/factors/health` (factors.py:57) — method mismatch |
 | O10 | factors.ts:204 | POST | `/factors/correlation-prune` | No correlation-prune endpoint in factors.py |
@@ -708,14 +709,14 @@ Re-verified against current code (`main` HEAD `f70b04a`). The §6 snapshot above
 | O5 `/pipeline/reject/{id}` | **RESOLVED** (prior work). `rejectItem()` now calls `POST /api/approval/queue/{id}/reject`. |
 | O6 `/pipeline/hold/{id}` | **RESOLVED** (prior work). `holdItem()` now calls `POST /api/approval/queue/{id}/hold`. |
 | O3 `/pipeline/pause` | **RESOLVED** (2026-05-23/24, iter 12 PN-003). Backend `POST /api/pipeline/pause` + `/resume` wired — gate-at-entry semantics (pipeline_settings.paused_at column; idempotent no-overwrite when already paused; mid-run cooperative abort explicitly out of scope per PN-003 §6). `GET /status` extended with `paused_at` + `paused_reason`. Frontend `pausePipeline(reason?)` + new `resumePipeline()` consumers. |
-| O7 `/pipeline/{runId}/logs` | **STILL ORPHAN — verified iter 21 (2026-05-24) as a 4-component subsystem gap, not a 1-endpoint gap.** Backend HTTP endpoint missing AND `/ws/pipeline/{run_id}` WebSocket missing (verified by code-grep — only `backtest:{run_id}` rooms exist in `websocket/manager.py`) AND no log storage (no `pipeline_run_logs` table, no `qm:pipeline:*` stream) AND no emission instrumentation in pipeline tasks. The earlier "still receives live logs via ws/pipeline WebSocket during an active run" claim was aspirational and inaccurate (META-finding repeat of RN-001 §6 — code-grep-verify before sediment). `getPipelineLogs` 404s silently; "AI决策日志" tab shows empty state but doesn't break UX flow (try/catch graceful). **Design**: see `docs/design/PN_005_pipeline_log_history_subsystem.md` (verdict: DEFER pending product input on retention + log semantics + AI-evolution overlap, 5 questions enumerated in PN-005 §6). |
+| O7 `/pipeline/{runId}/logs` | **RESOLVED 2026-05-28 at HTTP contract level.** Backend `GET /api/pipeline/{run_id}/logs` now reads Redis list `pipeline:logs:{run_id}` and returns `PipelineLogEntry[]`; manual trigger / approve / reject write first decision events. Remaining PN-005 scope is narrower: broader mining-task instrumentation, optional `/ws/pipeline/{run_id}` live tailing, and durable-retention decision. |
 | O8 `/pipeline/automation-level` | **RESOLVED** (2026-05-23, iter 10 PN-001). Backend `GET /api/pipeline/automation-level` + `PUT /api/pipeline/automation-level` wired against a singleton `pipeline_settings` table (level L0–L3 enum + audit columns). Frontend `setAutomationLevel()` + `getAutomationLevel()` consumers. PR #450 squash `d26ac2a` / ADR-087. |
 
-**Remaining orphans: 10 → 1** (O7 only — O1 closed iter 5 PR #446 backtest cancel; O3 closed iter 12 PR #452 PN-003; O8 closed iter 10 PR #450 PN-001; O9 closed iters 3-4 PR #445 factor health POST; O10 closed iter 11 PR #451 PN-002 correlation-prune).
+**Remaining orphans: 10 → 0** (O1 closed iter 5 PR #446 backtest cancel; O3 closed iter 12 PR #452 PN-003; O8 closed iter 10 PR #450 PN-001; O9 closed iters 3-4 PR #445 factor health POST; O10 closed iter 11 PR #451 PN-002 correlation-prune; O7 closed 2026-05-28 HTTP backfill).
 
 **NEW finding (separate from orphan classification) — RESOLVED 2026-05-24 iter 15 PR #453 squash `7218496` / ADR-090:** `GET /api/pipeline/status` *is* consumed (#102), but the backend response shape (`active_run_id` / `node_statuses` dict / `progress` / `config_summary` …) did **not** match the frontend `PipelineStatus` interface (`run_id` / `nodes[]` / `automation_level` / `is_running` / `is_paused` / `schedule_cron` / `next_run_at` / `last_run_at`). Refactored response now exposes 8 frontend-aligned keys (`is_running` = status=='running' / `is_paused` = paused_at IS NOT NULL / `nodes[]` array mapped from `node_statuses` dict / `automation_level` read from `pipeline_settings` / `schedule_cron` + `next_run_at` from stdlib-only weekly-cron helper / `last_run_at` / `run_id`); legacy keys (`active_run_id` / `node_statuses` / `progress` / `config_summary`) retained as 1-sprint backward-compat aliases. See `docs/design/PN_004_pipeline_status_contract_refactor.md`.
 
-**Deferred:** O7 (log-history) only — O3 / O8 + the `/pipeline/status` contract all shipped 2026-05-23/24 (PR #452 / #450 / #453). O7 storage decision (file vs DB vs sliding-window) + retention policy remains the open product-scope choice; tracked as a backlog item (D1 O7, candidate for iter 19+).
+**Deferred enhancements:** PN-005 writer coverage beyond trigger/approve/reject, optional WebSocket live tailing, and durable retention if Redis recent logs are not enough. No frontend-only API orphan remains.
 
 ---
 
@@ -817,7 +818,7 @@ Total frontend apiClient calls: 83 (deduplicated by URL: ~60 unique paths)
 |---|----------|---------|----------|-------|------|
 | D1 | `POST /api/pipeline/pause` | pipeline.py:323 | pipeline.ts:138 (`pausePipeline`) | ✅ matched | iter 12 PN-003 closed O3 orphan (§6.1) |
 | D2 | `POST /api/pipeline/trigger` | pipeline.py:168 | pipeline.ts:125 (`triggerPipeline`) | ✅ matched | iter 1 PN-001 closed O2 orphan |
-| D3 | `GET /api/pipeline/{run_id}/logs` | — (no impl) | pipeline.ts:180 (`getPipelineLogs`) | ⚠️ frontend has + backend missing | O7 sustained orphan, PN-005 DEFER pending 5 product Qs |
+| D3 | `GET /api/pipeline/{run_id}/logs` | pipeline.py:267 | pipeline.ts:180 (`getPipelineLogs`) | ✅ matched | O7 HTTP backfill closed 2026-05-28; PN-005 writer/WS enhancements remain |
 | D4 | `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ backend has + frontend missing | new admin endpoint, no UI yet (candidate §5D) |
 | D5 | `GET /api/system/settings/paper-strategy-id` | system.py:509 | system.ts:152 (`getPaperStrategyId`) | ✅ matched | iter 50+ new pair |
 | D6 | `GET /api/system/streams` | system.py:334 | — | ⚠️ backend has + frontend missing | sustained §5D legitimate-ops gap |
@@ -829,7 +830,7 @@ Existing matrix §2.4 (rows 20-35) shows 16 backtest endpoints. Fresh grep retur
 
 ### §9.5 Orphan status sustained from §6.1
 
-- **O7** (`/pipeline/{runId}/logs`) — sustained orphan, see PN-005 DEFER decision (§6.1 row).
+- **O7** (`/pipeline/{runId}/logs`) — resolved 2026-05-28 at HTTP contract level; remaining PN-005 work is writer/WS/retention enhancement, not orphan closure.
 - All other O1-O10 from 2026-05-20 snapshot closed iter 3-4 / 5 / 10 / 11 / 12 / 15.
 - **No new orphans surfaced** in 2026-05-20 → 2026-05-25 window (all 13 new backend endpoints either have a frontend consumer or are admin-only by design).
 
@@ -841,3 +842,25 @@ Existing matrix §2.4 (rows 20-35) shows 16 backtest endpoints. Fresh grep retur
 - `backend/app/api/pms.py` (verify 2026-05-25 16:50 SH) — physically absent (RETIRED iter 50 ADR-094 commit 4d8ca04).
 
 **Fresh verify 2026-05-25 16:50 SH (iter 96 sub2 — taskboard POC task_003)**: 161 backend / 12 frontend / 1 orphan sustained / 13 endpoint Δ enumerated above. 红线 5/5 sustained (LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / 0 持仓 / cash ¥993,520.66 / 0 trades since 2026-04-29). TIER C direct push, ≤ 200 lines new content (122 lines appended).
+
+## §10 Fresh verify — 2026-05-28 (O7 HTTP backfill closure)
+
+### §10.1 Backend route delta
+
+`backend/app/api/pipeline.py` now implements `GET /api/pipeline/{run_id}/logs`
+as a Redis-list HTTP backfill endpoint for the Operator UI "AI决策日志" tab.
+The backend route surface is now **162 endpoints across 24 router files**.
+
+### §10.2 Orphan status
+
+The previous sustained frontend-only orphan O7 is closed at the HTTP contract
+level: `frontend/src/api/pipeline.ts::getPipelineLogs()` now has a matching
+backend endpoint.
+
+Remaining PN-005 scope is explicitly narrower:
+- writer instrumentation that pushes JSON `PipelineLogEntry` rows to
+  `pipeline:logs:{run_id}`;
+- optional `/ws/pipeline/{run_id}` live tailing;
+- a retention decision if the project later needs durable DB-backed history.
+
+These are enhancements/backlog, not current frontend-only API orphans.

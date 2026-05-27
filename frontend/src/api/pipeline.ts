@@ -175,8 +175,6 @@ export async function holdItem(id: string, note?: string): Promise<void> {
 }
 
 export async function getPipelineLogs(runId: string): Promise<PipelineLogEntry[]> {
-  // NOTE: No backend endpoint exists yet. GET /api/pipeline/{run_id}/logs is not
-  // implemented in backend/app/api/pipeline.py. Will return 404 until added.
   const res = await apiClient.get<PipelineLogEntry[]>(`/pipeline/${runId}/logs`);
   return res.data;
 }
