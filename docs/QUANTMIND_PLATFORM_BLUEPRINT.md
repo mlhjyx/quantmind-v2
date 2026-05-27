@@ -831,7 +831,7 @@ def run_gp_mining(...):
 
 **资源池示例 (基于 R9-9900X3D 12C/24T + 32GB + RTX 5070 12GB):**
 ```yaml
-# configs/resource_pools.yaml
+# configs/resource_pools.yaml (ASPIRATIONAL — iter 247 doc-rot fix: Framework #11 ROF design-stage YAML, 当前未建; Wave 6+ trigger gate)
 pools:
   heavy_data:                     # 替代铁律 9 人工判断
     capacity: 2                   # 最多 2 并发
@@ -921,7 +921,7 @@ class DisasterRecoveryRunner:
 **MVP 范围 (MVP 4.4):**
 - `pg_backup.py` 接入 Task Scheduler, 每日 02:00 全量
 - WAL archiving 开启 (PG `archive_mode=on`, `archive_command`)
-- 每周恢复验证脚本 `scripts/backup_verify.py`
+- 每周恢复验证脚本 `scripts/backup_verify.py` (ASPIRATIONAL — iter 247 doc-rot fix: 独立脚本未建; MVP 4.4 实际 ship `backend/qm_platform/backup/restore_verification.py` orchestrator + weekly Beat `weekly-backup-verify` Sun 04:00 触发)
 - Offsite 备份 (外置 HDD 或 S3-compatible)
 - Runbook 更新 + 链入 Blueprint
 - 首次 DR 演练 (记录 actual RTO)

@@ -497,7 +497,7 @@ L1 接口 (RiskRule abstract), 不动. 仅替换 cadence + 新增子类.
 **数据源**:
 
 ```python
-# scripts/realtime_risk_subscriber.py (新增)
+# scripts/realtime_risk_engine_service.py (iter 247 doc-rot fix: design-stage 名 realtime_risk_subscriber.py → impl 实际 realtime_risk_engine_service.py)
 from xtquant import xtdata
 
 def subscribe_realtime(symbols: list[str], callback):
@@ -791,7 +791,7 @@ DYNAMIC_THRESHOLDS_LOG_LEVEL=DEBUG  # 记录每次调整的 reason
 
 **记录**:
 
-> **[2026-05-17 annotation — DEFERRED audit feature, append-only per ADR-022]**: `dynamic_threshold_adjustments` 表 schema 已 deploy (S7 PR #305 migration `backend/migrations/v3_risk_framework_s7.sql`) 但**当前 code path 不写入此表** (DB 实测 0 rows). **设计本意 = audit log for material threshold changes**. **真生产路径 = Redis-only operational cache** (`backend/qm_platform/risk/dynamic_threshold/cache.py:RedisThresholdCache`, TTL 360s). **5min Beat `compute_dynamic_thresholds`** (`backend/app/tasks/dynamic_threshold_tasks.py`) 仅 `cache.set_batch(thresholds, ttl=360)` → 0 DB write. **delta-tracking flush task** (write material changes to此表) 留 V3 §19 Roadmap **future sprint** 实施 — 当前操作层 audit 价值 vs 实施复杂度 trade-off 不 favor immediate impl. 当前 Redis 是 operational SSOT, L1 RealtimeRiskRule 每 tick 读 Redis 不读 DB. 0 functional impact. Cite: Phase 1 Explore agent investigation 2026-05-17 evening.
+> **[2026-05-17 annotation — DEFERRED audit feature, append-only per ADR-022; iter 247 doc-rot fix added]**: `dynamic_threshold_adjustments` 表 schema 已 deploy (S7 PR #305, migration file 实际路径见 `backend/migrations/2026_05_*_*.sql` 系列, design-stage 名 `v3_risk_framework_s7.sql` 未采用 — 实际 migration 走 date-prefix 命名约定) 但**当前 code path 不写入此表** (DB 实测 0 rows). **设计本意 = audit log for material threshold changes**. **真生产路径 = Redis-only operational cache** (`backend/qm_platform/risk/dynamic_threshold/cache.py:RedisThresholdCache`, TTL 360s). **5min Beat `compute_dynamic_thresholds`** (`backend/app/tasks/dynamic_threshold_tasks.py`) 仅 `cache.set_batch(thresholds, ttl=360)` → 0 DB write. **delta-tracking flush task** (write material changes to此表) 留 V3 §19 Roadmap **future sprint** 实施 — 当前操作层 audit 价值 vs 实施复杂度 trade-off 不 favor immediate impl. 当前 Redis 是 operational SSOT, L1 RealtimeRiskRule 每 tick 读 Redis 不读 DB. 0 functional impact. Cite: Phase 1 Explore agent investigation 2026-05-17 evening.
 
 ```sql
 CREATE TABLE dynamic_threshold_adjustments (
@@ -1266,7 +1266,7 @@ user approve/reject
 ### §11.2 RiskRule 接口 (不动)
 
 ```python
-# backend/engines/risk/abstract.py (sustained)
+# backend/qm_platform/risk/interface.py (iter 247 doc-rot fix: design-stage backend/engines/risk/abstract.py → impl namespace 迁移 backend/qm_platform/risk/ + rename abstract → interface)
 from abc import ABC, abstractmethod
 from typing import Protocol
 
@@ -1313,7 +1313,7 @@ class RiskRule(ABC):
 **实施**:
 
 ```python
-# backend/engines/risk/backtest_adapter.py (新增, T1.5 集成)
+# backend/qm_platform/risk/backtest_adapter.py (iter 247 doc-rot fix: design-stage backend/engines/risk/ → impl namespace 迁移 backend/qm_platform/risk/, T1.5 集成已落地)
 class RiskBacktestAdapter:
     """风控评估为纯函数, 历史数据回放 + 合成场景."""
 
@@ -1380,7 +1380,7 @@ class RiskBacktestAdapter:
 
 **Celery Beat 新增 schedule**:
 ```python
-# backend/app/celery_config.py (扩)
+# backend/app/tasks/celery_app.py (iter 247 doc-rot fix: design-stage backend/app/celery_config.py → impl 实际 backend/app/tasks/celery_app.py, beat_schedule.py 兄弟模块)
 beat_schedule = {
     'risk-news-ingest-5min': {'task': 'tasks.risk.news_ingest', 'schedule': 300.0},
     'risk-fundamental-daily': {'task': 'tasks.risk.fundamental_ingest', 'schedule': crontab(hour=16, minute=0)},
@@ -1661,7 +1661,7 @@ DB 现 224GB , 风控 + 3GB 可接受.
 
 **实施**:
 ```python
-# scripts/audit/check_anthropic_imports.py (CI hook)
+# scripts/audit/check_anthropic_imports.py (DESIGN-STAGE — iter 247 doc-rot fix: 实际 impl 落地为 scripts/check_llm_imports.sh shell-script, 见 pre-push hook S6 LLM import block per ADR-020; Python AST 实现路径未采用)
 import ast, sys
 forbidden_paths = ['backend/app', 'backend/scripts']
 for path in forbidden_paths:
