@@ -20,7 +20,7 @@
 | B2 | Runtime route drift for `/api/system/beat-schedule` | Servy runtime ops | Completed: FastAPI/Worker/Beat restarted; route returns 200. |
 | B3 | `/api/system/health` timeout / session concurrency | Backend code | Completed: bounded health checks, sequential datasource reads, Windows Celery fallback. |
 | B4 | `daily_attribution` 0 rows | Runtime/data evidence | Completed: task apply writes row for configured `PAPER_STRATEGY_ID`; API returns latest row. |
-| B5 | Scheduler failures | Ops triage | Read-only diagnostics allowed; mutation/toggle requires unlock. |
+| B5 | Scheduler failures | Ops triage | Partially closed: disabled-task false positive fixed, DailyBackup DR risk repaired, ICMonitor reclassified as alert signal. |
 | B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
 | B7 | Full-project governance objective | Governance control | Completed: objective and completion criteria captured in `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`. |
 | B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
@@ -88,15 +88,21 @@ Result:
 Evidence:
 - `QM-ICMonitor` had latest failure code `1`.
 - `QM-SmokeTest` had latest failure code `3221225786`.
+- Follow-up `GET /api/system/scheduler` found `QM-DailyBackup` active/Ready with latest failure code `3221225786`.
+- `logs/ic_monitor.log` shows the 2026-05-24 `QM-ICMonitor` code `1` corresponds to one P1 IC decay alert, not a traceback or scheduler infrastructure failure.
+- `docs/SCHEDULING_LAYOUT.md` and `SYSTEM_STATUS.md` already classify `QM-SmokeTest` as disabled/one-time completed.
+- `logs/backup.log` showed the 2026-05-28 backup started then stopped after writing only about 222MB; recent healthy dumps are 11-15GB.
 
-Allowed read-only diagnostics:
-- Inspect task definitions.
-- Inspect last-run output/log files.
-- Compare against docs that already mention these tasks.
+Result:
+- `backend/app/api/system.py` now maps disabled Windows tasks to `status='disabled'` and exposes `task_state` / `enabled`.
+- Frontend scheduler consumers now preserve disabled status and exclude disabled tasks from overdue counts.
+- `scripts/pg_backup.py` now writes to `.dump.tmp`, rejects undersized dumps before final replacement, verifies file size before `pg_restore --list`, and updates Parquet snapshot SQL to current column names.
+- Controlled recovery run: `python scripts/pg_backup.py --skip-parquet` completed on 2026-05-28, produced `quantmind_v2_20260528.dump` at 14,480.2MB, and `pg_restore --list` passed with 712 tables / 2,359 objects.
+- FastAPI was restarted; `GET /api/system/scheduler` now reports `QM-SmokeTest` as `task_state='Disabled'`, `enabled=false`, `status='disabled'`.
 
-Blocked actions without unlock:
-- Enable, disable, re-register, or modify any Task Scheduler task.
-- Edit scripts that would affect scheduled production behavior.
+Remaining:
+- `QM-ICMonitor` should be handled as an operator factor-quality alert. It is not currently evidence of a broken scheduler task.
+- The next scheduled `QM-DailyBackup` first-fire result still needs observation because Task Scheduler LastResult remains the failed 02:00 run until the task fires again; the manual rerun restored today's DR artifact.
 
 ## B6 — Skills Version Policy
 

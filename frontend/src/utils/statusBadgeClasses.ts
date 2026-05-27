@@ -27,6 +27,7 @@ export function statusBadgeClasses(
     case "running":
       return "bg-sky-500/20 text-sky-400 border border-sky-500/30";
     case "never":
+    case "disabled":
       return "bg-slate-700/40 text-slate-500 border border-slate-700";
     default:
       // Reviewer pattern (sibling iter 211): exhaustive-default guard prevents

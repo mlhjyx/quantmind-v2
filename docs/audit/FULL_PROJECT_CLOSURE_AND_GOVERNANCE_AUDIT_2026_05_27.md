@@ -16,8 +16,12 @@ Closed:
 - `memory/project_sprint_state.md` restored as tracked handoff SSOT.
 - Active `.agents/skills` files are versioned, with `.agents/skills/README.md` policy and automated inventory guard.
 
+Closed / reclassified:
+- `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
+- `QM-DailyBackup` 2026-05-28 active failure was traced to a truncated dump plus backup-script guard gaps; `scripts/pg_backup.py` now writes `.tmp` then atomically replaces, rejects undersized dumps, and verifies size before `pg_restore --list`. A controlled rerun produced a 14,480.2MB dump and `pg_restore --list` passed with 712 tables / 2,359 objects.
+
 Still open:
-- `QM-ICMonitor` and `QM-SmokeTest` scheduler disposition.
+- `QM-ICMonitor` remains an operational alert signal, not an infrastructure crash: latest code `1` corresponds to a P1 IC decay alert in `logs/ic_monitor.log`.
 - QMT Data Service remains stopped intentionally because this batch did not require PT/QMT runtime activation.
 
 ## Executive Summary
@@ -30,7 +34,8 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28: runtime FastAPI was reloaded and `/api/system/beat-schedule` returned 27 entries.
 - Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, and fresh runtime probe records `overall_status='ok'`.
 - Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
-- P1: scheduler state still needs disposition for failed operational tasks (`QM-ICMonitor`, `QM-SmokeTest`).
+- Closed 2026-05-28: scheduler status false positives and backup failure path remediated; `QM-SmokeTest` is disabled/retired, and `QM-DailyBackup` now has a fresh verified 14,480.2MB dump.
+- P1: `QM-ICMonitor` still needs operator disposition as an IC quality alert, not as a broken scheduled task.
 - Closed 2026-05-28: `memory/project_sprint_state.md` exists and is tracked.
 - Closed 2026-05-28: `.agents/skills` is governed as the active Codex project skill layer; `.claude/skills` remains historical.
 
@@ -115,18 +120,26 @@ Remediation:
 Follow-up:
 - Define "0 rows acceptable" conditions explicitly for future PT pause windows where attribution should not be produced.
 
-### P1 — Scheduler operational status is mixed
+### Partially Closed 2026-05-28 — Scheduler operational status is now typed
 
-`GET /api/system/scheduler` returned 7 Windows tasks. Two have failed latest status: `QM-ICMonitor` (`last_result_code=1`) and `QM-SmokeTest` (`last_result_code=3221225786`). Service status also shows QMT Data Service stopped, consistent with PT paused.
+Initial `GET /api/system/scheduler` returned 7 Windows tasks. Two appeared failed: `QM-ICMonitor` (`last_result_code=1`) and `QM-SmokeTest` (`last_result_code=3221225786`). A follow-up probe also found `QM-DailyBackup` active/Ready with `last_result_code=3221225786`.
 
-Impact:
-- High-level `/api/health` pass is not enough to claim schedule closure.
-- Operator UI should distinguish "platform services up" from "scheduled operations healthy".
+Root-cause disposition:
+- `QM-SmokeTest` is documented disabled/one-time, so its stale LastResult was scheduler noise.
+- `QM-ICMonitor` code `1` matches logged P1 IC decay alert behavior (`logs/ic_monitor.log` 2026-05-24), not a script crash.
+- `QM-DailyBackup` was real DR risk: the 2026-05-28 dump was about 222MB while recent successful dumps were 11-15GB.
+
+Remediation:
+- `backend/app/api/system.py` now returns `task_state`, `enabled`, and maps disabled tasks to `status='disabled'`.
+- Frontend scheduler adapters normalize backend `never_run` to UI `never`, preserve `disabled`, and exclude disabled tasks from overdue counts.
+- `scripts/pg_backup.py` now writes to `.dump.tmp`, deletes partial temp files on failure/timeout, rejects undersized files, atomically replaces the final dump only after size validation, and uses current DB columns for Parquet export (`code`, `raw_value`, `neutral_value`, `zscore`).
+- A controlled `python scripts/pg_backup.py --skip-parquet` rerun on 2026-05-28 produced `quantmind_v2_20260528.dump` at 14,480.2MB and immediate `pg_restore --list` verification passed with 712 tables / 2,359 objects.
+- After FastAPI restart, `GET /api/system/scheduler` returns `QM-SmokeTest` as `task_state='Disabled'`, `enabled=false`, `status='disabled'`. `QM-DailyBackup` still reports the 02:00 scheduled LastResult until its next scheduled first-fire, but today's DR artifact is recovered and verified.
 
 Backlog:
-- Treat scheduler failures as a separate operational health dimension.
-- Add a clear stale/failing task policy in docs and UI.
-- Decide whether `QM-SmokeTest` is retired, broken, or should be re-registered.
+- Treat `QM-ICMonitor` non-zero exit as an operator alert event; decide whether the scheduler dashboard should label it `alert` instead of generic `failed`.
+- Decide whether future full backup runs should include Parquet by default after the schema-drift fix is deployed and monitored.
+- Capture the next scheduled `QM-DailyBackup` first-fire after this fix; Task Scheduler LastResult will not reflect the manual recovery run.
 
 ### Closed 2026-05-28 — Sprint handoff SSOT restored
 
@@ -197,7 +210,7 @@ Backlog:
 | Closed | Apply/reconcile `pipeline_settings` migration | DB + PipelineConsole | Completed 2026-05-28: migration applied, singleton row verified, `/api/pipeline/status` returned 200. |
 | Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries. |
 | Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers, regression tests, and fresh runtime HTTP 200 evidence. |
-| P1 | Scheduler failure triage | Ops + UI | `QM-ICMonitor` and `QM-SmokeTest` need disposition. |
+| Partially closed | Scheduler failure triage | Ops + UI | `QM-SmokeTest` stale disabled-task false positive closed; `QM-DailyBackup` partial dump path fixed and fresh verified dump produced; `QM-ICMonitor` remains an IC alert disposition item. |
 | Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
@@ -212,7 +225,9 @@ Backlog:
 - `GET /api/health`: 200, `all_pass=true`.
 - `GET /api/system/health`: initial probe timed out after 8 seconds; 2026-05-28 remediation verification records 200 with `overall_status='ok'` after bounded-check fix.
 - `GET /api/system/beat-schedule`: initial probe returned 404; 2026-05-28 remediation verification returned 200 with 27 entries.
-- `GET /api/system/scheduler`: 200 with 7 schtasks.
+- `GET /api/system/scheduler`: 200 with 7 schtasks; after remediation/restart, `QM-SmokeTest` returns `status='disabled'`, `enabled=false`.
+- `python scripts/pg_backup.py --verify`: initially failed after size gate because `quantmind_v2_20260528.dump` was only about 222MB.
+- `python scripts/pg_backup.py --skip-parquet`: controlled rerun completed in 1,138 seconds, wrote a 14,480.2MB dump, and `pg_restore --list` passed with 712 tables / 2,359 objects.
 - Read-only SQL table existence/count probe: completed.
 - `python -m pytest --collect-only -q backend/tests/test_pipeline_status_contract.py backend/tests/test_risk_events_endpoint.py backend/tests/test_trailing_stop.py backend/tests/test_factor_registry.py backend/tests/test_strategy_registry.py`: 97 tests collected.
 - `npm run build -- --mode development`: passed; large ECharts chunk warning only.

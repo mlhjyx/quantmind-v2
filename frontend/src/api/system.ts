@@ -32,9 +32,11 @@ export interface SchedulerTask {
   display_name: string;
   schedule: string;
   last_run: string | null;
-  last_status: "success" | "failed" | "running" | "never" | null;
+  last_status: "success" | "failed" | "running" | "never" | "disabled" | null;
   next_run: string | null;
   enabled: boolean;
+  task_state?: string;
+  last_result_code?: number | null;
 }
 
 /**
@@ -95,8 +97,18 @@ interface SchedulerResponseRaw {
     last_run: string | null;
     next_run: string | null;
     status: string;
+    task_state?: string;
+    enabled?: boolean;
     last_result_code: number | null;
   }>;
+}
+
+function normalizeSchedulerStatus(status: string): SchedulerTask["last_status"] {
+  if (status === "never_run") return "never";
+  if (["success", "failed", "running", "never", "disabled"].includes(status)) {
+    return status as SchedulerTask["last_status"];
+  }
+  return null;
 }
 
 export async function fetchSchedulerTasks(): Promise<SchedulerTask[]> {
@@ -107,9 +119,11 @@ export async function fetchSchedulerTasks(): Promise<SchedulerTask[]> {
     display_name: t.task_name.replace(/^QM-?/, ""), // strip QM- prefix for display
     schedule: t.schedule || "",
     last_run: t.last_run,
-    last_status: t.status as SchedulerTask["last_status"],
+    last_status: normalizeSchedulerStatus(t.status),
     next_run: t.next_run,
-    enabled: true, // QM-* tasks shown only when enabled
+    enabled: t.enabled ?? t.task_state?.toLowerCase() !== "disabled",
+    task_state: t.task_state,
+    last_result_code: t.last_result_code,
   }));
 }
 

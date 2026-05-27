@@ -293,7 +293,7 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
     R6 §3.3: Task Scheduler 是主调度器，任务名前缀为 QM-。
 
     Returns:
-        任务状态列表，每项包含 task_name、schedule、last_run、next_run、status。
+        任务状态列表，每项包含 task_name、task_state、enabled、last_run、next_run、status。
     """
     if platform.system() != "Windows":
         return []
@@ -328,20 +328,16 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
         tasks = []
         for item in raw:
             last_result = item.get("LastResult", 0)
-            # Windows Task Scheduler: 0=成功, 267011=还未运行
-            status = (
-                "success"
-                if last_result == 0
-                else "never_run"
-                if last_result == 267011
-                else "failed"
-            )
+            task_state = str(item.get("State") or "Unknown")
+            status = _task_scheduler_status(task_state, last_result)
             tasks.append(
                 {
                     "task_name": item.get("Name", ""),
                     "schedule": "",  # 简化：不解析 trigger 配置
                     "last_run": item.get("LastRun", ""),
                     "next_run": item.get("NextRun", ""),
+                    "task_state": task_state,
+                    "enabled": task_state.lower() != "disabled",
                     "status": status,
                     "last_result_code": last_result,
                 }
@@ -350,6 +346,21 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
     except Exception:
         logger.exception("查询Windows Task Scheduler任务失败")
         return []
+
+
+def _task_scheduler_status(task_state: str, last_result: int | None) -> str:
+    """Map Windows task state and last result into operator-facing status."""
+    normalized_state = task_state.lower()
+    if normalized_state == "disabled":
+        return "disabled"
+    if normalized_state == "running":
+        return "running"
+    # Windows Task Scheduler: 0=成功, 267011=还未运行
+    if last_result == 0:
+        return "success"
+    if last_result == 267011:
+        return "never_run"
+    return "failed"
 
 
 # ---------------------------------------------------------------------------

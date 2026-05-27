@@ -1,7 +1,7 @@
 ---
-description: Codex remediation handoff restored and updated after first repair batch.
-date: 2026-05-28 00:25 +08:00
-status: remediation_batch_1_closed
+description: Codex remediation handoff updated after scheduler and backup remediation.
+date: 2026-05-28 04:30 +08:00
+status: scheduler_backup_remediation_in_progress
 source_report: docs/audit/FULL_PROJECT_CLOSURE_AND_GOVERNANCE_AUDIT_2026_05_27.md
 ---
 
@@ -29,12 +29,15 @@ Closed in this batch:
 - Fixed `/api/system/health`: bounded checks, sequential datasource reads, and Windows Celery solo-worker process fallback; runtime returns `overall_status=ok`.
 - Fixed attribution task import roots and strategy id source; manual task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returns that row.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
+- Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
+- Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
+- Recovered today's DR artifact with `python scripts/pg_backup.py --skip-parquet`: `quantmind_v2_20260528.dump` is 14,480.2MB and `pg_restore --list` passed with 712 tables / 2,359 objects.
+- Restarted FastAPI; `/api/system/scheduler` now returns `QM-SmokeTest` as `status=disabled`, `enabled=false`.
 
 Still open:
-- Scheduler failures: `QM-ICMonitor` and `QM-SmokeTest` need disposition.
-- Active `.agents/skills` files need a track/local-only policy.
+- `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; operator/factor-quality disposition remains.
+- `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Finish verification, stage a coherent branch, and open a PR because GitHub auth is now available.
-- Keep `.agents/skills/...` and `nul` untracked unless the PR scope explicitly includes skill governance.
+- Finish verification, stage the coherent scheduler/backup remediation patch, push the branch, and re-check PR CI.

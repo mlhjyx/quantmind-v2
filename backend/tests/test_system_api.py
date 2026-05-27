@@ -480,6 +480,8 @@ class TestSchedulerEndpoint:
             "schedule": "",
             "last_run": "2026-03-28 16:30:00",
             "next_run": "2026-03-29 16:30:00",
+            "task_state": "Ready",
+            "enabled": True,
             "status": "success",
             "last_result_code": 0,
         }
@@ -488,8 +490,17 @@ class TestSchedulerEndpoint:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get("/api/system/scheduler")
         task = resp.json()["tasks"][0]
-        for field in ("task_name", "last_run", "next_run", "status"):
+        for field in ("task_name", "last_run", "next_run", "task_state", "enabled", "status"):
             assert field in task, f"任务项缺少字段: {field}"
+
+    def test_task_scheduler_status_disabled_overrides_stale_failure(self):
+        """Disabled tasks should not surface stale LastResult as active failure."""
+        from app.api.system import _task_scheduler_status
+
+        assert _task_scheduler_status("Disabled", 3221225786) == "disabled"
+        assert _task_scheduler_status("Ready", 3221225786) == "failed"
+        assert _task_scheduler_status("Running", 267011) == "running"
+        assert _task_scheduler_status("Ready", 267011) == "never_run"
 
     @pytest.mark.asyncio
     async def test_empty_tasks_on_non_windows(self):
