@@ -25,12 +25,13 @@ git log --oneline -20 | Select-String "iter (162|163|167|168|178|184|185)"
 - Latest main HEAD `8313172` (iter 185 closure) or later
 
 ```powershell
-# Verify beat_schedule.py contains all 4 MVP entries
-Select-String -Path backend\app\tasks\beat_schedule.py -Pattern "trade-event-risk-consumer-tick|daily-reconciliation|rag-embedding-backfill|risk-l1-realtime-tick|risk-l4-sweep" |
+# Verify beat_schedule.py contains the 4 Phase J Beat entries
+# Note: daily_reconciliation is a SCHTASK (QuantMind_DailyReconciliation 15:40 daily), NOT a Beat entry
+Select-String -Path backend\app\tasks\beat_schedule.py -Pattern "trade-event-risk-consumer-tick|embedding-backfill-every-6h|realtime-risk-tick|risk-l4-sweep-1min" |
   Select-Object Line
 ```
 
-**Expected**: 5 distinct Beat entries (L1 + L4 sweep + daily reconciliation + RAG backfill + trade event consumer).
+**Expected**: 4 distinct Beat entries (L1 realtime tick + L4 sweep + RAG backfill 6h + trade event consumer 10s). MVP 4.6 daily_reconciliation runtime-verifies separately via next-day 15:40 schtask fire — not affected by Servy Celery restart.
 
 ```powershell
 # Verify celery_app.py imports all 4 MVP task modules
@@ -99,15 +100,14 @@ Start-Sleep -Seconds 10
 
 ```powershell
 Get-Content D:\quantmind-v2\logs\celery-beat-stdout.log -Tail 100 |
-  Select-String "trade-event-risk-consumer-tick|daily-reconciliation|rag-embedding-backfill|risk-l1-realtime|risk-l4-sweep"
+  Select-String "trade-event-risk-consumer-tick|embedding-backfill-every-6h|realtime-risk-tick|risk-l4-sweep-1min"
 ```
 
-**Expected**: 5 entries logged with their respective schedules:
-- `trade-event-risk-consumer-tick` — 10s
-- `daily-reconciliation-job` — crontab Mon-Fri 16:50
-- `rag-embedding-backfill-job` — crontab daily 06:00 (or per MVP 4.7 schedule)
-- `risk-l1-realtime-tick` — 1min
-- `risk-l4-sweep-1min` — 1min
+**Expected**: 4 entries logged with their respective schedules:
+- `trade-event-risk-consumer-tick` — 10s (every 10s all hours, MVP 4.8)
+- `embedding-backfill-every-6h` — crontab(hour="*/6", minute=15) = 00:15 / 06:15 / 12:15 / 18:15 daily (MVP 4.7)
+- `realtime-risk-tick` — crontab(minute="*", hour="9-14", day_of_week="1-5") = 1min trading hours only (MVP 4.5 Phase J §1.1)
+- `risk-l4-sweep-1min` — crontab(minute="*", hour="9-14", day_of_week="1-5") = 1min trading hours only (MVP 4.5 Phase J §1.2)
 
 ## 验证清单 (post-restart 5 min wait + non-elevated)
 
