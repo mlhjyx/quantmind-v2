@@ -22,6 +22,8 @@
 | B4 | `daily_attribution` 0 rows | Runtime/data evidence | Completed: task apply writes row for configured `PAPER_STRATEGY_ID`; API returns latest row. |
 | B5 | Scheduler failures | Ops triage | Read-only diagnostics allowed; mutation/toggle requires unlock. |
 | B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
+| B7 | Full-project governance objective | Governance control | Completed: objective and completion criteria captured in `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`. |
+| B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -110,3 +112,31 @@ Decision:
 
 Audit artifact:
 - `docs/audit/SKILLS_GOVERNANCE_AUDIT_2026_05_28.md`.
+
+## B7 — Full-Project Governance Objective
+
+Evidence:
+- User clarified the durable objective: full project closure review, code/doc/module
+  inventory, drift remediation, hooks/skills/agents governance, CI/PR auditability,
+  and active fixing rather than passive backlog accumulation.
+
+Result:
+- Added `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`.
+- The new artifact defines scope, working loop, redline boundary, and completion
+  evidence criteria for the continuing governance goal.
+
+## B8 — API/Status Document Drift
+
+Evidence:
+- `docs/API_COVERAGE.md` top summary still said 148 backend endpoints and 10
+  frontend-only orphans, while its own §9 fresh verify records 161 endpoints and
+  1 sustained orphan.
+- `SYSTEM_STATUS.md` §13 still described `RISK_CONTROL_SERVICE_DESIGN.md` as a
+  678-line partially deprecated document, while the current file is a redirect stub
+  to the archived historical body.
+
+Result:
+- Updated the API coverage header and executive summary to point readers to §9 as
+  the current count baseline and to keep the old matrix body as historical evidence.
+- Updated `SYSTEM_STATUS.md` §13 to describe the risk-control design file as a
+  retired redirect stub with the archive path.

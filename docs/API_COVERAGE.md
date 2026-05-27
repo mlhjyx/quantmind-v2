@@ -1,8 +1,12 @@
 # API Coverage Matrix — QuantMind V2
 
-**Generated**: 2026-05-20  
-**Backend**: 148 endpoints across 25 router files  
-**Frontend API modules**: 11 files (`frontend/src/api/*.ts`)  
+**Generated**: 2026-05-20
+**Fresh verify addendum**: 2026-05-25 §9 is the current count baseline. The original
+matrix body is retained as historical audit evidence.
+**Current backend surface**: 161 endpoints across 24 router files (§9.1)
+**Current frontend API modules**: 12 files (§9.2)
+**Current frontend-only orphan**: 1 sustained item, `GET /api/pipeline/{run_id}/logs`
+(§6.1 / §9.5)
 **Methodology**: `@router.(get|post|put|delete|patch)` grep on `backend/app/api/**/*.py` + `apiClient.(get|post|put|delete|patch)` grep on `frontend/src/api/*.ts`
 
 ---
@@ -11,14 +15,17 @@
 
 | Metric | Count | % |
 |--------|-------|---|
-| Total backend endpoints | 148 | 100% |
-| Consumed (frontend caller found) | 74 | 50% |
-| Backend-only (no frontend consumer) | 74 | 50% |
-| Frontend-only orphans (no matching backend) | 10 | — |
+| Total backend endpoints | 161 | 100% |
+| Frontend-only orphans (no matching backend) | 1 | — |
+| Original 2026-05-20 backend endpoints | 148 | historical |
+| Original 2026-05-20 frontend-only orphans | 10 | historical |
 
 **Key findings**:
-- 50% of backend endpoints have no frontend consumer — primarily admin/ops endpoints (execution_ops admin actions), PMS (deprecated), news ingest, remote_status, report generation, paper_trading, SSE stream, approval workflow.
-- 10 frontend calls target paths with no matching backend endpoint — these are bug candidates (`/backtest/{id}/cancel`, `/pipeline/trigger`, `/pipeline/pause`, `/pipeline/approve`, `/pipeline/reject`, `/pipeline/hold`, `/pipeline/{id}/logs`, `/pipeline/automation-level`, `/factors/health` as POST, `/factors/correlation-prune`). **(2026-05-24 iter 17 reconciliation: 9 of 10 closed across iter 1 / 3-4 / 5 / 10 / 11 / 12 / 15 — only O7 `/pipeline/{id}/logs` remains as a deferred backlog item. See §6.1.)**
+- The 2026-05-20 50% backend-only ratio is historical. Use §9 for the current
+  endpoint count and §6.1/§9.5 for current orphan status.
+- Original 10 frontend-only orphans were reconciled to 1 sustained item:
+  `GET /api/pipeline/{run_id}/logs`. The remaining gap is intentionally deferred to
+  `docs/design/PN_005_pipeline_log_history_subsystem.md`.
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
