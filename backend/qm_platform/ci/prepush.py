@@ -39,6 +39,22 @@ X10_HARD_PATTERNS: tuple[str, ...] = (
 DEFAULT_SMOKE_TIMEOUT_SECONDS = 90
 DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS = 30
 SMOKE_COLLECT_ONLY_ENV = "QM_CI_SMOKE_COLLECT_ONLY"
+SMOKE_COLLECT_TARGETS = [
+    "backend/tests/smoke/",
+    "backend/tests/test_audit_design_doc_smoke_smoke.py",
+    "backend/tests/test_build_traceability_index_smoke.py",
+    "backend/tests/test_daily_reconciliation_smoke.py",
+    "backend/tests/test_generate_system_diagram_smoke.py",
+    "backend/tests/test_news_anspire.py",
+    "backend/tests/test_news_gdelt.py",
+    "backend/tests/test_news_marketaux.py",
+    "backend/tests/test_news_rsshub.py",
+    "backend/tests/test_news_tavily.py",
+    "backend/tests/test_news_zhipu.py",
+    "backend/tests/test_rag_consumer_smoke.py",
+    "backend/tests/test_realtime_risk_beat_smoke.py",
+    "backend/tests/test_services_healthcheck.py",
+]
 
 SubprocessRunner = Callable[[list[str], int], subprocess.CompletedProcess]
 
@@ -83,11 +99,11 @@ def default_subprocess_checks() -> list[PrePushCheck]:
     if os.environ.get(SMOKE_COLLECT_ONLY_ENV) == "1":
         smoke_cmd = [
             "pytest",
-            "backend/tests/",
             "--collect-only",
             "-q",
             "-m",
             "smoke and not live_tushare",
+            *SMOKE_COLLECT_TARGETS,
         ]
 
     return [
@@ -217,6 +233,7 @@ __all__ = [
     "DEFAULT_SMOKE_TIMEOUT_SECONDS",
     "PrePushCheck",
     "PrePushOrchestrator",
+    "SMOKE_COLLECT_TARGETS",
     "SMOKE_COLLECT_ONLY_ENV",
     "SubprocessRunner",
     "X10_HARD_PATTERNS",

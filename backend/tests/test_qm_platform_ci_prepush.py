@@ -16,6 +16,7 @@ from backend.qm_platform.ci.prepush import (
     DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS,
     DEFAULT_SMOKE_TIMEOUT_SECONDS,
     SMOKE_COLLECT_ONLY_ENV,
+    SMOKE_COLLECT_TARGETS,
     X10_HARD_PATTERNS,
     PrePushCheck,
     PrePushOrchestrator,
@@ -112,11 +113,11 @@ def test_smoke_check_collect_only_mode_for_github(monkeypatch):
     smoke_check = next(c for c in default_subprocess_checks() if c.name == "smoke_test")
     assert smoke_check.cmd == [
         "pytest",
-        "backend/tests/",
         "--collect-only",
         "-q",
         "-m",
         "smoke and not live_tushare",
+        *SMOKE_COLLECT_TARGETS,
     ]
 
 
