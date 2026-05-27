@@ -285,7 +285,7 @@ backend/engines/backtest/
 | BJ 股排除 | ✅ | Step 6-C 修复 |
 | Parquet 缓存 | ✅ | 12 年 30min→1.6s |
 | 可复现 (铁律 15) | ✅ | (config_hash, git_commit) 入 DB, max_diff=0 |
-| Walk-Forward | ✅ | 5-fold, `scripts/walk_forward.py` |
+| Walk-Forward | ✅ | 5-fold, `backend/engines/walk_forward.py` [iter 246 path-fix: scripts/ → backend/engines/] |
 | 12 年全量跑通 | ✅ | 328s, OOM 已解决 |
 
 ### 6.3 回测入口
@@ -293,7 +293,7 @@ backend/engines/backtest/
 ```bash
 python scripts/run_backtest.py --config configs/pt_live.yaml        # 标准回测
 python scripts/run_backtest.py --config configs/backtest_12yr.yaml  # 12 年基线
-python scripts/walk_forward.py --config ...                         # WF 验证
+python backend/engines/walk_forward.py --config ...                  # WF 验证 [iter 246 path-fix]
 python cache/baseline/regression_test.py                            # 回归测试
 ```
 

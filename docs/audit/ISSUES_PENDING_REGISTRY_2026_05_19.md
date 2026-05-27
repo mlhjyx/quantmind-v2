@@ -130,7 +130,7 @@
 | # | Issue | Source | Status | Owner |
 |---|---|---|---|---|
 | G1 | DEV_FRONTEND_UI.md 已 65% sync (Phase H), 其他 8 DEV docs 漂移程度未审计 | 铁律 22 | ✅ 9/9 audited (iter 239+240+243, path-level CLEAN×5 + 10 fixed / 5 EXPECTED-UNIMPL deferred; deep semantic per-page sync = backlog A1 ~50h; methodology codified LL-214 + corrected regex LL-215) | Doc owner |
-| G2 | IRONLAWS.md 自身 / Blueprint QPB v1.16 / V3 DESIGN docs 跟 Session 57 代码 漂移程度未审计 | 铁律 38 | ⛔ Audit needed | Doc owner |
+| G2 | IRONLAWS.md 自身 / Blueprint QPB v1.16 / V3 DESIGN docs 跟 Session 57 代码 漂移程度未审计 | 铁律 38 | 🟡 6/6 audited iter 246, IRONLAWS+V3_CONSTITUTION+SKILL_HOOK_MAP CLEAN / 2 fixed (V2 BLUEPRINT walk_forward.py L288+L296) / 8 deferred backlog (V3_DESIGN 4 PATH-SHIFT + 2 ASPIRATIONAL + QPB 2 ASPIRATIONAL) | Doc owner |
 | G3 | Memory handoff 累积 779 KB, 接近 Read tool 上限. 历史 sessions archive 未做 | Memory 操作 | 🟡 Sustained | Memory owner |
 
 **G2 详情** (extrapolated 主动延伸):
