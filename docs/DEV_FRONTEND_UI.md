@@ -1,5 +1,5 @@
-> **文档状态: DESIGN_VALID_CODE_~65% (2026-05-19 Phase H 后更新)**
-> 实现状态: **~65%** (Phase H W1-6 完成后) — 35个页面文件已创建 (-2 死代码删: DashboardForex + TradeExecution), 27个共享组件 (Phase H 新增 5: EnvStateBanner + ShutdownBanner + SafetyControlPanel + ConfirmModal 4-tier + AssistPanel + FloatingAssistLauncher), 12个API客户端, 123 后端 endpoints (Phase H 新增 3: GET /api/system/env-state + POST /api/agent/chat + GET /api/agent/chat/status). 死代码 -370 行 (NotificationSystem 281 + DashboardForex 39 + TradeExecution legacy). 14 raw axios calls 全 migrate → apiClient SSOT (Audit Finding #5+#10 真闭环).
+> **文档状态: DESIGN_VALID_CODE_~80% (2026-05-27 iter 240 Wave 5 milestone 后更新)**
+> 实现状态: **~80%** (Phase H W1-6 + Wave 5 Operator UI 5/5 sub-MVPs 完成后) — **39个页面文件** (iter 196-216 Wave 5 新增 5: PtStatus / IcMonitoring / BacktestCompare / SchedulerDashboard / RiskEventTracePanel, frontend/src/pages/ + components/risk/) vs Phase H 后基线 35, **60个共享组件** (Phase H 27 → Wave 5 +Servy/safety/risk 子组件等累计 60), 12个API客户端, 123+ 后端 endpoints (Phase H 新增 3 + Wave 5 新增 6: /api/factors/ic-monitoring / /api/backtest/compare / /api/risk/events / /api/risk/events/rule-ids / /api/system/scheduler-task-log / /api/system/beat-schedule). 死代码 -370 行 (NotificationSystem 281 + DashboardForex 39 + TradeExecution legacy). 14 raw axios calls 全 migrate → apiClient SSOT (Audit Finding #5+#10 真闭环). **Wave 5 详细设计**: docs/mvp/MVP_5_1 ~ MVP_5_5_*.md + 1 retroactive MVP_5_0_operator_ui_framework.md (canonical patterns: react-query refetchInterval=60s / ECharts factor-domain / LL-035 api/ layer / LL-187 component reuse / LL-213 type drift design-time verify). **AI reviewer 铁律 42 sustained 10 cycles** (iter 196-216 cumulative) + ~8 production bugs prevented (type drift x4 + Safari Invalid Date + memoization P1 + null-guard P2 等).
 > **Phase H 闭环成果 (Frontend Design v3 §6 Top 15)**:
 >   - P0: #1 EnvStateBanner / #2 L4 UI / #6 hardcoded LOW → 真值 ✅
 >   - P1: #4 AssistPanel placeholder / #15 shutdown 状态 ✅
@@ -18,7 +18,7 @@
 > 创建日期：2026-03-19，更新：2026-03-20
 > 关联文档：DEV_BACKTEST_ENGINE.md, DEV_AI_EVOLUTION.md, DEV_PARAM_CONFIG.md, DEV_BACKEND.md
 > Figma原型：figma.com/make/tU2hHxkJ2nQSWeIumwZAGc
-> 页面总数：12个导航页面（总览含A股/外汇详情子视图 + 回测5 + 因子4 + AI 2 + 系统设置1）
+> 页面总数：**12 个导航页面历史 baseline → 实测 39 个 .tsx pages on disk (2026-05-27 iter 240 verify)** — 12 baseline 是早期设计阶段计数, 实际开发累积 35→39 (Phase H + Wave 5 5 sub-MVPs, 详 doc 顶部 header)
 > API 端点：~57个（A股48 + 外汇9）| WebSocket通道：5个
 > 章节：§一-十三(设计规范) + §十四(Figma审查改进清单,15项)
 
