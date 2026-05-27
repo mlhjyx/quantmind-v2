@@ -7754,3 +7754,110 @@ All 3 share the same anti-pattern: **TS type declaration is a CLAIM about backen
 **Cross-ref**: LL-035 (parent — API layer routing) / LL-187 (Phase H W1-6 component reuse, sibling sustained pattern) / LL-194 (anti-assumption parent) / LL-209+212 (§v9.49 SOP family) / 铁律 25 (改什么读什么 — applied to type declaration: read actual backend before declaring type) / 铁律 41 (Asia/Shanghai timezone — applied to cross-browser date parsing) / 铁律 42 (AI reviewer mandate — reviewer agent catches these design-time). iter 198/211/215 closure STATUS_REPORTs + iter 217 digest #17.
 
 **Sediment trigger**: 2026-05-26 iter 217 digest #17. 3 cumulative cases proven over 17-iter span (iter 198→215) validates pattern + SOP extension. Without LL-213 SOP, type drift accumulates silently in production — Safari Invalid Date case (iter 215) was the most subtle (silent zero-fill, cross-browser-only, no error indicator), proving design-time reviewer pass is the only reliable catch mechanism.
+
+---
+
+## LL-214 — DEV doc rot path-ref audit method — 5-tier verdict taxonomy + corrected regex (2026-05-27 iter 239-240)
+
+**Trigger**: ISSUES_PENDING_REGISTRY G1 — "DEV_FRONTEND_UI.md 已 65% sync (Phase H), 其他 8 DEV docs 漂移程度未审计 (铁律 22)". iter 239/240 cumulative work surfaced reusable methodology.
+
+**Method**:
+
+1. **Path-ref extraction** via Python regex on doc text (corrected pattern per LL-215):
+   ```
+   re.findall(r'(?:backend|scripts|frontend|configs)[\w/.-]*\.(?:tsx|yaml|yml|sql|py|ts)(?=\b|\W|\$)', text)
+   ```
+   ⚠️ **Critical** — longest extensions FIRST in alternation, word-boundary lookahead suffix prevents partial matches.
+
+2. **Existence check**: `Path(p).exists()` per match.
+
+3. **5-tier verdict** (autonomous-eligible decision):
+
+| Verdict | Definition | Action |
+|---|---|---|
+| **CLEAN** | 0 broken refs | none |
+| **PATH-SHIFT** | actual file exists at canonical relocated path (namespace migration / rename) | in-place edit to canonical path + 1-line iter # path-fix note |
+| **ASPIRATIONAL** | path never existed; doc describes plan-only template | prepend banner "⚠️ ASPIRATIONAL (iter # doc-rot audit YYYY-MM-DD)" + pointer to current canonical alternative |
+| **DEPRECATED-PLAN** | phase NO-GO'd per research findings; path describes abandoned architecture | prepend banner "⚠️ DEPRECATED (iter # doc-rot audit)" + pointer to current path + retain historical content |
+| **EXPECTED-UNIMPL** | roadmap component explicitly Q3-Q4 future-gated per ADR/DEV doc | NO ACTION (not drift, it's roadmap) |
+
+**iter 239+240 evidence**:
+
+| Doc | broken | verdict | applied fix |
+|---|---|---|---|
+| DEV_FACTOR_MINING / DEV_PAPER_BROKER / DEV_SCHEDULER / DEV_NOTIFICATIONS / DEV_FRONTEND_UI | 0 | 5× CLEAN | none |
+| DEV_BACKEND.md | 7 | 5 PATH-SHIFT + 2 DEPRECATED-PLAN | 5 path edits + 2 banner sections |
+| DEV_BACKTEST_ENGINE.md | 2 | 1 PATH-SHIFT + 1 ASPIRATIONAL | 1 path edit + 1 banner |
+| DEV_PARAM_CONFIG.md | 1 | PATH-SHIFT (namespace) | 1 namespace edit |
+| DEV_AI_EVOLUTION.md | 5 | EXPECTED-UNIMPL per ADR-028 Layer 3-4 Q3-Q4 | none |
+
+**Aggregate**: 73 refs / 15 broken (20.5%) / **10 fixed autonomously (66.7% of broken)** / 5 EXPECTED-UNIMPL deferred (intentional).
+
+**改进措施 — recurring audit cadence**:
+- Run path-ref audit at end of each major Wave / Phase milestone (Wave 5 closure → iter 240; future Wave 6 / Tier B Phase J completion → next major sediment trigger).
+- Banner format MUST include iter # + date + 2 anchors: (a) the WHY, (b) pointer to CURRENT canonical alternative.
+- 5-tier verdict serves as decision rubric — avoids "fix everything aggressively" AND "annotate everything as TODO" failure modes.
+
+**Heuristic backref**: #15 (Test-Reality Gap, sibling for doc-reality gap), #17 (Audit Self-Audit). LL-181 (Calendar SSOT drift, sibling 漂移 lesson). 铁律 22 (文档跟随代码) — this LL operationalizes 铁律 22 via concrete 5-tier verdict taxonomy.
+
+**Cross-ref**: LL-187 (Phase H W1-6 component reuse, sibling milestone-sediment pattern) / LL-209 (§v9.49 reality re-grounding) / LL-212 (backlog item §v9.49 verdict taxonomy, sibling 4-verdict pattern) / LL-215 (regex gotcha — engine of this method). iter 239+240 STATUS_REPORTs.
+
+**Sediment trigger**: 2026-05-27 iter 240 closure. 9 DEV docs audited at path-level. Future audits expand to semantic-level (Wave 5 page coverage in DEV_FRONTEND_UI was 0% mention pre-iter-240, ~50h scope for deep per-page sync — backlog A1).
+
+---
+
+## LL-215 — Python regex alternation leftmost-first gotcha — corrected pattern for file-extension matching (2026-05-27 iter 240 self-correction)
+
+**Trigger**: iter 239 DEV doc rot audit used regex `\.(?:py|sql|yaml|yml|ts|tsx)` for file-extension matching. iter 240 audit of DEV_FRONTEND_UI.md surfaced 7 false-positive "broken refs" — all `.tsx` files incorrectly reported as `.ts`. Root cause investigation = Python regex alternation gotcha.
+
+**Bug**:
+
+Python `re` module alternation `(a|b|c)` is **leftmost-first**, NOT longest-first. For input `foo.tsx` against pattern `\.(?:py|sql|yaml|yml|ts|tsx)`:
+
+1. Engine tries `py` — no match
+2. ...
+3. Engine tries `ts` — **MATCHES** `.ts`, leaves `x` outside the match
+
+Result: every `.tsx` file in the scanned doc was captured as `.ts` and reported missing.
+
+This is documented Python `re` behavior — many engineers expect longest-first but Python doesn't have that flag; you must order alternation manually.
+
+**Corrected pattern**:
+
+```
+# Wrong (iter 239 form):
+\.(?:py|sql|yaml|yml|ts|tsx)
+
+# Correct (iter 240+ form, longest-first + word-boundary lookahead):
+\.(?:tsx|yaml|yml|sql|py|ts)(?=\b|\W|\$)
+```
+
+**Two fixes combined**:
+1. **Order extensions longest-first**: `tsx` before `ts`, `yaml` before `yml`. So when input is `foo.tsx`, regex tries `tsx` first → matches `.tsx` correctly.
+2. **Word-boundary lookahead suffix `(?=\b|\W|\$)`**: prevents partial matches like `.ts` matching the prefix of `.tsx-bundler` or `.tsab`.
+
+**Generalizable rule**:
+
+> When using regex alternation for extensions / suffixes / prefixes / any "longest-match-wins" semantics in Python, **order alternatives by descending length** in the alternation group, AND add a word-boundary or end-of-input lookahead to prevent partial matches.
+
+**Cross-language reference**:
+- **Java `Pattern.LONGEST_MATCH`**: explicit longest-first option
+- **PCRE (Perl)**: leftmost-first by default; no automatic longest-first
+- **POSIX EREs**: longest-leftmost by spec (different from PCRE!)
+- **Python re module**: **leftmost-first** (matches PCRE, NOT POSIX) — easy to forget
+
+**Impact on iter 239 findings**:
+
+Re-ran corrected scan iter 240. iter 239's `.py`-extension findings → all VALID (no false-positives, because `.py` has no longer-extension competitor in the alternation). iter 239 excluded DEV_FRONTEND_UI from audit (per ISSUES_PENDING_REGISTRY G1 note) — exclusion saved us from the bug cascading into sediment. Lucky coincidence; future scans MUST use corrected regex regardless.
+
+**改进措施**:
+
+1. **Codify corrected pattern**: this LL becomes the canonical reference for any future DEV doc audit / source path scan.
+2. **Audit script template**: when writing new path-ref audit scripts, include this corrected pattern verbatim with cross-ref to LL-215.
+3. **Lint rule candidate**: consider a project custom rule that flags `re.findall` / `re.match` / `re.search` patterns with alternation groups where alternatives share common prefixes (backlog).
+
+**Heuristic backref**: #1 Anti-Assumption SOP (regex behavior assumed = source of bug). LL-194 (anti-assumption parent). 铁律 25 (改什么读什么 — applied to regex: verify behavior matches assumption before relying on it).
+
+**Cross-ref**: LL-214 (DEV doc rot audit method, parent — this regex is the engine of that method) / iter 240 STATUS_REPORT §1.
+
+**Sediment trigger**: 2026-05-27 iter 240 closure. False-positive cascade prevented from contaminating sediment due to iter 239's intentional DEV_FRONTEND_UI exclusion. Codified to prevent re-occurrence in future audit work.
