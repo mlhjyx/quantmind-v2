@@ -497,10 +497,17 @@ class TestSchedulerEndpoint:
         """Disabled tasks should not surface stale LastResult as active failure."""
         from app.api.system import _task_scheduler_status
 
-        assert _task_scheduler_status("Disabled", 3221225786) == "disabled"
-        assert _task_scheduler_status("Ready", 3221225786) == "failed"
-        assert _task_scheduler_status("Running", 267011) == "running"
-        assert _task_scheduler_status("Ready", 267011) == "never_run"
+        assert _task_scheduler_status("QM-SmokeTest", "Disabled", 3221225786) == "disabled"
+        assert _task_scheduler_status("QM-SmokeTest", "Ready", 3221225786) == "failed"
+        assert _task_scheduler_status("QM-SmokeTest", "Running", 267011) == "running"
+        assert _task_scheduler_status("QM-SmokeTest", "Ready", 267011) == "never_run"
+
+    def test_task_scheduler_status_ic_monitor_alert_is_not_infra_failure(self):
+        """QM-ICMonitor exit 1 is a factor-quality alert, not a scheduler crash."""
+        from app.api.system import _task_scheduler_status
+
+        assert _task_scheduler_status("QM-ICMonitor", "Ready", 1) == "alert"
+        assert _task_scheduler_status("QM-DailyBackup", "Ready", 1) == "failed"
 
     @pytest.mark.asyncio
     async def test_empty_tasks_on_non_windows(self):

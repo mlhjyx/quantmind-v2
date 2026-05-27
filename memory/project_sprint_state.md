@@ -35,7 +35,7 @@ Closed in this batch:
 - Restarted FastAPI; `/api/system/scheduler` now returns `QM-SmokeTest` as `status=disabled`, `enabled=false`.
 
 Still open:
-- `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; operator/factor-quality disposition remains.
+- `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; API/UI now expose it as `alert`, and operator/factor-quality disposition remains.
 - `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 

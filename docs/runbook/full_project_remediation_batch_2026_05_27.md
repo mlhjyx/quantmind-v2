@@ -20,7 +20,7 @@
 | B2 | Runtime route drift for `/api/system/beat-schedule` | Servy runtime ops | Completed: FastAPI/Worker/Beat restarted; route returns 200. |
 | B3 | `/api/system/health` timeout / session concurrency | Backend code | Completed: bounded health checks, sequential datasource reads, Windows Celery fallback. |
 | B4 | `daily_attribution` 0 rows | Runtime/data evidence | Completed: task apply writes row for configured `PAPER_STRATEGY_ID`; API returns latest row. |
-| B5 | Scheduler failures | Ops triage | Partially closed: disabled-task false positive fixed, DailyBackup DR risk repaired, ICMonitor reclassified as alert signal. |
+| B5 | Scheduler failures | Ops triage | Partially closed: disabled-task false positive fixed, DailyBackup DR risk repaired, ICMonitor API/UI reclassified as alert signal. |
 | B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
 | B7 | Full-project governance objective | Governance control | Completed: objective and completion criteria captured in `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`. |
 | B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
@@ -101,7 +101,7 @@ Result:
 - FastAPI was restarted; `GET /api/system/scheduler` now reports `QM-SmokeTest` as `task_state='Disabled'`, `enabled=false`, `status='disabled'`.
 
 Remaining:
-- `QM-ICMonitor` should be handled as an operator factor-quality alert. It is not currently evidence of a broken scheduler task.
+- `QM-ICMonitor` should be handled as an operator factor-quality alert. The scheduler API/UI now exposes this as `alert`, not `failed`.
 - The next scheduled `QM-DailyBackup` first-fire result still needs observation because Task Scheduler LastResult remains the failed 02:00 run until the task fires again; the manual rerun restored today's DR artifact.
 
 ## B6 — Skills Version Policy

@@ -14,7 +14,7 @@ const get = apiClient.get as unknown as Mock;
 describe("fetchSchedulerTasks", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("preserves disabled task state instead of surfacing stale failures", async () => {
+  it("preserves disabled task state and IC monitor alert semantics", async () => {
     get.mockResolvedValue({
       data: {
         platform: "Windows",
@@ -37,7 +37,7 @@ describe("fetchSchedulerTasks", () => {
             next_run: "2026-05-31 20:00:00",
             task_state: "Ready",
             enabled: true,
-            status: "failed",
+            status: "alert",
             last_result_code: 1,
           },
         ],
@@ -58,7 +58,7 @@ describe("fetchSchedulerTasks", () => {
       name: "QM-ICMonitor",
       enabled: true,
       task_state: "Ready",
-      last_status: "failed",
+      last_status: "alert",
       last_result_code: 1,
     });
   });

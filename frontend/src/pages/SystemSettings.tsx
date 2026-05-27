@@ -17,11 +17,11 @@ import {
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: "healthy" | "warning" | "error" | "unknown" | "ok" | "failed" | "success" | "running" | "never" | "disabled" | null }) {
+function StatusDot({ status }: { status: "healthy" | "warning" | "error" | "unknown" | "ok" | "failed" | "success" | "running" | "never" | "disabled" | "alert" | null }) {
   const color =
     status === "healthy" || status === "ok" || status === "success"
       ? "bg-emerald-400"
-      : status === "warning" || status === "running"
+      : status === "warning" || status === "running" || status === "alert"
         ? "bg-amber-400"
         : status === "error" || status === "failed"
           ? "bg-red-400"
@@ -338,7 +338,7 @@ function SchedulerTab() {
   useEffect(() => { load(); }, [load]);
 
   const statusLabel: Record<string, string> = {
-    success: "成功", failed: "失败", running: "运行中", never: "从未运行", disabled: "已禁用",
+    success: "成功", failed: "失败", running: "运行中", never: "从未运行", disabled: "已禁用", alert: "告警",
   };
 
   if (loading) {
@@ -375,6 +375,7 @@ function SchedulerTab() {
                 task.last_status === "success" ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
                 task.last_status === "failed" ? "text-red-400 border-red-500/30 bg-red-500/10" :
                 task.last_status === "running" ? "text-amber-400 border-amber-500/30 bg-amber-500/10" :
+                task.last_status === "alert" ? "text-amber-400 border-amber-500/30 bg-amber-500/10" :
                 task.last_status === "disabled" ? "text-slate-500 border-slate-600 bg-slate-700/30" :
                 "text-slate-400 border-slate-600 bg-slate-700/30",
               ].join(" ")}>

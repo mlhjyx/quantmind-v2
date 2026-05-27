@@ -327,12 +327,13 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
             raw = [raw]
         tasks = []
         for item in raw:
+            task_name = str(item.get("Name") or "")
             last_result = item.get("LastResult", 0)
             task_state = str(item.get("State") or "Unknown")
-            status = _task_scheduler_status(task_state, last_result)
+            status = _task_scheduler_status(task_name, task_state, last_result)
             tasks.append(
                 {
-                    "task_name": item.get("Name", ""),
+                    "task_name": task_name,
                     "schedule": "",  # 简化：不解析 trigger 配置
                     "last_run": item.get("LastRun", ""),
                     "next_run": item.get("NextRun", ""),
@@ -348,7 +349,7 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
         return []
 
 
-def _task_scheduler_status(task_state: str, last_result: int | None) -> str:
+def _task_scheduler_status(task_name: str, task_state: str, last_result: int | None) -> str:
     """Map Windows task state and last result into operator-facing status."""
     normalized_state = task_state.lower()
     if normalized_state == "disabled":
@@ -360,6 +361,8 @@ def _task_scheduler_status(task_state: str, last_result: int | None) -> str:
         return "success"
     if last_result == 267011:
         return "never_run"
+    if task_name == "QM-ICMonitor" and last_result == 1:
+        return "alert"
     return "failed"
 
 

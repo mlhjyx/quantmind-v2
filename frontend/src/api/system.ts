@@ -32,7 +32,7 @@ export interface SchedulerTask {
   display_name: string;
   schedule: string;
   last_run: string | null;
-  last_status: "success" | "failed" | "running" | "never" | "disabled" | null;
+  last_status: "success" | "failed" | "running" | "never" | "disabled" | "alert" | null;
   next_run: string | null;
   enabled: boolean;
   task_state?: string;
@@ -105,7 +105,7 @@ interface SchedulerResponseRaw {
 
 function normalizeSchedulerStatus(status: string): SchedulerTask["last_status"] {
   if (status === "never_run") return "never";
-  if (["success", "failed", "running", "never", "disabled"].includes(status)) {
+  if (["success", "failed", "running", "never", "disabled", "alert"].includes(status)) {
     return status as SchedulerTask["last_status"];
   }
   return null;

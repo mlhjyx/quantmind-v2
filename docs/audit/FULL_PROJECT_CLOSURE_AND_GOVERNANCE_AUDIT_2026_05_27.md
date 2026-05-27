@@ -21,7 +21,7 @@ Closed / reclassified:
 - `QM-DailyBackup` 2026-05-28 active failure was traced to a truncated dump plus backup-script guard gaps; `scripts/pg_backup.py` now writes `.tmp` then atomically replaces, rejects undersized dumps, and verifies size before `pg_restore --list`. A controlled rerun produced a 14,480.2MB dump and `pg_restore --list` passed with 712 tables / 2,359 objects.
 
 Still open:
-- `QM-ICMonitor` remains an operational alert signal, not an infrastructure crash: latest code `1` corresponds to a P1 IC decay alert in `logs/ic_monitor.log`.
+- `QM-ICMonitor` is now classified as an operational `alert` signal, not an infrastructure crash: latest code `1` corresponds to a P1 IC decay alert in `logs/ic_monitor.log`, and `/api/system/scheduler` preserves that distinction for the UI.
 - QMT Data Service remains stopped intentionally because this batch did not require PT/QMT runtime activation.
 
 ## Executive Summary
@@ -35,7 +35,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, and fresh runtime probe records `overall_status='ok'`.
 - Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
 - Closed 2026-05-28: scheduler status false positives and backup failure path remediated; `QM-SmokeTest` is disabled/retired, and `QM-DailyBackup` now has a fresh verified 14,480.2MB dump.
-- P1: `QM-ICMonitor` still needs operator disposition as an IC quality alert, not as a broken scheduled task.
+- P1: `QM-ICMonitor` still needs factor-quality/operator disposition, but the scheduler API/UI no longer labels the alert as a broken scheduled task.
 - Closed 2026-05-28: `memory/project_sprint_state.md` exists and is tracked.
 - Closed 2026-05-28: `.agents/skills` is governed as the active Codex project skill layer; `.claude/skills` remains historical.
 
@@ -137,7 +137,7 @@ Remediation:
 - After FastAPI restart, `GET /api/system/scheduler` returns `QM-SmokeTest` as `task_state='Disabled'`, `enabled=false`, `status='disabled'`. `QM-DailyBackup` still reports the 02:00 scheduled LastResult until its next scheduled first-fire, but today's DR artifact is recovered and verified.
 
 Backlog:
-- Treat `QM-ICMonitor` non-zero exit as an operator alert event; decide whether the scheduler dashboard should label it `alert` instead of generic `failed`.
+- Treat `QM-ICMonitor` code `1` as an operator alert event; scheduler API/UI now labels it `alert` instead of generic `failed`.
 - Decide whether future full backup runs should include Parquet by default after the schema-drift fix is deployed and monitored.
 - Capture the next scheduled `QM-DailyBackup` first-fire after this fix; Task Scheduler LastResult will not reflect the manual recovery run.
 
@@ -210,7 +210,7 @@ Backlog:
 | Closed | Apply/reconcile `pipeline_settings` migration | DB + PipelineConsole | Completed 2026-05-28: migration applied, singleton row verified, `/api/pipeline/status` returned 200. |
 | Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries. |
 | Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers, regression tests, and fresh runtime HTTP 200 evidence. |
-| Partially closed | Scheduler failure triage | Ops + UI | `QM-SmokeTest` stale disabled-task false positive closed; `QM-DailyBackup` partial dump path fixed and fresh verified dump produced; `QM-ICMonitor` remains an IC alert disposition item. |
+| Partially closed | Scheduler failure triage | Ops + UI | `QM-SmokeTest` stale disabled-task false positive closed; `QM-DailyBackup` partial dump path fixed and fresh verified dump produced; `QM-ICMonitor` reclassified as `alert`; IC quality disposition remains. |
 | Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
