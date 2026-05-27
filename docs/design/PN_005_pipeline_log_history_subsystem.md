@@ -1,6 +1,6 @@
 # PN-005: Pipeline Log History Subsystem (D1 O7) — Design + Scope Assessment
 
-> **Status**: DRAFT (iter 21, 2026-05-24)
+> **Status**: PARTIAL_IMPLEMENTED (draft design iter 21, 2026-05-24; HTTP backfill implemented 2026-05-28)
 > **Status addendum 2026-05-28**: HTTP backfill + first writer instrumentation implemented. Remaining scope: broader pipeline task instrumentation, optional WebSocket live tailing, and durable-retention decision.
 > **Verdict**: **PARTIAL IMPLEMENT** — O7 frontend-only orphan closed; PN-005 subsystem still has enhancement backlog.
 > **Scope**: D1 O7 "log-history endpoint" final remaining frontend orphan per F-XS-1 sediment (iter 17). On scope-honest investigation surfaced as a 4-component subsystem, not a single missing endpoint.

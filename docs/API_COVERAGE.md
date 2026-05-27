@@ -679,24 +679,28 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 
 ---
 
-## §6 Frontend-Only Orphans (No Matching Backend Endpoint)
+## §6 Historical Frontend-Only Orphans (2026-05-20 Snapshot)
 
-> These frontend calls have no matching `@router.*` definition in `backend/app/api/`. They are potential bugs or endpoints that were removed/renamed.
+> Historical snapshot retained for audit trail. Current truth is §1 + §6.1 + §10:
+> all original 10 frontend-only orphans are reconciled to 0 as of 2026-05-28.
 
 | # | File:Line | Method | URL Called | Notes |
 |---|-----------|--------|------------|-------|
 | O1 | backtest.ts:183 | POST | `/backtest/{runId}/cancel` | No cancel endpoint in backtest.py — cancel may be Celery task revoke only |
 | O2 | pipeline.ts:101 | POST | `/pipeline/trigger` | No trigger endpoint in pipeline.py (only status/runs/approve/reject) |
-| O3 | pipeline.ts:106 | POST | `/pipeline/pause` | No pause endpoint in pipeline.py |
+| O3 | pipeline.ts:106 | POST | `/pipeline/pause` | **RESOLVED** — see §6.1 / PN-003 |
 | O4 | pipeline.ts:122 | POST | `/pipeline/approve/{id}` | Uses old approval path — backend uses `/approval/queue/{item_id}/approve` |
 | O5 | pipeline.ts:126 | POST | `/pipeline/reject/{id}` | Uses old rejection path — backend uses `/approval/queue/{item_id}/reject` |
 | O6 | pipeline.ts:130 | POST | `/pipeline/hold/{id}` | Uses old hold path — backend uses `/approval/queue/{item_id}/hold` |
 | O7 | pipeline.ts:134 | GET | `/pipeline/{runId}/logs` | **RESOLVED 2026-05-28** — backend HTTP backfill now exists; see §10 |
-| O8 | pipeline.ts:139 | PUT | `/pipeline/automation-level` | No automation-level endpoint in pipeline.py |
+| O8 | pipeline.ts:139 | PUT | `/pipeline/automation-level` | **RESOLVED** — see §6.1 / PN-001 |
 | O9 | factors.ts:200 | POST | `/factors/health` | Backend has GET `/api/factors/health` (factors.py:57) — method mismatch |
-| O10 | factors.ts:204 | POST | `/factors/correlation-prune` | No correlation-prune endpoint in factors.py |
+| O10 | factors.ts:204 | POST | `/factors/correlation-prune` | **RESOLVED** — see §6.1 / PN-002 |
 
-**Pipeline.ts is the highest-risk file**: 7 of 13 calls target non-existent backend paths. The approval workflow routes (`/pipeline/approve|reject|hold`) use the wrong prefix — should be `/approval/queue/{item_id}/approve|reject|hold` per approval.py router.
+**Historical 2026-05-20 finding**: `pipeline.ts` was the highest-risk file, with
+7 of 13 calls targeting non-existent or stale backend paths. This is no longer the
+current state; §6.1 and §10 record the reconciled endpoint contracts and remaining
+enhancement backlog.
 
 ### §6.1 Update — 2026-05-22 Phase K reconciliation (L4+R loop iteration 1)
 

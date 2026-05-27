@@ -1,23 +1,23 @@
 # PN-001 — Automation-Level Persistence (D1 O8)
 
 > **Loop iteration**: iter 10 (L4+R Inner-loop-B, spec §10 step 3 design)
-> **Trigger**: Frontend `setAutomationLevel()` POSTs to non-existent `/api/pipeline/automation-level` → 404 today (API_COVERAGE §6 O8 orphan)
+> **Design-time trigger**: Frontend `setAutomationLevel()` posted to non-existent `/api/pipeline/automation-level` → 404 at the time (API_COVERAGE §6 O8 orphan)
+> **Status addendum 2026-05-28**: IMPLEMENTED. Backend `GET/PUT /api/pipeline/automation-level`, singleton `pipeline_settings`, frontend wrappers, and regression tests are present. The trigger above is historical design context, not current state.
 > **Severity**: Feature-level — §6 8-trigger STOP self-check: NEGATIVE(详 §4)
 > **§7 重蹈 defense**: PASS — 0 permanent-dead / conditional-fail precedent(LL + research-kb fresh-scan iter 10,UI infra novel territory)
 
 ## §1 Background
 
-`PipelineConsole.tsx` 通过 `setAutomationLevel(level: AutomationLevel)` 让 user 选择 pipeline 自动化级别(L0-L4 per L4R spec semantics)。Frontend 已 wired,见 `frontend/src/api/pipeline.ts:163-167`:
+设计时问题: `PipelineConsole.tsx` 通过 `setAutomationLevel(level: AutomationLevel)` 让 user 选择 pipeline 自动化级别(L0-L4 per L4R spec semantics)。Frontend 已 wired,见当时的 `frontend/src/api/pipeline.ts:163-167`:
 
 ```typescript
 export async function setAutomationLevel(level: AutomationLevel): Promise<void> {
-  // NOTE: No backend endpoint exists yet. PUT /api/pipeline/automation-level is not
-  // implemented in backend/app/api/pipeline.py. Will return 404 until added.
+  // DESIGN-TIME NOTE: no backend endpoint existed yet.
   await apiClient.put("/pipeline/automation-level", { level });
 }
 ```
 
-Backend 当前 0 endpoint → 任何 user 调整 = 404。Audit 确认: `backend/app/services/param_defaults.py` 是 backend 唯一 reference "automation level" 之处,但是 defaults 逻辑,非 user-settable persistence。
+设计时 backend 0 endpoint → 任何 user 调整 = 404。2026-05-28 复核时该缺口已关闭；保留本段作为设计动机。
 
 ## §2 Design choice
 

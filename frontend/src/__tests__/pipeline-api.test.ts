@@ -23,6 +23,7 @@ import apiClient from "@/api/client";
 import {
   triggerPipeline,
   getAutomationLevel,
+  setAutomationLevel,
   pausePipeline,
   resumePipeline,
   type TriggerPipelineResult,
@@ -30,6 +31,7 @@ import {
 
 const post = apiClient.post as unknown as Mock;
 const get = apiClient.get as unknown as Mock;
+const put = apiClient.put as unknown as Mock;
 
 const sampleResult: TriggerPipelineResult = {
   run_id: "gp_2026w21_abc123",
@@ -97,6 +99,26 @@ describe("getAutomationLevel (D1 O8 GET consumer)", () => {
     get.mockResolvedValue({ data: { level: "L0" } });
     const res = await getAutomationLevel();
     expect(res.level).toBe("L0");
+  });
+
+  it("accepts backend-supported L4 automation level", async () => {
+    get.mockResolvedValue({ data: { level: "L4" } });
+    const res = await getAutomationLevel();
+    expect(res.level).toBe("L4");
+  });
+});
+
+describe("setAutomationLevel (D1 O8 PUT consumer)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("PUTs backend-supported L4 automation level", async () => {
+    put.mockResolvedValue({ data: { level: "L4" } });
+    await setAutomationLevel("L4");
+
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(put).toHaveBeenCalledWith("/pipeline/automation-level", { level: "L4" });
   });
 });
 

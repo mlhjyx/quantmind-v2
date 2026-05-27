@@ -35,6 +35,7 @@ const AUTOMATION_LEVELS: { id: AutomationLevel; label: string; desc: string }[] 
   { id: "L1", label: "L1", desc: "半自动" },
   { id: "L2", label: "L2", desc: "自动+审批" },
   { id: "L3", label: "L3", desc: "全自动" },
+  { id: "L4", label: "L4", desc: "完全自主" },
 ];
 
 const LOG_LEVEL_COLORS: Record<string, string> = {

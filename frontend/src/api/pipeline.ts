@@ -3,7 +3,7 @@ import apiClient from "./client";
 // ---- Types ----
 
 export type PipelineNodeStatus = "idle" | "running" | "completed" | "failed" | "skipped";
-export type AutomationLevel = "L0" | "L1" | "L2" | "L3";
+export type AutomationLevel = "L0" | "L1" | "L2" | "L3" | "L4";
 export type ApprovalItemType = "factor" | "strategy";
 export type ApprovalDecision = "approved" | "rejected" | "hold";
 export type CandidateStatus = "pending" | "approved" | "rejected";

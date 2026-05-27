@@ -174,7 +174,7 @@ flowchart TB
     subgraph L1["L1 基础规则层 (实时化)"]
         RTEngine["RealtimeRiskEngine"]
         RTRules["8 RealtimeRiskRule"]
-        DailyPMS["10 sustained PMSRule (14:30 Beat)"]
+        DailyPMS["PMSRule pure-rule anchor (14:30 Beat retired)"]
     end
 
     subgraph L3["L3 动态阈值层"]
@@ -479,13 +479,19 @@ CREATE TABLE risk_data_gap_log (
 
 **4-29 决议依据**: 沿用 ADR-010 PMSRule + MVP 3.1b 接口, 实时化升级.
 
-### §4.1 现有规则 (~10 PMSRule)
+### §4.1 现有规则与退役边界 (~10 PMSRule)
+
+> **Status addendum 2026-05-28**: 14:30 `risk-daily-check` Beat 已退役
+> (`backend/app/tasks/beat_schedule.py` marks the entry retired). PMSRule L1-L3
+> 仍作为纯规则实现和历史语义锚点保留；当前生产化风险路径由 L1
+> RealtimeRiskEngine tick/5min path + trailing_stop 承接。下表的 14:30 daily
+> cadence 是原设计语义, 不再代表当前 Beat wire。
 
 | 规则 | 触发条件 | cadence | 不动? |
 |---|---|---|---|
-| PMSRule L1 | 浮盈 > 30% + 回撤 > 15% | 14:30 daily | ✅ |
-| PMSRule L2 | 浮盈 > 20% + 回撤 > 12% | 14:30 daily | ✅ |
-| PMSRule L3 | 浮盈 > 10% + 回撤 > 10% | 14:30 daily | ✅ |
+| PMSRule L1 | 浮盈 > 30% + 回撤 > 15% | 14:30 daily retired; pure-rule anchor | ✅ 保留规则, 退役 Beat |
+| PMSRule L2 | 浮盈 > 20% + 回撤 > 12% | 14:30 daily retired; pure-rule anchor | ✅ 保留规则, 退役 Beat |
+| PMSRule L3 | 浮盈 > 10% + 回撤 > 10% | 14:30 daily retired; pure-rule anchor | ✅ 保留规则, 退役 Beat |
 | SingleStockStopLoss | 单股 -7% | 14:30 daily | ⚠️ 升级到实时 (本设计) |
 | IntradayDrawdown | portfolio intraday < -5% | 14:30 daily | ⚠️ 升级到实时 (本设计) |
 | CorrelatedLossClump | N 股同时下跌 | 14:30 daily | ⚠️ 升级到实时 (本设计) |
@@ -522,7 +528,7 @@ def subscribe_realtime(symbols: list[str], callback):
 | Tick | 实时 (秒级) | 跌停 / 接近跌停 / 流动性骤降 |
 | 5min | 5min | 快速下跌 / 异动放量 |
 | 15min | 15min | 中期趋势 |
-| 14:30 daily | 1/day | PMSRule (不动) |
+| 14:30 daily | retired | PMSRule Beat 退役; 规则实现保留作纯逻辑锚点 |
 
 ### §4.3 8 RealtimeRiskRule (新增, 完整 enumerate)
 

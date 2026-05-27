@@ -1,14 +1,15 @@
 # PN-002 — Factor Correlation Prune (D1 O10)
 
 > **Loop iteration**: iter 11 (L4+R Inner-loop-B, spec §10 step 3 design)
-> **Trigger**: Frontend `triggerCorrelationPrune()` (`frontend/src/api/factors.ts:206`) POSTs to non-existent `/factors/correlation-prune` → 404 today。`FactorLibrary.tsx:76` 已用 `try/catch` graceful fallback,UI 不 panic,但功能不可用(user 看到 "操作失败" toast)。
+> **Design-time trigger**: Frontend `triggerCorrelationPrune()` (`frontend/src/api/factors.ts:206`) posted to non-existent `/factors/correlation-prune` → 404 at the time。`FactorLibrary.tsx:76` 已用 `try/catch` graceful fallback,UI 不 panic,但功能不可用(user 看到 "操作失败" toast)。
+> **Status addendum 2026-05-28**: IMPLEMENTED. Backend `POST /api/factors/correlation-prune` and `backend/tests/test_factor_correlation_prune.py` exist; the 404 trigger is historical design context.
 > **Severity**: Feature-level — §6 8-trigger STOP self-check NEGATIVE(详 §4)
 > **§7 重蹈 defense**: PASS — 0 permanent-dead / conditional-fail precedent on UI factor correlation pruning(LL hits 全是 RealtimeRisk CorrelatedDrop;research-kb 都是 factor characterization phase 研究,非 NO-GO 方向)
 > **复用 existing infra**:`factor_analyzer.factor_correlation_matrix()` (cross-sectional) + `factors.py:148 GET /correlation` (IC-series Spearman) + `factor_ic_history` mean|IC| + CLAUDE.md doctrine `|corr| > 0.85 → 标记 keep_recommendation=drop, IC较低者`。
 
 ## §1 Background
 
-`FactorLibrary.tsx:76` 的 "相关性裁剪" 按钮调用 `triggerCorrelationPrune()` POST `/factors/correlation-prune`(无 body)。Backend 该 endpoint 0,return 404。Frontend `try/catch` graceful fallback,UI 不 panic,但 user 见 toast "操作失败",功能缺失。
+设计时问题: `FactorLibrary.tsx:76` 的 "相关性裁剪" 按钮调用 `triggerCorrelationPrune()` POST `/factors/correlation-prune`(无 body)。当时 backend 该 endpoint 0,return 404。2026-05-28 复核时该缺口已关闭；保留本段作为设计动机。
 
 **CLAUDE.md §因子审批硬标准 doctrine**:
 > 与现有Active因子 corr < 0.7
