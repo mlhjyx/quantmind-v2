@@ -33,7 +33,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "sediment_poststop.py"
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "sediment_poststop.py"
 
 
 def _run_hook(

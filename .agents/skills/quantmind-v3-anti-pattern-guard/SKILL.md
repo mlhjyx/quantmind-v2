@@ -62,7 +62,7 @@ trigger: anti-pattern|凭空|凭印象|silent overwrite|sediment 前|sub-PR 起�
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/iron_law_enforce.py` (PreToolUse[Edit\|Write] auto fire) | 现 wired — 铁律 enforcement, V3 期扩 V3 invariant + prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool, 沿用 Constitution §L6.2 现有 hook 扩展决议) |
+| `.codex/hooks/iron_law_enforce.py` (PreToolUse[Edit\|Write] auto fire) | 现 wired — 铁律 enforcement, V3 期扩 V3 invariant + prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool, 沿用 Constitution §L6.2 现有 hook 扩展决议) |
 | 本 skill (CC 主动 invoke 知识层) | sub-PR 起手 + sediment 前 CC 主动 cite v1-v5 + ADR-022 + 铁律 33 + abstraction premature 守门 (反仅依赖 hook auto fire) |
 
 → skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution §L6.2 anti-pattern-guard 决议).

@@ -55,7 +55,7 @@ trigger: 起手|sub-PR 起手|step 起手|cross-session resume|新 session|fresh
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/session_context_inject.py` v2 (SessionStart auto fire) | 自动 inject 4 root doc + Blueprint + sprint state frontmatter description (audit row 11 真测 wired) |
+| `.codex/hooks/session_context_inject.py` v2 (SessionStart auto fire) | 自动 inject 4 root doc + Blueprint + sprint state frontmatter description (audit row 11 真测 wired) |
 | 本 skill (CC 主动 invoke 知识层) | sub-PR / step 起手 时 CC 主动 cite SOP + 8 doc 全清单 fresh read 强制 (反仅依赖 hook auto inject 的 4 doc subset) |
 
 → skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution v0.2 §L6.2 fresh-read-sop 决议).

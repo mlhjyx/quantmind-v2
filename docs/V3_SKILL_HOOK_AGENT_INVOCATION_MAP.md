@@ -22,7 +22,7 @@
 | Constitution v0.2 | [V3_IMPLEMENTATION_CONSTITUTION.md](V3_IMPLEMENTATION_CONSTITUTION.md) |
 | V3 设计 sprint 拆分 | V3 §12.1 (Tier A S1-S11) + §12.2 (Tier B S12-S15) |
 | audit reality grounding | docs/audit/v3_orchestration/claude_dir_audit_report.md (PR #270, 22 row 真值表) |
-| 现 .claude/ 真值 | audit row 1-22 (settings.json wire / 9 hook .py / 7 skill / OMC v4.9.1 / ECC + mattpocock 用户级 enabled) |
+| 现 Codex/Claude 真值 | `.codex/hooks.json` + `.codex/hooks/*.py` 为当前 Codex active layer; `.claude/` 为历史 Claude mirror / audit trail |
 | ADR REGISTRY | docs/adr/REGISTRY.md (ADR # SSOT, LL-105 SOP-6) |
 
 ### §0.2 反 anti-pattern 验证
@@ -207,27 +207,37 @@ S1 → S2 (LiteLLM 是 News fetcher 主源 prerequisite) / S2 → S3 (NewsClassi
 | `quantmind-v3-llm-cost-monitor` | 同上 | LLM call cost 累积 | 月度 audit + 上限 + warn enforce (V3 §16.2 / §20.1 #6) |
 | `quantmind-v3-pt-cutover-gate` | 同上 | PT 重启时机 | cutover gate checklist (Constitution §L10.5 Gate E) |
 
-### §3.2 8 hook 索引 — 4 全新 + 4 现有扩展 (step 4 sediment)
+### §3.2 hook 索引 — Codex active layer + Claude historical mirror
+
+> **Codex governance addendum 2026-05-28**: 当前 active hook 层是
+> `.codex/hooks.json` + `.codex/hooks/*.py`，并由
+> `backend/tests/test_codex_governance_inventory.py` 守门。`.claude/hooks/*`
+> 作为历史 Claude mirror / audit trail 保留，不作为 Codex 当前 wire 真值。
+> Codex 当前未 wire `SessionEnd`; `handoff_sessionend.py` 不在 `.codex/hooks/`
+> 中，延续 Codex-first 决议。
 
 **4 全新 hook**:
 
 | hook | path | 类型 | 跟现 hook 互补 |
 |---|---|---|---|
-| `redline_pretool_block.py` | `.claude/hooks/redline_pretool_block.py` | PreToolUse | 跟现 `protect_critical_files.py` 互补 — protect 偏 file pattern, redline 偏 5/5 红线 query |
-| `cite_drift_stop_pretool.py` | `.claude/hooks/cite_drift_stop_pretool.py` | PreToolUse | 跟 `iron_law_enforce.py` 互补 — iron law 偏铁律 2/4/5/6/8, cite_drift 偏 SESSION_PROTOCOL §3.3 5 类漂移 detect |
-| `sediment_poststop.py` | `.claude/hooks/sediment_poststop.py` | Stop | 跟现 `verify_completion.py` 互补 — verify 偏 doc 同步提醒, sediment 偏 LL/ADR/STATUS_REPORT auto append candidate |
-| `handoff_sessionend.py` | `.claude/hooks/handoff_sessionend.py` | SessionEnd | audit row 18 真值 SessionEnd 类型现 0 wire — gap 必补; 沿用铁律 37 + handoff_template.md schema |
+| `redline_pretool_block.py` | `.codex/hooks/redline_pretool_block.py` | PreToolUse | 跟现 `protect_critical_files.py` 互补 — protect 偏 file pattern, redline 偏 5/5 红线 query |
+| `cite_drift_stop_pretool.py` | `.codex/hooks/cite_drift_stop_pretool.py` | PreToolUse | 跟 `iron_law_enforce.py` 互补 — iron law 偏铁律 2/4/5/6/8, cite_drift 偏 SESSION_PROTOCOL §3.3 5 类漂移 detect |
+| `sediment_poststop.py` | `.codex/hooks/sediment_poststop.py` | Stop | 跟现 `verify_completion.py` 互补 — verify 偏 doc 同步提醒, sediment 偏 LL/ADR/STATUS_REPORT auto append candidate |
+| `handoff_sessionend.py` | Codex active layer: **not present / not wired** | SessionEnd | Claude historical mirror only; Codex 当前未迁移 SessionEnd 体系 |
 
 **4 现有 hook 扩展** (反 v0.1 silent 全新创建):
 
 | 现 hook | path | 扩展 scope |
 |---|---|---|
-| `session_context_inject.py` v2 | `.claude/hooks/session_context_inject.py` | 扩 V3 doc + Constitution + invocation map + REGISTRY 4 doc 加入 inject scope (合并 fresh-read-sessionstart) |
-| `verify_completion.py` | `.claude/hooks/verify_completion.py` | 扩 4 元素 cite source 锁定 enforce (合并 cite-source-poststop) + 真+词 / sustained 中文滥用 reject + auto-rewrite (合并 banned-words-poststop) |
-| `iron_law_enforce.py` | `.claude/hooks/iron_law_enforce.py` | 扩 V3 invariant: V3 §11 12 模块 fail-open / 真账户红线 / Beat schedule 注释 ≠ 停服 / prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool) |
-| `protect_critical_files.py` (候选) | `.claude/hooks/protect_critical_files.py` | 候选扩: V3 prompts/risk/*.yaml protect (audit §4 cite, 实施时按 sub-PR 决议是否纳入) |
+| `session_context_inject.py` v2 | `.codex/hooks/session_context_inject.py` | 扩 V3 doc + Constitution + invocation map + REGISTRY 4 doc 加入 inject scope (合并 fresh-read-sessionstart) |
+| `verify_completion.py` | `.codex/hooks/verify_completion.py` | 扩 4 元素 cite source 锁定 enforce (合并 cite-source-poststop) + 真+词 / sustained 中文滥用 reject + auto-rewrite (合并 banned-words-poststop) |
+| `iron_law_enforce.py` | `.codex/hooks/iron_law_enforce.py` | 扩 V3 invariant: V3 §11 12 模块 fail-open / 真账户红线 / Beat schedule 注释 ≠ 停服 / prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool) |
+| `protect_critical_files.py` (候选) | `.codex/hooks/protect_critical_files.py` | 候选扩: V3 prompts/risk/*.yaml protect (audit §4 cite, 实施时按 sub-PR 决议是否纳入) |
 
-**残余 sub-task** (5-09 V3 governance batch closure sub-PR 2 PR #287 sediment 修订, ADR-DRAFT row 11 直 promote 进 REGISTRY.md as ADR-044 — 现有 hook v1→v2 action mode 反 silent overwrite ADR-022 体例): `block_dangerous_git.py` 5-07 sub-PR 8a-followup-pre committed but never wired settings.json — V3 实施期某 sprint wire 闭环 (沿用 LL-117 committed sub-PR 1 PR #286 atomic sediment+wire 体例).
+**Codex closure**: `block_dangerous_git.py` 已 wire 到 `.codex/hooks.json`
+的 `PreToolUse` command matcher；`doc_drift_check.py` / `handoff_sessionend.py`
+不在 Codex active hook layer 中。0-wire Python hook 残留由
+`backend/tests/test_codex_governance_inventory.py` 守门。
 
 ### §3.3 7 subagent 索引 — 4 全新 + 3 借 OMC (step 5 sediment)
 

@@ -194,7 +194,7 @@ def main():
     # Stop hook schema-compliant output: top-level systemMessage (iter 100 schema fix
     # sustained). When real issue present, surface checklist + cite reminder.
     output = {"systemMessage": checklist}
-    print(json.dumps(output, ensure_ascii=False))
+    print(json.dumps(output, ensure_ascii=True))
     sys.exit(0)
 
 

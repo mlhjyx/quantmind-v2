@@ -30,7 +30,7 @@ trigger: sub-PR 闭|sediment append|LL append|ADR row|STATUS_REPORT|handoff|memo
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/sediment_poststop.py` (Stop matcher, V3 step 4 sub-PR 3 sediment) — Phase 1 narrowed scope (recent-commit detect → reminder) | sub-PR 闭后 auto-fire WARN reminder, 反 silent skip |
+| `.codex/hooks/sediment_poststop.py` (Stop matcher, V3 step 4 sub-PR 3 sediment) — Phase 1 narrowed scope (recent-commit detect → reminder) | sub-PR 闭后 auto-fire WARN reminder, 反 silent skip |
 | 本 skill (CC 主动 invoke 知识层) | sub-PR 闭后 4 类 sediment SOP active CC invoke + 反 silent skip enforce |
 
 → skill 是 SOP 知识, hook 是 mechanism layer auto-fire reminder. **互补不替代** — 沿用 ADR-022 反 abstraction premature (hook 反 own sediment workflow logic; skill 是 SOP source).

@@ -27,7 +27,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "session_context_inject.py"
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "session_context_inject.py"
 
 
 def _run_hook(payload: dict | None = None) -> tuple[int, str, str]:
@@ -47,39 +47,43 @@ def _run_hook(payload: dict | None = None) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def _run_context(payload: dict | None = None) -> str:
+    """Run hook and return decoded additionalContext."""
+    rc, stdout, stderr = _run_hook(payload)
+    assert rc == 0, stderr
+    parsed = json.loads(stdout)
+    return parsed["hookSpecificOutput"]["additionalContext"]
+
+
 def test_v3_marker_present() -> None:
     """v3 hook context must contain v3 marker (hook v3, 2026-05-09)."""
-    rc, stdout, _ = _run_hook()
-    assert rc == 0
-    assert "additionalContext" in stdout
-    assert "hook v3" in stdout, "missing v3 marker"
-    assert "V3 实施期 doc 扩展" in stdout, "missing v3 doc 扩展 cite"
+    context = _run_context()
+    assert "hook v3" in context, "missing v3 marker"
+    assert "V3 实施期 doc 扩展" in context, "missing v3 doc 扩展 cite"
 
 
 def test_v3_doc_cite_present() -> None:
     """v3 扩展 must cite all 4 V3 docs in inject scope."""
-    rc, stdout, _ = _run_hook()
-    assert rc == 0
+    context = _run_context()
     # 4 V3 doc cite (path) — sustained Constitution §L1.1 8 doc fresh read SOP
-    assert "V3_IMPLEMENTATION_CONSTITUTION.md" in stdout, "missing Constitution v0.2 cite"
-    assert "V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md" in stdout, "missing skeleton v0.1 cite"
-    assert "QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md" in stdout, "missing V3 spec cite"
-    assert "docs/adr/REGISTRY.md" in stdout, "missing ADR REGISTRY cite"
+    assert "V3_IMPLEMENTATION_CONSTITUTION.md" in context, "missing Constitution v0.2 cite"
+    assert "V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md" in context, "missing skeleton v0.1 cite"
+    assert "QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md" in context, "missing V3 spec cite"
+    assert "docs/adr/REGISTRY.md" in context, "missing ADR REGISTRY cite"
     # SOP cite anchors
-    assert "Constitution v0.2 §L0.3" in stdout, "missing §L0.3 anchor"
-    assert "§L1.1" in stdout, "missing §L1.1 anchor"
-    assert "铁律 45" in stdout, "missing 铁律 45 anchor"
+    assert "Constitution v0.2 §L0.3" in context, "missing §L0.3 anchor"
+    assert "§L1.1" in context, "missing §L1.1 anchor"
+    assert "铁律 45" in context, "missing 铁律 45 anchor"
 
 
 def test_v2_sustained_content_present() -> None:
     """v3 must preserve v2 sustained content (反 silent overwrite, sustained ADR-022)."""
-    rc, stdout, _ = _run_hook()
-    assert rc == 0
+    context = _run_context()
     # v2 sustained: Sprint state + Blueprint + Cold start required reading + Iron law top 12
-    assert "Sprint 状态" in stdout, "missing Sprint state cite"
-    assert "Blueprint" in stdout, "missing Blueprint cite"
-    assert "新 Session 冷启动必读" in stdout, "missing cold start reading cite"
-    assert "铁律速查 TOP" in stdout, "missing 铁律 top 12 cite"
+    assert "Sprint 状态" in context, "missing Sprint state cite"
+    assert "Blueprint" in context, "missing Blueprint cite"
+    assert "新 Session 冷启动必读" in context, "missing cold start reading cite"
+    assert "铁律速查 TOP" in context, "missing 铁律 top 12 cite"
 
 
 def test_session_start_event_handled() -> None:
@@ -108,17 +112,15 @@ def test_malformed_json_fail_soft() -> None:
 
 def test_v3_doc_status_format() -> None:
     """v3 doc status uses ✅/⚠️ markers per file existence."""
-    rc, stdout, _ = _run_hook()
-    assert rc == 0
+    context = _run_context()
     # All 4 V3 docs exist post-PR #271/#282 — should all show ✅
-    assert "✅ exists" in stdout, "missing exists status marker"
+    assert "✅ exists" in context, "missing exists status marker"
 
 
 def test_v2_inject_scope_4_root_doc_sustained() -> None:
     """v2 sustained: cold start required reading 4 root doc cite preserved."""
-    rc, stdout, _ = _run_hook()
-    assert rc == 0
+    context = _run_context()
     # 4 root doc cite from v2 cold start required reading
-    assert "QUANTMIND_PLATFORM_BLUEPRINT.md" in stdout, "missing Blueprint cite"
-    assert "memory/project_sprint_state.md" in stdout, "missing memory cite"
-    assert "CLAUDE.md" in stdout, "missing CLAUDE.md cite"
+    assert "QUANTMIND_PLATFORM_BLUEPRINT.md" in context, "missing Blueprint cite"
+    assert "memory/project_sprint_state.md" in context, "missing memory cite"
+    assert "AGENTS.md" in context, "missing AGENTS.md cite"

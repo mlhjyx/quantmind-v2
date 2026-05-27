@@ -70,7 +70,7 @@ V3 实施 7 stage transition gate verifier:
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/verify_completion.py` (Stop matcher, 现 wired) | sub-PR 闭后 doc 同步提醒 + (V3 期合并 sediment-poststop 扩展候选) |
+| `.codex/hooks/verify_completion.py` (Stop matcher, 现 wired) | sub-PR 闭后 doc 同步提醒 + (V3 期合并 sediment-poststop 扩展候选) |
 | 本 skill (CC 主动 invoke 知识层) | sprint / stage 闭前 CC 主动 cite 5 gate criteria + 6 块 push user template (反仅依赖 hook 事后 reject) |
 
 → skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution §L6.2 sprint-closure-gate 决议).

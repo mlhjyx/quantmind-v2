@@ -52,8 +52,8 @@ verify SOP: `python scripts/_verify_account_oneshot.py` (沿用 Constitution §L
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/protect_critical_files.py` (PreToolUse[Edit\|Write] auto fire) | 现 wired — `.env` / yaml / production code path pattern auto block |
-| `.Codex/hooks/redline_pretool_block.py` (V3 期 全新 hook, 沿用 Constitution §L6.2 全新 hook 决议) | 待 sediment — broker / DB row mutation 5/5 红线 query + 5 condition 严核 enforce |
+| `.codex/hooks/protect_critical_files.py` (PreToolUse[Edit\|Write] auto fire) | 现 wired — `.env` / yaml / production code path pattern auto block |
+| `.codex/hooks/redline_pretool_block.py` (V3 期 全新 hook, 沿用 Constitution §L6.2 全新 hook 决议) | 待 sediment — broker / DB row mutation 5/5 红线 query + 5 condition 严核 enforce |
 | 本 skill (CC 主动 invoke 知识层) | 任 mutation 前 CC 主动 cite SOP + 5/5 + 5 condition verify (反仅依赖 hook auto block) |
 
 → skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution §L6.2 redline-verify 决议).

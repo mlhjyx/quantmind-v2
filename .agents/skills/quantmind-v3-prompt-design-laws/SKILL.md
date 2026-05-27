@@ -62,7 +62,7 @@ Codex.ai vs CC 跨 system 分离 architecture (5-02 SOP-4 sediment):
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/iron_law_enforce.py` (PreToolUse[Edit\|Write] auto fire) | V3 期扩 prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool, 沿用 Constitution §L6.2 现有 hook 扩展决议) |
+| `.codex/hooks/iron_law_enforce.py` (PreToolUse[Edit\|Write] auto fire) | V3 期扩 prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool, 沿用 Constitution §L6.2 现有 hook 扩展决议) |
 | `quantmind-v3-anti-pattern-guard` skill (沿用 Constitution §L6.2 anti-pattern-guard 决议) | sub-PR 起手 + sediment 前 v5 (Codex 给具体 → CC 实测决议) check |
 | 本 skill (CC 主动 invoke 知识层) | prompt 写出前 CC 主动 cite SOP + 0 hardcoded 4 类 + 3 元素 + 7 块体例 (反仅依赖 hook auto reject + anti-pattern-guard sub-PR 起手 check) |
 

@@ -75,7 +75,7 @@ grep -n 'sustained' <file>
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/verify_completion.py` (Stop matcher) — V3 期合并 banned-words-poststop 扩展 (沿用 Constitution v0.2 §L6.2 banned-words-poststop 扩展决议) | sub-PR 闭后 auto reject + auto-rewrite candidate suggest |
+| `.codex/hooks/verify_completion.py` (Stop matcher) — V3 期合并 banned-words-poststop 扩展 (沿用 Constitution v0.2 §L6.2 banned-words-poststop 扩展决议) | sub-PR 闭后 auto reject + auto-rewrite candidate suggest |
 | 本 skill (CC 主动 invoke 知识层) | reply / prompt 出前 CC 主动 grep verify (反仅依赖 hook 事后 reject) |
 
 → skill 是知识层, hook 是机制层. **互补不替代**.

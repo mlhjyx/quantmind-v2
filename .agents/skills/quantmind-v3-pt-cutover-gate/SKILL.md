@@ -66,7 +66,7 @@ paper-mode 5d 跑期 daily check (反 silent skip):
 
 | 层 | 机制 |
 |---|---|
-| `.Codex/hooks/protect_critical_files.py` (PreToolUse[Edit\|Write] 现 wired) | `.env` / yaml file pattern auto block (沿用 Constitution §L6.2 4 现有扩展决议) |
+| `.codex/hooks/protect_critical_files.py` (PreToolUse[Edit\|Write] 现 wired) | `.env` / yaml file pattern auto block (沿用 Constitution §L6.2 4 现有扩展决议) |
 | 本 skill (CC 主动 invoke 知识层) | PT 重启时机 / Gate E pre-condition verify cycle 期 CC 主动 cite 5 sub-criteria + user 显式授权流程 (反仅依赖 hook auto block) |
 
 → skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution §L6.2 pt-cutover-gate 决议).

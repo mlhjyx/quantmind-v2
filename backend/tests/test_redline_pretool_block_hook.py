@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "redline_pretool_block.py"
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "redline_pretool_block.py"
 
 
 def _run_hook(command: str, env_override: dict | None = None) -> tuple[int, str, str]:

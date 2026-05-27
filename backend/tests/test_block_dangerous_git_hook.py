@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "block_dangerous_git.py"
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "block_dangerous_git.py"
 
 
 def _run_hook(command: str) -> int:

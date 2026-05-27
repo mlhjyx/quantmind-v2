@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "cite_drift_stop_pretool.py"
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "cite_drift_stop_pretool.py"
 
 
 def _run_hook(

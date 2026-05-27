@@ -21,7 +21,7 @@ When blocked, Codex sees a message telling it that it does not have authority to
 
 ### 1. Ask scope
 
-Ask the user: install for **this project only** (`.Codex/settings.json`) or **all projects** (`~/.Codex/settings.json`)?
+Ask the user: install for **this project only** (`.codex/settings.json`) or **all projects** (`~/.codex/settings.json`)?
 
 ### 2. Copy the hook script
 
@@ -29,8 +29,8 @@ The bundled script is at: [scripts/block-dangerous-git.sh](scripts/block-dangero
 
 Copy it to the target location based on scope:
 
-- **Project**: `.Codex/hooks/block-dangerous-git.sh`
-- **Global**: `~/.Codex/hooks/block-dangerous-git.sh`
+- **Project**: `.codex/hooks/block-dangerous-git.sh`
+- **Global**: `~/.codex/hooks/block-dangerous-git.sh`
 
 Make it executable with `chmod +x`.
 
@@ -38,7 +38,7 @@ Make it executable with `chmod +x`.
 
 Add to the appropriate settings file:
 
-**Project** (`.Codex/settings.json`):
+**Project** (`.codex/settings.json`):
 
 ```json
 {
@@ -49,7 +49,7 @@ Add to the appropriate settings file:
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.Codex/hooks/block-dangerous-git.sh"
+            "command": "\"$CODEX_PROJECT_DIR\"/.codex/hooks/block-dangerous-git.sh"
           }
         ]
       }
@@ -58,7 +58,7 @@ Add to the appropriate settings file:
 }
 ```
 
-**Global** (`~/.Codex/settings.json`):
+**Global** (`~/.codex/settings.json`):
 
 ```json
 {
@@ -69,7 +69,7 @@ Add to the appropriate settings file:
         "hooks": [
           {
             "type": "command",
-            "command": "~/.Codex/hooks/block-dangerous-git.sh"
+            "command": "~/.codex/hooks/block-dangerous-git.sh"
           }
         ]
       }
