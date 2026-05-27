@@ -383,14 +383,27 @@ class MiniQMTBroker(BaseBroker):
         self._trader.register_callback(_Callback())
         self._trader.start()
 
-        result = self._trader.connect()
-        if result != 0:
-            self._trader = None
-            raise RuntimeError(f"miniQMT连接失败，返回码: {result}")
+        # LL-2026-05-27: start() 后任何失败路径必 stop() 释放 xtquant 内部线程/socket.
+        # 反 PID 11008 真生产事故 (38h × 5min 重试 × ~40MB/次泄漏 = 8.4 GB / 874 threads
+        # / 438 bound sockets). 之前 `self._trader = None` 只丢 Python 引用, GC 不会
+        # 回收 xtquant C 层资源. 唯一安全释放手段是显式 stop(). 沿用铁律 33
+        # (禁 silent failure - fail-safe cleanup 路径).
+        try:
+            result = self._trader.connect()
+            if result != 0:
+                raise RuntimeError(f"miniQMT连接失败，返回码: {result}")
 
-        sub_result = self._trader.subscribe(self._account)
-        if sub_result != 0:
-            logger.warning(f"[QMT] 账户订阅返回非零: {sub_result}")
+            sub_result = self._trader.subscribe(self._account)
+            if sub_result != 0:
+                logger.warning(f"[QMT] 账户订阅返回非零: {sub_result}")
+        except Exception:
+            # 必须显式 stop() 释放 xtquant 内部资源, 然后才丢引用
+            try:
+                self._trader.stop()
+            except Exception:
+                logger.exception("[QMT] connect失败后stop异常 (resource leak 兜底)")
+            self._trader = None
+            raise
 
         self._connected = True
         self._reconnect_count = 0
