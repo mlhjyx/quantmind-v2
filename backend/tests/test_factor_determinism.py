@@ -28,10 +28,17 @@ def test_factor_determinism():
     r1 = result1.sort_values(["code", "factor_name"]).reset_index(drop=True)
     r2 = result2.sort_values(["code", "factor_name"]).reset_index(drop=True)
 
-    # raw_value精确比较(6位小数)
+    # raw_value精确比较(6位小数级别精度)
+    # iter 241 fix (per iter 238 H2 straddle case analysis):
+    # 原 `.round(6)` 量化导致 0.4999999...e-6 vs 0.5000000001e-6 在 sweep 上下文 round
+    # 到不同 bucket (0 vs 1e-6), 然后 `< 1e-6` 严格不等失败. 移除 `.round(6)` 直接比较
+    # 浮点差 < 1e-6 (即 6 位小数级精度容差), 既保留确定性意图又避免 banker's rounding
+    # 边界 case. 详 docs/audit/STATUS_REPORT_2026_05_27_iter_238_flaky_determinism_root_cause.md §3.
+    # 注: 该 fix 只解决 H2 (float straddle); H1 (cross-test DB row mutation) 若是真因则
+    # 仍会失败, 但失败值会显著超过 1e-6 — 失败信号自然 surface 而非 silent flakiness.
     for col in ["raw_value", "neutral_value", "zscore"]:
-        v1 = r1[col].fillna(-999999).round(6)
-        v2 = r2[col].fillna(-999999).round(6)
+        v1 = r1[col].fillna(-999999.0)
+        v2 = r2[col].fillna(-999999.0)
         diff = (v1 - v2).abs()
         assert diff.max() < 1e-6, f"{col} 不一致: max_diff={diff.max()}, at index={diff.idxmax()}"
 
