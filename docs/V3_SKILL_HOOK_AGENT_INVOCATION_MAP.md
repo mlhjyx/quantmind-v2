@@ -193,7 +193,7 @@ S1 → S2 (LiteLLM 是 News fetcher 主源 prerequisite) / S2 → S3 (NewsClassi
 
 | skill | path | trigger | V3 invocation |
 |---|---|---|---|
-| `quantmind-v3-fresh-read-sop` | `.claude/skills/quantmind-v3-fresh-read-sop/SKILL.md` | sub-PR / step / cross-session resume 起手 | 跟现 session_context_inject.py v2 hook 互补 — skill 是 CC 主动 invoke 知识, hook 是 SessionStart auto inject |
+| `quantmind-v3-fresh-read-sop` | `.agents/skills/quantmind-v3-fresh-read-sop/SKILL.md` (Codex active; `.claude/skills` historical) | sub-PR / step / cross-session resume 起手 | 跟现 session_context_inject.py v2 hook 互补 — skill 是 CC 主动 invoke 知识, hook 是 SessionStart auto inject |
 | `quantmind-v3-cite-source-lock` | 同上路径体例 | 任 数字/编号/路径 cite | 4 元素 cite 强制 (sprint period 跨 sprint 累计) |
 | `quantmind-v3-active-discovery` | 同上 | sub-PR 起手 + 中段 + 闭前 | Phase 0 finding ≥1 + 3 类 STOP 触发 (沿用 LL-098 X10) |
 | `quantmind-v3-redline-verify` | 同上 | broker / .env / yaml / DB row mutation 前 | 5/5 红线 query + 5 condition 严核 (沿用 SOP-5 LL-103 Part 2) |

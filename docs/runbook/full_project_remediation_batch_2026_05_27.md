@@ -21,7 +21,7 @@
 | B3 | `/api/system/health` timeout / session concurrency | Backend code | Completed: bounded health checks, sequential datasource reads, Windows Celery fallback. |
 | B4 | `daily_attribution` 0 rows | Runtime/data evidence | Completed: task apply writes row for configured `PAPER_STRATEGY_ID`; API returns latest row. |
 | B5 | Scheduler failures | Ops triage | Read-only diagnostics allowed; mutation/toggle requires unlock. |
-| B6 | `.agents/skills` policy | Agent governance | Needs explicit track-vs-local-only decision. |
+| B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -102,9 +102,11 @@ Evidence:
 - Many `.agents/skills/...` files are untracked.
 - `.claude/skills` remains tracked historical state.
 
-Decision options:
+Decision:
 - Track active `.agents/skills` files as project governance assets.
-- Keep them local-only and update docs/hooks to treat missing project skills as non-fatal.
+- Keep `.claude/skills` historical and unchanged.
+- Add `.agents/skills/README.md` as the local policy file.
+- Remove the empty root `nul` file as runtime/generated noise.
 
-Recommended next audit artifact:
-- A skill inventory table: skill name, path, tracked state, duplicate historical source, active trigger, keep/remove/local-only decision.
+Audit artifact:
+- `docs/audit/SKILLS_GOVERNANCE_AUDIT_2026_05_28.md`.

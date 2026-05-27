@@ -171,7 +171,7 @@ quantmind-v2/
 ├── config/hooks/                                # Git hooks (pre-push 含 X10 + smoke)
 ├── cache/                                       # Parquet 缓存 + baseline (regression 锚点)
 ├── docs/research-kb/                            # decisions / failed / findings
-└── .agents/skills/                             # 项目自定义 skills (Codex 当前读取层)
+└── .agents/skills/                             # 项目自定义 skills (Codex 当前读取层, 版本化治理)
 ```
 
 ## 编码规则（强制）
@@ -505,7 +505,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 写外汇模块(⏳ deferred Phase 2+) | **已 archive** 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, A股稳态前不启动) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (38条目: 8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订) |
-| 性能优化最佳实践 | `.agents/skills/quantmind-performance/` |
+| 性能优化最佳实践 | `.agents/skills/quantmind-performance/` (active project skills policy: `.agents/skills/README.md`) |
 | **CC 自动化操作 (runbook)** | **`docs/runbook/cc_automation/00_INDEX.md`** ⭐ (撤 setx / Servy 重启 / 等 ops runbook) |
 | 路线图(历史, 已归档) | docs/archive/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8, 被Blueprint替代) |
 
