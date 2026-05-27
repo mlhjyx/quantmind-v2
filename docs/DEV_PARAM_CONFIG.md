@@ -24,7 +24,7 @@
 >
 > 1. **`backend/app/config.py:Settings`** — Pydantic Settings class (~50 active fields)
 > 2. **`configs/pt_live.yaml`** — PT 生产策略配置 (63 lines)
-> 3. **`backend/engines/config_guard.py`** + **`backend/platform/config/auditor.py:PlatformConfigAuditor._TRIPLE_SOURCE_FIELDS`** (L57-64) — 铁律 34 三源对齐验证 (top_n / industry_cap / size_neutral_beta / turnover_cap / rebalance_freq 5 fields)
+> 3. **`backend/engines/config_guard.py`** + **`backend/qm_platform/config/auditor.py:PlatformConfigAuditor._TRIPLE_SOURCE_FIELDS`** (L57-64) — 铁律 34 三源对齐验证 (top_n / industry_cap / size_neutral_beta / turnover_cap / rebalance_freq 5 fields). [iter 239 path-fix: namespace migration `backend/platform/` → `backend/qm_platform/`]
 >
 > 本文档 220+ params 表保留作设计参考, 实际查询应走 SSOT 三处. Last drift verify: 2026-05-20.
 

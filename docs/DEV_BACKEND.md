@@ -409,7 +409,7 @@ quantmind-v2/
 ### 2.1 main.py
 
 ```python
-# backend/main.py
+# backend/app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -460,7 +460,7 @@ async def health(): return {"status": "ok"}
 ### 2.2 config.py
 
 ```python
-# backend/config.py
+# backend/app/config.py
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -507,7 +507,7 @@ settings = Settings()
 ### 2.3 database.py
 
 ```python
-# backend/database.py
+# backend/app/db.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from backend.config import settings
 
@@ -1004,8 +1004,14 @@ pytest结构:
 
 ## 八、日志框架
 
+> **⚠️ DEPRECATED (iter 239 doc-rot audit 2026-05-27)**: 本节示例代码描述 `loguru` 框架属于早期
+> plan, **实际实施走 `structlog` JSON 结构化日志** (Sprint 1.15 Task 4, R6 §7 处理器链).
+> 真实入口: [`backend/app/logging_config.py`](../backend/app/logging_config.py)
+> (structlog + RotatingFileHandler, JSON lines, 10MB×7 轮转). `backend/utils/logging.py` **从未存在**.
+> 本节保留作历史 plan 记录,实际开发新模块时不应作为参考.
+
 ```python
-# backend/utils/logging.py
+# backend/utils/logging.py (PLAN ONLY — 实际不存在; 真实路径 backend/app/logging_config.py)
 from loguru import logger
 import sys
 
@@ -1037,7 +1043,7 @@ logger.error("AKShare数据拉取失败: {}", str(e))
 ## 九、错误处理
 
 ```python
-# backend/main.py 中间件
+# backend/app/main.py 中间件
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -1076,7 +1082,7 @@ def astock_daily_data(self):
 ## 十、WebSocket管理
 
 ```python
-# backend/websocket/manager.py
+# backend/app/websocket/manager.py
 from fastapi import WebSocket
 from typing import Dict, Set
 import asyncio, json
@@ -1195,10 +1201,18 @@ Phase 4 (Mac Studio + MLX):
 
 ### 12.3 ML模型在架构中的位置
 
+> **⚠️ DEPRECATED (iter 239 doc-rot audit 2026-05-27)**: 本节描述的 ML 预测层架构属于 Phase 3D
+> 计划状态，**Phase 3D ML Synthesis 验证 NO-GO**（4 实验全 FAIL, 详 CLAUDE.md §已知失败方向
+> + research-kb/findings）。`backend/engines/ml_models.py` + `backend/services/ml_service.py`
+> 实体**从未实现 / 实测不存在**。当前架构 = **等权 CORE3+dv_ttm 4 因子 = alpha 上限**（Phase
+> 2.1/2.2/3B/3D/3E 5 次独立验证）。本节内容保留作历史 plan 记录，不再作为实施指导。
+> 当前 ML/AI 闭环走 [DEV_AI_EVOLUTION.md](DEV_AI_EVOLUTION.md) V2.1 (Layer 1=~95% / Layer 2=~60% /
+> Layer 3-4=0% Q3-Q4 trigger per ADR-028) — 截然不同的"GP-Factor 因子搜索 + LLM-driven"路径。
+
 ```
-所有ML模型统一封装在:
-  backend/engines/ml_models.py    — 模型训练/预测/评估
-  backend/services/ml_service.py  — 业务逻辑(训练调度/模型选择/集成)
+所有ML模型统一封装在 (Phase 3D plan, NO-GO):
+  backend/engines/ml_models.py    — 模型训练/预测/评估 (NOT IMPLEMENTED)
+  backend/services/ml_service.py  — 业务逻辑(训练调度/模型选择/集成) (NOT IMPLEMENTED)
 
 调用方:
   services/signal_service.py      → ml_service.predict()  (A股因子合成)

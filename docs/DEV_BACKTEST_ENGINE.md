@@ -1129,8 +1129,14 @@ def calc_pbo(self, window_results: list) -> float:
 
 ### 4.12.3 Celery Task模板（回测异步执行）
 
+> **⚠️ ASPIRATIONAL (iter 239 doc-rot audit 2026-05-27)**: 本节展示 Celery 异步回测任务模板，路径
+> `backend/tasks/astock_tasks.py` **实测不存在** — 当前回测走同步 CLI 入口 (`scripts/run_backtest.py
+> --config configs/pt_live.yaml`). Celery 异步回测属于未来 Wave 5+ 范畴 (per QPB v1.17 演进规划).
+> 示例代码内的 import 路径 (`backend.services.*` / `backend.websocket.*`) 亦属早期 namespace
+> 设计，当前实际 namespace 为 `backend.app.services.*` / `backend.app.websocket.*`.
+
 ```python
-# backend/tasks/astock_tasks.py
+# backend/tasks/astock_tasks.py (ASPIRATIONAL — 实际不存在, 未来 Celery 异步回测启用时实现)
 
 @celery_app.task(bind=True, queue='astock_compute')
 def astock_backtest_task(self, run_id: str, config_dict: dict):
@@ -1427,7 +1433,7 @@ class RebalanceCalendar:
 > 详见 ML_WALKFORWARD_DESIGN.md + cache/baseline/wf_*_result.json。
 
 ~~**原设计**~~:
-- ~~WalkForwardEngine~~ → ✅ scripts/walk_forward.py 已实现
+- ~~WalkForwardEngine~~ → ✅ backend/engines/walk_forward.py 已实现 (iter 239 path-fix: 早期 plan 路径 scripts/walk_forward.py 实际落在 backend/engines/)
 - ~~窗口结果存储(backtest_wf_windows 表)~~ → ✅ cache/baseline/ JSON存储
 
 ### ~~Step 3b: Rust 加速~~（Archived）
