@@ -30,6 +30,7 @@
 | B12 | Advisory CI red annotation noise | CI governance | Completed: `--advisory` mode logs structured failures as `ADVISORY_FAIL` with exit 0; runner exceptions still fail. |
 | B13 | Frontend raw axios scanner precision | Frontend governance | Completed: comment-aware scanner added and wired into local pre-commit + CI pre_commit. |
 | B14 | Attribution NAV input stub | Eval/Beat closure | Completed: Beat wrapper now reads exact-date `performance_series.daily_return` / NAV fallback instead of hardcoded `0.0`; regression tests cover daily_return, derived-NAV, and paused-day no-op paths. |
+| B15 | Agent cost/log read stubs | AI governance | Completed: `/api/agent/cost-summary` and `/api/agent/{name}/logs` now read `llm_call_log`; frontend cost dashboard now displays USD truth instead of synthetic CNY. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -233,3 +234,28 @@ Result:
   orchestrator.
 - Added regression tests proving comment-only mentions do not fail while real
   imports outside the allowlist do fail.
+
+## B15 — Agent LLM Observability Read Paths
+
+Evidence:
+- `backend/app/api/agent.py` still returned hardcoded zero values from
+  `/api/agent/cost-summary` and `[]` from `/api/agent/{name}/logs`.
+- The repository already has `llm_call_log` DDL, LLM audit insertion code, and
+  frontend AgentConfig cost/log panels.
+- The frontend cost dashboard labeled values as CNY even though the persisted
+  audit column is `cost_usd`.
+
+Result:
+- `/api/agent/cost-summary` now aggregates `llm_call_log` for the requested
+  month: total tokens, total `cost_usd`, by-agent task buckets, by-model buckets,
+  and daily usage rows.
+- `/api/agent/{name}/logs` now returns recent `llm_call_log` rows for the mapped
+  agent task family with severity derived from `error_class`, fallback, budget
+  state, and decision id.
+- Frontend `CostSummary` and `CostDashboard` now use/display USD fields.
+- Regression tests cover monthly aggregation, invalid month rejection, and
+  per-agent log rows.
+
+Remaining:
+- `/api/agent/model-health` is still a static health view until a periodic model
+  ping source is implemented; this is a separate ops probe, not cost/log closure.

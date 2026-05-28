@@ -11,21 +11,22 @@ Frontend Design v3 §2.3 AssistPanel backing endpoint.
     ✅ Direct (explain-only):
         cancel single order / factor archive / report generate
 
-当前状态 (2026-05-19 Week 2):
-    - STUB 模式 — 返回 context-aware 解释, 不调用真 LLM
-    - 真 LLM wire 待用户决议 (cost implication, F-S7-001 P0 cost tracking broken)
-    - Enable: set AI_ASSIST_ENABLED=true in .env + 完成 F-S7-001 修复
+当前状态:
+    - AI_ASSIST_ENABLED=false 时返回 context-aware stub, 0 LLM cost
+    - AI_ASSIST_ENABLED=true 时走 sanctioned get_llm_router() path
+    - AgentConfig prompt_history / cost-summary / logs 均为 DB-backed read/write path
 
 Upgrade path (1 commit when ready):
-    1. 修 F-S7-001 (LiteLLM cost_usd 真值入库)
-    2. .env 加 AI_ASSIST_ENABLED=true
-    3. 本文件 _do_assist() 替换 stub_response() 调用为 get_llm_router().completion()
+    1. .env 加 AI_ASSIST_ENABLED=true
+    2. 重启 FastAPI 服务
+    3. 观察 llm_call_log + /api/agent/cost-summary
 """
 
 from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 import structlog
@@ -292,7 +293,7 @@ async def get_chat_status(
     """返回 AI Assist 当前 enable 状态 (前端 banner 提示用)."""
     return {
         "enabled": _is_ai_enabled(),
-        "mode": "stub",
+        "mode": "live" if _is_ai_enabled() else "stub",
         "blocked_ops": [
             "execute_phase",
             "env_flip",
@@ -390,6 +391,84 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
         "max_daily_runs": 3,
     },
 }
+
+_AGENT_TASKS: dict[str, tuple[str, ...]] = {
+    "idea": ("news_classify", "fundamental_summarize", "embedding"),
+    "factor": (),
+    "eval": ("bull_agent", "bear_agent", "judge"),
+    "diagnosis": ("risk_reflector",),
+}
+
+_KNOWN_MODELS: tuple[str, ...] = (
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "qwen3-local",
+    "deepseek-r1",
+    "deepseek-v3",
+    "qwen3",
+)
+
+
+def _task_to_agent(task: str) -> str:
+    """Map stable LLM task enum values to the AgentConfig dashboard buckets."""
+    for agent, tasks in _AGENT_TASKS.items():
+        if task in tasks:
+            return agent
+    return "diagnosis"
+
+
+def _normalize_model_id(actual_model: str | None, primary_alias: str | None = None) -> str:
+    """Normalize provider/model strings into frontend ModelId buckets."""
+    raw = f"{actual_model or ''} {primary_alias or ''}".lower()
+    if "v4-pro" in raw or "reasoner" in raw:
+        return "deepseek-v4-pro"
+    if "v4-flash" in raw or "chat" in raw:
+        return "deepseek-v4-flash"
+    if "qwen3" in raw or "ollama" in raw:
+        return "qwen3-local"
+    if "deepseek-r1" in raw:
+        return "deepseek-r1"
+    if "deepseek-v3" in raw:
+        return "deepseek-v3"
+    return "deepseek-v4-flash"
+
+
+def _parse_month_bounds(month: str) -> tuple[datetime, datetime]:
+    """Parse YYYY-MM into UTC half-open month bounds."""
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(status_code=400, detail="month 必须是 YYYY-MM")
+    try:
+        start = datetime.strptime(month, "%Y-%m").replace(tzinfo=UTC)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="month 必须是有效月份") from exc
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start, end
+
+
+def _empty_cost_summary(month: str) -> dict[str, Any]:
+    """Return the CostDashboard shape with all known buckets present."""
+    return {
+        "month": month,
+        "currency": "USD",
+        "total_cost_usd": 0.0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "by_agent": {agent: {"cost_usd": 0.0, "tokens": 0} for agent in _AGENT_DEFAULT_CONFIGS},
+        "by_model": {model: {"cost_usd": 0.0, "tokens": 0} for model in _KNOWN_MODELS},
+        "daily_usage": [],
+    }
+
+
+def _to_float(value: Any) -> float:
+    """Decimal/None-safe numeric conversion for SQL aggregate rows."""
+    if value is None:
+        return 0.0
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value)
 
 
 # H1 真闭环 (2026-05-19, ISSUES_PENDING_REGISTRY §9 H1): prompt_history table
@@ -835,41 +914,184 @@ async def get_cost_summary(
     """
     if month is None:
         month = datetime.now(UTC).strftime("%Y-%m")
-    # Phase I read-only stub — 真实施需 llm_call_log SQL 聚合
-    # 占位返回结构, 真值在 F-S7-001 修复后 LLM 调用累积
-    return {
-        "month": month,
-        "total_cost_cny": 0.0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "by_agent": {
-            "idea": {"cost_cny": 0.0, "tokens": 0},
-            "factor": {"cost_cny": 0.0, "tokens": 0},
-            "eval": {"cost_cny": 0.0, "tokens": 0},
-            "diagnosis": {"cost_cny": 0.0, "tokens": 0},
-        },
-        "by_model": {
-            "deepseek-v4-flash": {"cost_cny": 0.0, "tokens": 0},
-            "deepseek-v4-pro": {"cost_cny": 0.0, "tokens": 0},
-            "qwen3-local": {"cost_cny": 0.0, "tokens": 0},
-        },
-        "daily_usage": [],
-        "_note": (
-            "Phase I stub. 真实施需 llm_call_log SQL 聚合 (F-S7-001 修复后真值生效, "
-            "AI_ASSIST_ENABLED=true 后历史累积).真 prompt version cost decomp "
-            "留 backend prompt_history table impl."
-        ),
-    }
+    start, end = _parse_month_bounds(month)
+    summary = _empty_cost_summary(month)
+
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(SUM(tokens_in), 0),
+                    COALESCE(SUM(tokens_out), 0),
+                    COALESCE(SUM(cost_usd), 0)
+                FROM llm_call_log
+                WHERE triggered_at >= %s AND triggered_at < %s
+                """,
+                (start, end),
+            )
+            total_tokens_in, total_tokens_out, total_cost_usd = cur.fetchone()
+            summary["total_input_tokens"] = int(total_tokens_in or 0)
+            summary["total_output_tokens"] = int(total_tokens_out or 0)
+            summary["total_cost_usd"] = round(_to_float(total_cost_usd), 6)
+
+            cur.execute(
+                """
+                SELECT task, COALESCE(SUM(tokens_in + tokens_out), 0), COALESCE(SUM(cost_usd), 0)
+                FROM llm_call_log
+                WHERE triggered_at >= %s AND triggered_at < %s
+                GROUP BY task
+                """,
+                (start, end),
+            )
+            for task, tokens, cost_usd in cur.fetchall():
+                agent = _task_to_agent(str(task))
+                bucket = summary["by_agent"][agent]
+                bucket["tokens"] += int(tokens or 0)
+                bucket["cost_usd"] = round(bucket["cost_usd"] + _to_float(cost_usd), 6)
+
+            cur.execute(
+                """
+                SELECT
+                    actual_model,
+                    primary_alias,
+                    COALESCE(SUM(tokens_in + tokens_out), 0),
+                    COALESCE(SUM(cost_usd), 0)
+                FROM llm_call_log
+                WHERE triggered_at >= %s AND triggered_at < %s
+                GROUP BY actual_model, primary_alias
+                """,
+                (start, end),
+            )
+            for actual_model, primary_alias, tokens, cost_usd in cur.fetchall():
+                model = _normalize_model_id(actual_model, primary_alias)
+                bucket = summary["by_model"].setdefault(model, {"cost_usd": 0.0, "tokens": 0})
+                bucket["tokens"] += int(tokens or 0)
+                bucket["cost_usd"] = round(bucket["cost_usd"] + _to_float(cost_usd), 6)
+
+            cur.execute(
+                """
+                SELECT
+                    CAST(triggered_at AS date) AS usage_date,
+                    task,
+                    actual_model,
+                    primary_alias,
+                    COALESCE(SUM(tokens_in), 0),
+                    COALESCE(SUM(tokens_out), 0),
+                    COALESCE(SUM(cost_usd), 0)
+                FROM llm_call_log
+                WHERE triggered_at >= %s AND triggered_at < %s
+                GROUP BY usage_date, task, actual_model, primary_alias
+                ORDER BY usage_date ASC, task ASC
+                """,
+                (start, end),
+            )
+            summary["daily_usage"] = [
+                {
+                    "date": usage_date.isoformat(),
+                    "agent": _task_to_agent(str(task)),
+                    "model": _normalize_model_id(actual_model, primary_alias),
+                    "input_tokens": int(tokens_in or 0),
+                    "output_tokens": int(tokens_out or 0),
+                    "cost_usd": round(_to_float(cost_usd), 6),
+                }
+                for usage_date, task, actual_model, primary_alias, tokens_in, tokens_out, cost_usd in cur.fetchall()
+            ]
+    except Exception as exc:
+        logger.exception("get_cost_summary llm_call_log query failed", month=month)
+        raise HTTPException(status_code=500, detail=f"Cost summary query failed: {exc}") from exc
+    finally:
+        conn.close()
+
+    return summary
 
 
-@router.get("/{name}/logs", summary="Agent 调用日志 (stub empty)")
+@router.get("/{name}/logs", summary="Agent 调用日志 (llm_call_log)")
 async def get_agent_logs(
     name: str,
     limit: int = Query(default=50, ge=1, le=200),  # P3 fix: explicit bounds (反 large LIMIT)
     _: None = Depends(verify_admin_token),  # P2-2 fix: 反 unauthenticated log enumeration
 ) -> list[dict[str, Any]]:
-    """返回 agent 调用 logs. Stub empty — 真实施需 llm_call_log SQL 聚合."""
+    """返回 agent 调用 logs from llm_call_log."""
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
-    _ = limit  # placeholder, real impl 走 LIMIT clause
-    return []
+    tasks = _AGENT_TASKS[name]
+    if not tasks:
+        return []
+
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    triggered_at,
+                    task,
+                    primary_alias,
+                    actual_model,
+                    is_fallback,
+                    budget_state,
+                    tokens_in,
+                    tokens_out,
+                    cost_usd,
+                    latency_ms,
+                    decision_id,
+                    error_class
+                FROM llm_call_log
+                WHERE task = ANY(%s)
+                ORDER BY triggered_at DESC
+                LIMIT %s
+                """,
+                (list(tasks), limit),
+            )
+            rows = cur.fetchall()
+    except Exception as exc:
+        logger.exception("get_agent_logs llm_call_log query failed", agent=name)
+        raise HTTPException(status_code=500, detail=f"Agent log query failed: {exc}") from exc
+    finally:
+        conn.close()
+
+    logs: list[dict[str, Any]] = []
+    for (
+        row_id,
+        triggered_at,
+        task,
+        primary_alias,
+        actual_model,
+        is_fallback,
+        budget_state,
+        tokens_in,
+        tokens_out,
+        cost_usd,
+        latency_ms,
+        decision_id,
+        error_class,
+    ) in rows:
+        if error_class:
+            level = "error"
+        elif budget_state != "normal" or is_fallback:
+            level = "warning"
+        elif decision_id:
+            level = "decision"
+        else:
+            level = "info"
+        model = _normalize_model_id(actual_model, primary_alias)
+        content = (
+            f"{task} via {model}: tokens={int(tokens_in or 0) + int(tokens_out or 0)}, "
+            f"cost_usd={_to_float(cost_usd):.6f}, latency_ms={latency_ms}"
+        )
+        if error_class:
+            content += f", error={error_class}"
+        logs.append(
+            {
+                "id": str(row_id),
+                "timestamp": triggered_at.isoformat(),
+                "agent": name,
+                "level": level,
+                "content": content,
+                "run_id": decision_id,
+            }
+        )
+    return logs

@@ -15,6 +15,7 @@ Closed:
 - Attribution task import roots, `strategy_id` source, and NAV input source fixed; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, `/api/attribution/latest` returns it, and the Beat wrapper now reads `performance_series` instead of hardcoding `nav_change_pct=0.0`.
 - `memory/project_sprint_state.md` restored as tracked handoff SSOT.
 - Active `.agents/skills` files are versioned, with `.agents/skills/README.md` policy and automated inventory guard.
+- Agent LLM observability read paths are no longer hardcoded stubs: `/api/agent/cost-summary` and `/api/agent/{name}/logs` now aggregate `llm_call_log`, and the frontend cost dashboard displays USD fields that match the persisted audit column.
 
 Closed / reclassified:
 - `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
@@ -39,6 +40,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28: `QM-ICMonitor` factor-quality alerts now carry operator disposition metadata and the System Settings scheduler row links to `/factors/monitoring`.
 - Closed 2026-05-28: `memory/project_sprint_state.md` exists and is tracked.
 - Closed 2026-05-28: `.agents/skills` is governed as the active Codex project skill layer; `.claude/skills` remains historical.
+- Closed 2026-05-28: Agent cost/log panels now read `llm_call_log` truth instead of returning synthetic zero/empty data; model-health ping remains a separate backlog item.
 
 ## Evidence Map
 
@@ -205,6 +207,22 @@ Impact:
 Backlog:
 - Keep `frontend/src/api/client.ts` as the only production axios import; promote the scanner to any future frontend-only CI lane if CI topology changes.
 
+### Closed 2026-05-28 — Agent LLM observability reads runtime audit truth
+
+`backend/app/api/agent.py` had two read endpoints that still carried Phase I stub behavior after LLM audit logging landed: `/api/agent/cost-summary` returned hardcoded zero cost/tokens, and `/api/agent/{name}/logs` returned an empty list. The frontend also labeled cost as CNY even though the audit SSOT is `llm_call_log.cost_usd`.
+
+Remediation:
+- `/api/agent/cost-summary` aggregates `llm_call_log` by month, agent task bucket, model, and daily usage.
+- `/api/agent/{name}/logs` returns recent `llm_call_log` rows for the mapped agent family and derives log level from `error_class`, fallback, budget state, and decision id.
+- `frontend/src/api/agent.ts` and `frontend/src/components/agent/CostDashboard.tsx` now use/display USD fields.
+
+Verification:
+- `backend/tests/test_agent_api_llm_observability.py`: 3 tests passed.
+- `npm run build -- --mode development`: passed.
+
+Backlog:
+- `/api/agent/model-health` remains a static probe view until a periodic model ping source exists.
+
 ## Closed / Healthy Areas
 
 - Backend route surface is broad and registered in code: 26 API modules and 157 route decorators.
@@ -225,6 +243,7 @@ Backlog:
 | Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it; Beat wrapper now reads `performance_series` NAV input instead of hardcoding `0.0`. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
+| Closed | Agent LLM cost/log read stubs | AI governance | Completed 2026-05-28: cost summary and agent logs now read `llm_call_log`; frontend cost display uses USD truth. |
 | P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action version upgrade + `--advisory` no-noise CI mode completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
 | Closed | Gitlink metadata repair | Git governance | Completed 2026-05-28: restored `.gitmodules` entry for the existing mattpocock skills gitlink to remove checkout cleanup warnings. |
 | Closed | Scanner precision | Frontend governance | Completed 2026-05-28: comment-aware raw axios scanner added and wired into pre-commit + CI pre_commit. |
