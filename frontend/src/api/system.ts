@@ -37,6 +37,9 @@ export interface SchedulerTask {
   enabled: boolean;
   task_state?: string;
   last_result_code?: number | null;
+  status_reason?: string | null;
+  operator_action_label?: string | null;
+  operator_action_path?: string | null;
 }
 
 /**
@@ -100,6 +103,9 @@ interface SchedulerResponseRaw {
     task_state?: string;
     enabled?: boolean;
     last_result_code: number | null;
+    status_reason?: string | null;
+    operator_action_label?: string | null;
+    operator_action_path?: string | null;
   }>;
 }
 
@@ -124,6 +130,9 @@ export async function fetchSchedulerTasks(): Promise<SchedulerTask[]> {
     enabled: t.enabled ?? t.task_state?.toLowerCase() !== "disabled",
     task_state: t.task_state,
     last_result_code: t.last_result_code,
+    status_reason: t.status_reason ?? null,
+    operator_action_label: t.operator_action_label ?? null,
+    operator_action_path: t.operator_action_path ?? null,
   }));
 }
 

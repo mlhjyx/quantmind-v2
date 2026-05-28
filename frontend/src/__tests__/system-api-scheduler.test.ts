@@ -39,6 +39,9 @@ describe("fetchSchedulerTasks", () => {
             enabled: true,
             status: "alert",
             last_result_code: 1,
+            status_reason: "IC factor-quality alert from scripts/ic_monitor.py",
+            operator_action_label: "Open IC monitoring",
+            operator_action_path: "/factors/monitoring",
           },
         ],
       },
@@ -60,6 +63,9 @@ describe("fetchSchedulerTasks", () => {
       task_state: "Ready",
       last_status: "alert",
       last_result_code: 1,
+      status_reason: "IC factor-quality alert from scripts/ic_monitor.py",
+      operator_action_label: "Open IC monitoring",
+      operator_action_path: "/factors/monitoring",
     });
   });
 

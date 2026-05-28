@@ -344,6 +344,7 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
                     "enabled": task_state.lower() != "disabled",
                     "status": status,
                     "last_result_code": last_result,
+                    **_task_scheduler_disposition(task_name, status),
                 }
             )
         return tasks
@@ -367,6 +368,21 @@ def _task_scheduler_status(task_name: str, task_state: str, last_result: int | N
     if task_name == "QM-ICMonitor" and last_result == 1:
         return "alert"
     return "failed"
+
+
+def _task_scheduler_disposition(task_name: str, status: str) -> dict[str, str | None]:
+    """Return operator-facing next step metadata for non-infrastructure alerts."""
+    if task_name == "QM-ICMonitor" and status == "alert":
+        return {
+            "status_reason": "IC factor-quality alert from scripts/ic_monitor.py",
+            "operator_action_label": "Open IC monitoring",
+            "operator_action_path": "/factors/monitoring",
+        }
+    return {
+        "status_reason": None,
+        "operator_action_label": None,
+        "operator_action_path": None,
+    }
 
 
 def _beat_log_aliases(beat_key: str, task_name: str) -> set[str]:

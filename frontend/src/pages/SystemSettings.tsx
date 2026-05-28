@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
@@ -368,6 +368,19 @@ function SchedulerTab() {
                 <span>上次: <span className="text-slate-300">{formatDate(task.last_run)}</span></span>
                 <span>下次: <span className="text-slate-300">{formatDate(task.next_run)}</span></span>
               </div>
+              {task.status_reason && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-amber-300">
+                  <span>{task.status_reason}</span>
+                  {task.operator_action_path && task.operator_action_label && (
+                    <Link
+                      to={task.operator_action_path}
+                      className="text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+                    >
+                      {task.operator_action_label}
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
             {task.last_status && (
               <span className={[

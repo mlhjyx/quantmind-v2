@@ -99,12 +99,12 @@ Evidence:
 Result:
 - `backend/app/api/system.py` now maps disabled Windows tasks to `status='disabled'` and exposes `task_state` / `enabled`.
 - Frontend scheduler consumers now preserve disabled status and exclude disabled tasks from overdue counts.
+- `QM-ICMonitor` `alert` rows now include factor-quality disposition metadata and the System Settings scheduler row links operators to `/factors/monitoring`.
 - `scripts/pg_backup.py` now writes to `.dump.tmp`, rejects undersized dumps before final replacement, verifies file size before `pg_restore --list`, and updates Parquet snapshot SQL to current column names.
 - Controlled recovery run: `python scripts/pg_backup.py --skip-parquet` completed on 2026-05-28, produced `quantmind_v2_20260528.dump` at 14,480.2MB, and `pg_restore --list` passed with 712 tables / 2,359 objects.
 - FastAPI was restarted; `GET /api/system/scheduler` now reports `QM-SmokeTest` as `task_state='Disabled'`, `enabled=false`, `status='disabled'`.
 
 Remaining:
-- `QM-ICMonitor` should be handled as an operator factor-quality alert. The scheduler API/UI now exposes this as `alert`, not `failed`.
 - The next scheduled `QM-DailyBackup` first-fire result still needs observation because Task Scheduler LastResult remains the failed 02:00 run until the task fires again; the manual rerun restored today's DR artifact.
 
 ## B6 — Skills Version Policy

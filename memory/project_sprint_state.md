@@ -38,10 +38,10 @@ Closed in this batch:
 - Restarted FastAPI; `/api/system/scheduler` now returns `QM-SmokeTest` as `status=disabled`, `enabled=false`.
 
 Still open:
-- `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; API/UI now expose it as `alert`, and operator/factor-quality disposition remains.
+- `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; API/UI now expose it as `alert` with a `/factors/monitoring` operator action.
 - `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Finish verification, stage the coherent scheduler/backup remediation patch, push the branch, and re-check PR CI.
+- Observe the next scheduled `QM-DailyBackup` first-fire after the backup audit envelope; otherwise continue P2 CI/scanner precision governance.

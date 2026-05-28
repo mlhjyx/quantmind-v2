@@ -542,6 +542,23 @@ class TestSchedulerEndpoint:
         assert _task_scheduler_status("QM-ICMonitor", "Ready", 1) == "alert"
         assert _task_scheduler_status("QM-DailyBackup", "Ready", 1) == "failed"
 
+    def test_task_scheduler_ic_monitor_alert_has_operator_disposition(self):
+        """IC monitor alerts should point operators at the factor-quality view."""
+        from app.api.system import _task_scheduler_disposition
+
+        disposition = _task_scheduler_disposition("QM-ICMonitor", "alert")
+
+        assert disposition == {
+            "status_reason": "IC factor-quality alert from scripts/ic_monitor.py",
+            "operator_action_label": "Open IC monitoring",
+            "operator_action_path": "/factors/monitoring",
+        }
+        assert _task_scheduler_disposition("QM-DailyBackup", "failed") == {
+            "status_reason": None,
+            "operator_action_label": None,
+            "operator_action_path": None,
+        }
+
     @pytest.mark.asyncio
     async def test_empty_tasks_on_non_windows(self):
         """非 Windows 环境下 tasks 应为空列表（mock _query_task_scheduler 返回空）。"""
