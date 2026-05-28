@@ -86,6 +86,13 @@ def test_v2_sustained_content_present() -> None:
     assert "铁律速查 TOP" in context, "missing 铁律 top 12 cite"
 
 
+def test_repo_local_memory_frontmatter_description_is_injected() -> None:
+    """Codex layer must read repo-local memory before historical Claude memory."""
+    context = _run_context()
+    assert "Codex remediation handoff updated after runtime" in context
+    assert "frontmatter 无 description" not in context
+
+
 def test_session_start_event_handled() -> None:
     """SessionStart event payload handled correctly."""
     payload = {"session_id": "test-session", "source": "test"}

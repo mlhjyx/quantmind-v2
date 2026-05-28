@@ -112,9 +112,17 @@ def get_v3_doc_status(project_root: Path) -> str:
     return "\n".join(lines)
 
 
+def resolve_memory_root(project_root: Path) -> Path:
+    """Prefer repo-local Codex memory, fallback to historical Claude memory."""
+    repo_memory = project_root / "memory"
+    if (repo_memory / "project_sprint_state.md").exists():
+        return repo_memory
+    return Path.home() / ".claude" / "projects" / "D--quantmind-v2" / "memory"
+
+
 def build_context(project_root: Path) -> str:
     """组装注入 context."""
-    memory_root = Path.home() / ".claude" / "projects" / "D--quantmind-v2" / "memory"
+    memory_root = resolve_memory_root(project_root)
 
     sprint_desc = get_sprint_description(memory_root)
     sprint_session = get_sprint_latest_session(memory_root)

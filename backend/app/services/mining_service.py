@@ -35,6 +35,90 @@ _CELERY_TASK_GP = "app.tasks.mining_tasks.run_gp_mining"
 _CELERY_TASK_BRUTEFORCE = "app.tasks.mining_tasks.run_bruteforce_mining"
 
 
+def _gate_status_text(status: Any) -> str:
+    """Return stable API text for GateStatus/str-like status values."""
+    return str(getattr(status, "value", status))
+
+
+def _summarize_gate_report(report: Any, quick_only: bool = False) -> dict[str, str]:
+    """Summarize the current FactorGate ``GateReport`` contract for API output."""
+    gates = getattr(report, "gates", None)
+    if gates is None:
+        gates = getattr(report, "gate_results", {})
+
+    quick_gate_ids = {f"G{i}" for i in range(1, 6)}
+    result: dict[str, str] = {}
+    for gate_id, gate_result in gates.items():
+        if quick_only and gate_id not in quick_gate_ids:
+            continue
+        result[str(gate_id)] = _gate_status_text(getattr(gate_result, "status", gate_result))
+    return result
+
+
+def _gate_report_passed(
+    report: Any, gate_summary: dict[str, str], quick_only: bool = False
+) -> bool:
+    """Map FactorGate report status to the legacy mining evaluate boolean."""
+    if quick_only:
+        quick_gate_ids = [f"G{i}" for i in range(1, 6)]
+        present = [gate_summary[g] for g in quick_gate_ids if g in gate_summary]
+        return bool(present) and all(status == "PASS" for status in present)
+
+    legacy_passed = getattr(report, "overall_passed", None)
+    if legacy_passed is not None:
+        return bool(legacy_passed)
+    return str(getattr(report, "overall_status", "")) in {"PASS", "PARTIAL"}
+
+
+def _gate_report_metric(report: Any, metric: str) -> float:
+    """Extract IC/t-stat style summary metrics from the current GateReport shape."""
+    direct = getattr(report, metric, None)
+    if direct is not None:
+        return float(direct)
+
+    gates = getattr(report, "gates", None) or getattr(report, "gate_results", {})
+    if metric == "ic_mean":
+        g1 = gates.get("G1")
+        if g1 is not None:
+            data = getattr(g1, "data", {}) or {}
+            if "ic_mean" in data:
+                return float(data["ic_mean"])
+            value = getattr(g1, "metric_value", None)
+            if value is not None:
+                return float(value)
+    if metric == "t_stat":
+        for gate_id in ("G6", "G3"):
+            gate = gates.get(gate_id)
+            if gate is None:
+                continue
+            data = getattr(gate, "data", {}) or {}
+            for key in ("raw_t_stat", "t_stat_newey_west"):
+                if key in data:
+                    return float(data[key])
+            value = getattr(gate, "metric_value", None)
+            if value is not None:
+                return float(value)
+    return 0.0
+
+
+def _evaluation_forward_returns(market_data: Any, forward_days: int = 20) -> Any:
+    """Build a panel forward-return Series aligned to evaluation factor values."""
+    close_frame = market_data[["trade_date", "code", "close"]].copy()
+    close_frame = close_frame.sort_values(["code", "trade_date"], kind="mergesort")
+    close = close_frame.set_index(["trade_date", "code"])["close"].astype("float64")
+    future = close.groupby(level="code").shift(-forward_days)
+    return (future / close - 1.0).rename(f"fwd_ret_{forward_days}d")
+
+
+def _with_evaluation_panel_index(series: Any, market_data: Any) -> Any:
+    """Attach (trade_date, code) panel index when DSL evaluation preserved row order."""
+    if len(series) != len(market_data):
+        return series
+    result = series.copy()
+    result.index = market_data.set_index(["trade_date", "code"]).index
+    return result
+
+
 class MiningService:
     """因子挖掘任务管理Service层。
 
@@ -504,10 +588,8 @@ class MiningService:
         if factor_values is None or (hasattr(factor_values, "empty") and factor_values.empty):
             raise ValueError("因子值计算结果为空")
 
-        # 计算前向收益
-        from scripts.run_gp_pipeline import _compute_forward_returns  # type: ignore[import]
-
-        forward_returns = _compute_forward_returns(market_data)
+        factor_values = _with_evaluation_panel_index(factor_values, market_data)
+        forward_returns = _evaluation_forward_returns(market_data)
 
         # 自动命名
         if not factor_name:
@@ -519,34 +601,31 @@ class MiningService:
         # 运行 Gate
         try:
             from engines.factor_gate import FactorGatePipeline
+            from engines.mining.pipeline_utils import _compute_gate_ic_series
 
             gate = FactorGatePipeline()
-
-            if quick_only:
-                report = gate.run_quick(
-                    factor_values=factor_values,
-                    forward_returns=forward_returns,
-                )
-            else:
-                report = gate.run(
-                    factor_name=factor_name,
-                    factor_values=factor_values,
-                    forward_returns=forward_returns,
-                )
+            ic_series = _compute_gate_ic_series(factor_values, forward_returns)
+            report = gate.run_gates(
+                factor_name=factor_name,
+                ic_series=ic_series,
+                neutral_ic_series=None,
+                expected_direction=1,
+            )
         except Exception as exc:
             raise ValueError(f"Gate 评估失败: {exc}") from exc
 
         elapsed = time.monotonic() - start
 
-        gate_summary = {g: str(r.status) for g, r in report.gate_results.items()}
+        gate_summary = _summarize_gate_report(report, quick_only=quick_only)
 
         return {
             "factor_name": factor_name,
             "factor_expr": factor_expr,
             "gate_result": gate_summary,
-            "overall_passed": report.overall_passed,
-            "ic_mean": round(float(getattr(report, "ic_mean", 0.0) or 0.0), 6),
-            "t_stat": round(float(getattr(report, "t_stat", 0.0) or 0.0), 4),
+            "overall_passed": _gate_report_passed(report, gate_summary, quick_only=quick_only),
+            "overall_status": str(getattr(report, "overall_status", "UNKNOWN")),
+            "ic_mean": round(_gate_report_metric(report, "ic_mean"), 6),
+            "t_stat": round(_gate_report_metric(report, "t_stat"), 4),
             "elapsed_seconds": round(elapsed, 2),
             "quick_only": quick_only,
         }

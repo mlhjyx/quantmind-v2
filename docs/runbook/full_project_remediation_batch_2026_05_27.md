@@ -37,6 +37,7 @@
 | B19 | BruteForce mining task placeholder | Factor mining closure | Completed: Celery task now runs the existing BruteForce engine, persists `bf_` quick-gate candidates, and BruteForce IC calculation uses the shared IC calculator API. |
 | B20 | Mining full-gate contract drift | Factor mining closure | Completed: `run_full_gate` now calls `FactorGatePipeline.run_gates` and handles `GateReport.gates` / `overall_status` instead of a non-existent `run` contract. |
 | B21 | GP cross-round feedback not wired in production runners | Factor mining closure | Completed: Celery GP task and CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run. |
+| B22 | Mining evaluate service + SessionStart memory drift | Factor mining / Codex governance | Completed: `/api/mining/evaluate` service now uses `FactorGatePipeline.run_gates`; SessionStart hook now prefers repo-local `memory/` before historical Claude memory. |
 
 ## B1 — Pipeline Settings Migration
 
