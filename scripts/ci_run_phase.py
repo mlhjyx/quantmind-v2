@@ -8,11 +8,12 @@ Usage:
     python scripts/ci_run_phase.py --phase pre_commit
     python scripts/ci_run_phase.py --phase pre_push --branch main
     python scripts/ci_run_phase.py --phase regression
-    python scripts/ci_run_phase.py --phase ci_matrix
+    python scripts/ci_run_phase.py --phase ci_matrix --advisory
     python scripts/ci_run_phase.py --phase review --pr-number 123
 
 Exit code:
     0 — all checks passed
+    0 — advisory mode captured a structured phase failure
     1 — at least one check failed OR uncaught exception (铁律 33 fail-soft tier-2)
 
 Platform 严格隔离 sustained: imports only backend.qm_platform.ci.*; no app.*.
@@ -95,15 +96,23 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Path to JSON file with reviewer findings (review phase)",
     )
+    parser.add_argument(
+        "--advisory",
+        action="store_true",
+        help="Log structured phase failures without failing the process; exceptions still fail.",
+    )
     args = parser.parse_args(argv)
 
     try:
         orch = _build_orchestrator(args.phase, args)
         result = orch.run_phase(_phase_enum(args.phase))
-        status = "PASS" if result.passed else "FAIL"
+        status = "PASS" if result.passed else ("ADVISORY_FAIL" if args.advisory else "FAIL")
         print(f"[ci_run_phase] phase={args.phase} status={status} duration_ms={result.duration_ms}")
         for k, v in result.details.items():
             print(f"  {k}: {v}")
+        if args.advisory and not result.passed:
+            print("  advisory: structured failure captured; blocking gate remains disabled")
+            return 0
         return 0 if result.passed else 1
     except Exception:  # noqa: BLE001 — top-level fail-soft (铁律 33 tier-2)
         traceback.print_exc(file=sys.stderr)

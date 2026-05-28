@@ -41,9 +41,10 @@ Still open:
 - `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; API/UI now expose it as `alert` with a `/factors/monitoring` operator action.
 - GitHub Actions workflow now uses `actions/checkout@v6` and `actions/setup-python@v6` to clear the near-term Node 20 runtime warning.
 - Existing `.claude/external-skills/mattpocock-skills` gitlink now has matching `.gitmodules` metadata; no `.claude/` historical content was edited.
+- Advisory `regression` and `ci_matrix` CI jobs now use `scripts/ci_run_phase.py --advisory`: structured failures log `ADVISORY_FAIL` and exit 0, while uncaught runner exceptions still fail.
 - `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Observe the next scheduled `QM-DailyBackup` first-fire after the backup audit envelope; otherwise continue P2 CI/scanner precision governance.
+- Observe the PR CI run after the advisory-mode update; then continue backup first-fire or scanner precision governance.

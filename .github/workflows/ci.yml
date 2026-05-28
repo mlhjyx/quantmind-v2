@@ -92,11 +92,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run regression phase
-        run: python scripts/ci_run_phase.py --phase regression
+        run: python scripts/ci_run_phase.py --phase regression --advisory
         # If cache/baseline/*.json is gitignored on this runner, the orchestrator
-        # captures FILE_MISSING + fails the job. Local pre-push hook + dev iter
-        # are authoritative — runner failure here surfaces missing baseline.
-        continue-on-error: true  # advisory until baseline files are committed
+        # captures FILE_MISSING as ADVISORY_FAIL. Local pre-push hook + dev iter
+        # are authoritative until baseline files are committed.
 
   ci_matrix:
     name: ci_matrix (multi-version smoke)
@@ -114,5 +113,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run ci_matrix phase
-        run: python scripts/ci_run_phase.py --phase ci_matrix
-        continue-on-error: true  # advisory until self-hosted matrix runners ready
+        run: python scripts/ci_run_phase.py --phase ci_matrix --advisory
+        # ADVISORY_FAIL until self-hosted matrix runners are ready.

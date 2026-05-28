@@ -27,6 +27,7 @@
 | B9 | API O7 pipeline logs orphan | Backend/API closure | Completed: `GET /api/pipeline/{run_id}/logs` Redis HTTP backfill implemented and tested; PN-005 writer/WS remain enhancement backlog. |
 | B10 | GitHub Actions Node 20 runtime deprecation | CI governance | Completed: workflow uses Node 24-native action major versions. |
 | B11 | GitHub checkout submodule metadata warning | Git governance | Completed: `.gitmodules` restored for the existing mattpocock skills gitlink. |
+| B12 | Advisory CI red annotation noise | CI governance | Completed: `--advisory` mode logs structured failures as `ADVISORY_FAIL` with exit 0; runner exceptions still fail. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -195,3 +196,19 @@ Evidence:
 Result:
 - Added `.gitmodules` entry for the existing `.claude/external-skills/mattpocock-skills` gitlink.
 - Did not edit or migrate `.claude/` historical content.
+
+## B12 — Advisory CI Annotation Noise
+
+Evidence:
+- After B10/B11, the remaining PR annotations came from `regression` and `ci_matrix`
+  steps that intentionally failed internally under `continue-on-error: true`.
+- The jobs passed overall, but GitHub still displayed red `Process completed with
+  exit code 1` annotations.
+
+Result:
+- Added `scripts/ci_run_phase.py --advisory`.
+- Structured orchestrator failures now print `status=ADVISORY_FAIL`, include the
+  phase details, and exit 0.
+- Uncaught exceptions still exit 1, so broken runners are not hidden.
+- `.github/workflows/ci.yml` now uses `--advisory` for `regression` and `ci_matrix`
+  and no longer relies on `continue-on-error`.

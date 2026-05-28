@@ -80,8 +80,9 @@ ALL NEGATIVE.
 **MVP 4.3 closeout (iter 72)**:
 - `.github/workflows/ci.yml` 4 jobs (pre_commit / pre_push / regression / ci_matrix)
 - `scripts/ci_run_phase.py` single CLI dispatcher (lazy-imports per phase)
-- regression + ci_matrix jobs marked `continue-on-error` until baseline files +
-  self-hosted runners ship (advisory mode for initial activation)
+- regression + ci_matrix jobs run `scripts/ci_run_phase.py --advisory` until baseline
+  files + self-hosted runners ship; structured failures log `ADVISORY_FAIL` while
+  process exceptions still fail the job.
 
 ## §7 关联
 
