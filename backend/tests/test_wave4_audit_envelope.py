@@ -168,6 +168,9 @@ class TestAttributionAuditEnvelope:
         fake_attribution_module.fire_residual_alert.return_value = False
 
         fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.return_value = (1_000_000.0, 0.0123)
+        fake_conn.cursor.return_value = fake_cur
         fake_get_pg = MagicMock(return_value=fake_conn)
 
         with (
@@ -185,6 +188,7 @@ class TestAttributionAuditEnvelope:
         assert "trade_date" in result
         assert result["strategy_id"] == task_mod.settings.PAPER_STRATEGY_ID
         assert result["row_id"] == 999
+        assert result["residual_bps"] == pytest.approx(10.0)
 
         # iter 132 PR #484 reviewer P2: single-conn lifecycle regression guard.
         # Production bug (W2-A F8 P0): factory `get_pg_connection` passed to
@@ -269,6 +273,73 @@ class TestAttributionAuditEnvelope:
 
         assert hasattr(task_mod, "_write_scheduler_log_safe")
         assert callable(task_mod._write_scheduler_log_safe)
+
+    def test_fetch_nav_change_uses_exact_daily_return(self) -> None:
+        """Attribution input must come from performance_series, not the old 0.0 stub."""
+        from datetime import date
+
+        from app.tasks import attribution_tasks as task_mod  # noqa: PLC0415
+
+        fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.return_value = (1_000_000.0, 0.0125)
+        fake_conn.cursor.return_value = fake_cur
+
+        nav_change = task_mod._fetch_nav_change(
+            fake_conn,
+            trade_date=date(2026, 5, 28),
+            strategy_id="paper-strategy-default",
+            execution_mode="paper",
+        )
+
+        assert nav_change == pytest.approx(0.0125)
+        assert fake_cur.execute.call_count == 1
+        assert "performance_series" in fake_cur.execute.call_args.args[0]
+
+    def test_fetch_nav_change_derives_from_nav_when_daily_return_missing(self) -> None:
+        """Older performance_series rows with nav but NULL daily_return remain usable."""
+        from datetime import date
+
+        from app.tasks import attribution_tasks as task_mod  # noqa: PLC0415
+
+        fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.side_effect = [
+            (1_010_000.0, None),
+            (1_000_000.0,),
+        ]
+        fake_conn.cursor.return_value = fake_cur
+
+        nav_change = task_mod._fetch_nav_change(
+            fake_conn,
+            trade_date=date(2026, 5, 28),
+            strategy_id="paper-strategy-default",
+            execution_mode="paper",
+        )
+
+        assert nav_change == pytest.approx(0.01)
+        assert fake_cur.execute.call_count == 2
+
+    def test_fetch_nav_change_returns_zero_when_exact_nav_missing(self) -> None:
+        """Paused days or missing PT rows are attribution no-op, not fabricated returns."""
+        from datetime import date
+
+        from app.tasks import attribution_tasks as task_mod  # noqa: PLC0415
+
+        fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.return_value = None
+        fake_conn.cursor.return_value = fake_cur
+
+        nav_change = task_mod._fetch_nav_change(
+            fake_conn,
+            trade_date=date(2026, 5, 28),
+            strategy_id="paper-strategy-default",
+            execution_mode="paper",
+        )
+
+        assert nav_change == 0.0
+        assert fake_cur.execute.call_count == 1
 
     def test_envelope_helper_silent_on_db_failure(self, caplog: pytest.LogCaptureFixture) -> None:
         """Helper signature: silent_ok 铁律 33(c) — DB write failure logs warning, no raise."""

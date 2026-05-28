@@ -31,6 +31,7 @@ Closed in this batch:
 - Added scheduler audit envelope to backup Beat tasks: `daily_backup_run` writes `success`/`failed`; `weekly_backup_verify` writes `success`/`alert`/`failed`.
 - Fixed `/api/system/health` memory false critical by using available RAM floor (`available_gb >= 8`) instead of used RAM <16GB.
 - Fixed attribution task import roots and strategy id source; manual task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returns that row.
+- Closed attribution NAV input stub: `daily_attribution_compute_task` now reads exact-date `performance_series.daily_return` / NAV fallback instead of hardcoding `nav_change_pct=0.0`; paused-day missing rows remain explicit no-op.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.

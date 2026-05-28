@@ -77,6 +77,11 @@ ALL NEGATIVE.
 - [x] 残差 > 阈值自动 flag via AlertRouter SDK (iter 64 ✅, 10 tests)
 - [x] Daily Beat task scheduled `daily-attribution-compute` 16:30 Mon-Fri SH + DB migration (iter 65 ✅, 7 tests)
 
+**Runtime wiring addendum (2026-05-28 remediation)**:
+- `daily_attribution_compute_task` no longer hardcodes `nav_change_pct=0.0`; it reads exact-date `performance_series.daily_return` for the configured paper strategy, deriving from current/previous NAV when `daily_return` is NULL.
+- Missing exact-date NAV during PT pause windows remains an explicit no-op (`0.0`) rather than fabricated return data.
+- Component source loaders for factor/sector/cost/regime attribution remain the next precision layer; the platform compute functions and persistence contract are present, while the Beat wrapper now has real NAV input instead of a stub.
+
 **Cumulative tests**: 61/61 PASS (8+9+9+9+9+10+7 = 61, 0.13s).
 
 **铁律 44 X9 post-merge ops** (新 Beat entry + 新 task module 必须执行):

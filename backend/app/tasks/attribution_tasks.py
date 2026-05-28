@@ -45,20 +45,85 @@ def _get_sh_trade_date() -> date:
     return datetime.now(SH_TZ).date()
 
 
-def _fetch_paper_nav_change() -> float:
-    """Fetch latest PT NAV daily change (decimal fraction).
+def _fetch_nav_change(
+    conn,
+    trade_date: date,
+    strategy_id: str,
+    execution_mode: str = "paper",
+) -> float:
+    """Fetch exact-date NAV daily change from performance_series.
 
-    Initial stub: reads from positions snapshot or signal task output.
-    Follow-up: pull from authoritative NAV history table.
+    `performance_series` is the PT/QMT NAV history SSOT used by paper-trading
+    status, risk, and graduation checks. Prefer its `daily_return`; if older rows
+    only have NAV, derive the return from the previous available NAV.
 
     Returns:
-        float — decimal fraction (0.012 = 1.2%); 0.0 if unavailable
-        (silent_ok: missing NAV → 0 residual no-op, Beat task does not raise).
+        Decimal fraction (0.012 = 1.2%). Missing exact-date NAV returns 0.0
+        (silent_ok: attribution no-op when PT is paused or no NAV row exists).
     """
-    # TODO(MVP 4.2 follow-up): real NAV pull from existing source.
-    # For initial Beat activation, return 0.0 — persists row with all zeros,
-    # validates DB write path + Beat schedule wiring without false alert.
-    return 0.0
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT nav, daily_return
+           FROM performance_series
+           WHERE strategy_id = %s
+             AND execution_mode = %s
+             AND trade_date = %s
+           LIMIT 1""",
+        (strategy_id, execution_mode, trade_date),
+    )
+    row = cur.fetchone()
+    if not row:
+        logger.info(
+            "[Attribution] no performance_series row for %s/%s/%s; nav_change=0",
+            trade_date,
+            strategy_id,
+            execution_mode,
+        )
+        return 0.0
+
+    nav, daily_return = row
+    if daily_return is not None:
+        return float(daily_return)
+
+    if nav is None:
+        logger.info(
+            "[Attribution] performance_series nav is NULL for %s/%s/%s; nav_change=0",
+            trade_date,
+            strategy_id,
+            execution_mode,
+        )
+        return 0.0
+
+    cur.execute(
+        """SELECT nav
+           FROM performance_series
+           WHERE strategy_id = %s
+             AND execution_mode = %s
+             AND trade_date < %s
+           ORDER BY trade_date DESC
+           LIMIT 1""",
+        (strategy_id, execution_mode, trade_date),
+    )
+    prev_row = cur.fetchone()
+    if not prev_row or prev_row[0] is None:
+        logger.info(
+            "[Attribution] no previous performance_series NAV before %s/%s/%s; nav_change=0",
+            trade_date,
+            strategy_id,
+            execution_mode,
+        )
+        return 0.0
+
+    prev_nav = float(prev_row[0])
+    if prev_nav <= 0:
+        logger.info(
+            "[Attribution] previous NAV <= 0 before %s/%s/%s; nav_change=0",
+            trade_date,
+            strategy_id,
+            execution_mode,
+        )
+        return 0.0
+    return float(nav) / prev_nav - 1.0
 
 
 # ════════════════════════════════════════════════════════════
@@ -161,59 +226,65 @@ def daily_attribution_compute_task(self, trade_date_str: str | None = None) -> d
             else:
                 trade_date = _get_sh_trade_date()
 
-            # ── Fetch inputs (iter 65 stub; full wiring in follow-up) ──
+            # ── Fetch inputs ──
             strategy_id = settings.PAPER_STRATEGY_ID
-            nav_change_pct = _fetch_paper_nav_change()
 
-            # ── Build attribution (initial: empty dicts, real wiring next iter) ──
-            attribution_initial = DailyAttribution(
-                trade_date=trade_date,
-                strategy_id=strategy_id,
-                execution_mode="paper",
-                nav_change_pct=nav_change_pct,
-                by_factor={},
-                by_sector={},
-                by_regime=None,
-                by_cost={},
-                alpha_vs_benchmark=0.0,
-            )
-
-            residual = compute_unexplained_residual(attribution_initial)
-
-            # Rebuild with populated residual (frozen dataclass)
-            attribution_final = DailyAttribution(
-                trade_date=attribution_initial.trade_date,
-                strategy_id=attribution_initial.strategy_id,
-                execution_mode=attribution_initial.execution_mode,
-                nav_change_pct=attribution_initial.nav_change_pct,
-                by_factor=attribution_initial.by_factor,
-                by_sector=attribution_initial.by_sector,
-                by_regime=attribution_initial.by_regime,
-                by_cost=attribution_initial.by_cost,
-                alpha_vs_benchmark=attribution_initial.alpha_vs_benchmark,
-                unexplained_residual=residual,
-            )
-
-            # ── Persist row (open conn once, lambda factory for same-conn DI) ──
-            # iter 132 fix F7 (phantom `app.core.db.get_pg_connection`) — `app/core/db.py`
-            # doesn't exist (0 grep hits, 0 callers other than this line); canonical sync
-            # conn factory = `app.services.db.get_sync_conn` (sibling meta_monitor +
-            # daily_pipeline).
-            #
-            # iter 132 fix F8 P0 (PR #484 reviewer cycle 1) — single-conn lifecycle
-            # eliminates double-open leak. Old pattern passed `get_pg_connection` as
-            # factory → persist_attribution opens conn #1 + INSERT (no commit, per Engine
-            # contract); caller then opens *separate* conn #2 + commits conn #2 → conn #1
-            # garbage-collected with uncommitted INSERT (Postgres autorollback) → since
-            # iter 65 MVP 4.2 first run (24+ days), every persist attempt silently rolled
-            # back. Fix: open conn once + `lambda: conn` factory always returns the same
-            # already-open conn + commit same conn after persist returns + close in finally.
-            # Preserves persist_attribution's conn_factory DI contract + honors 铁律 32
-            # transaction-owner-is-caller semantics.
             from app.services.db import get_sync_conn  # noqa: PLC0415
 
             conn = get_sync_conn()
             try:
+                nav_change_pct = _fetch_nav_change(
+                    conn,
+                    trade_date=trade_date,
+                    strategy_id=strategy_id,
+                    execution_mode="paper",
+                )
+
+                # ── Build attribution (component wiring remains incremental) ──
+                attribution_initial = DailyAttribution(
+                    trade_date=trade_date,
+                    strategy_id=strategy_id,
+                    execution_mode="paper",
+                    nav_change_pct=nav_change_pct,
+                    by_factor={},
+                    by_sector={},
+                    by_regime=None,
+                    by_cost={},
+                    alpha_vs_benchmark=0.0,
+                )
+
+                residual = compute_unexplained_residual(attribution_initial)
+
+                # Rebuild with populated residual (frozen dataclass)
+                attribution_final = DailyAttribution(
+                    trade_date=attribution_initial.trade_date,
+                    strategy_id=attribution_initial.strategy_id,
+                    execution_mode=attribution_initial.execution_mode,
+                    nav_change_pct=attribution_initial.nav_change_pct,
+                    by_factor=attribution_initial.by_factor,
+                    by_sector=attribution_initial.by_sector,
+                    by_regime=attribution_initial.by_regime,
+                    by_cost=attribution_initial.by_cost,
+                    alpha_vs_benchmark=attribution_initial.alpha_vs_benchmark,
+                    unexplained_residual=residual,
+                )
+
+                # ── Persist row (open conn once, lambda factory for same-conn DI) ──
+                # iter 132 fix F7 (phantom `app.core.db.get_pg_connection`) — `app/core/db.py`
+                # doesn't exist (0 grep hits, 0 callers other than this line); canonical sync
+                # conn factory = `app.services.db.get_sync_conn` (sibling meta_monitor +
+                # daily_pipeline).
+                #
+                # iter 132 fix F8 P0 (PR #484 reviewer cycle 1) — single-conn lifecycle
+                # eliminates double-open leak. Old pattern passed `get_pg_connection` as
+                # factory → persist_attribution opens conn #1 + INSERT (no commit, per Engine
+                # contract); caller then opens *separate* conn #2 + commits conn #2 → conn #1
+                # garbage-collected with uncommitted INSERT (Postgres autorollback) → since
+                # iter 65 MVP 4.2 first run (24+ days), every persist attempt silently rolled
+                # back. Fix: open conn once + `lambda: conn` factory always returns the same
+                # already-open conn + commit same conn after persist returns + close in finally.
+                # Preserves persist_attribution's conn_factory DI contract + honors 铁律 32
+                # transaction-owner-is-caller semantics.
                 row_id = persist_attribution(lambda: conn, attribution_final)
                 conn.commit()  # 铁律 32 — caller owns commit, same conn as persist INSERT
 

@@ -29,6 +29,7 @@
 | B11 | GitHub checkout submodule metadata warning | Git governance | Completed: `.gitmodules` restored for the existing mattpocock skills gitlink. |
 | B12 | Advisory CI red annotation noise | CI governance | Completed: `--advisory` mode logs structured failures as `ADVISORY_FAIL` with exit 0; runner exceptions still fail. |
 | B13 | Frontend raw axios scanner precision | Frontend governance | Completed: comment-aware scanner added and wired into local pre-commit + CI pre_commit. |
+| B14 | Attribution NAV input stub | Eval/Beat closure | Completed: Beat wrapper now reads exact-date `performance_series.daily_return` / NAV fallback instead of hardcoded `0.0`; regression tests cover daily_return, derived-NAV, and paused-day no-op paths. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -86,6 +87,7 @@ Evidence:
 Result:
 - Fixed runtime import root setup so `backend.qm_platform.*` resolves from Celery/FastAPI/manual task contexts.
 - Changed attribution task `strategy_id` from a hard-coded placeholder to `settings.PAPER_STRATEGY_ID`, aligning write and read paths.
+- Replaced the Beat wrapper's hardcoded NAV-change stub with exact-date `performance_series` input. It prefers `daily_return`, derives from current/previous NAV when needed, and only returns `0.0` when no exact-date NAV row exists.
 - Manual task apply wrote `daily_attribution.id=2` for `28fc37e5-2d32-4ada-92e0-41c11a5103d0`.
 - `GET /api/attribution/latest`: 200 with that row.
 - Deleted the earlier manual-test noise row `daily_attribution.id=1` for `paper-strategy-default`; kept scheduler logs as audit trail.

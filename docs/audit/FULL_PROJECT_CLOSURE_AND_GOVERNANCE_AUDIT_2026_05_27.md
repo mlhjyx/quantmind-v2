@@ -12,7 +12,7 @@ Closed:
 - FastAPI, Celery Worker, and Celery Beat restarted; `/api/system/beat-schedule` returns 27 entries and now resolves canonical `scheduler_task_log` aliases for `last_fire_*`.
 - `/api/system/health` fixed for DB-session concurrency, slow sub-checks, and memory false-critical threshold; runtime now returns `overall_status='ok'`.
 - Celery health now reports Windows solo worker liveness through process fallback and includes a warning when `inspect` is skipped.
-- Attribution task import roots and `strategy_id` source fixed; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
+- Attribution task import roots, `strategy_id` source, and NAV input source fixed; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, `/api/attribution/latest` returns it, and the Beat wrapper now reads `performance_series` instead of hardcoding `nav_change_pct=0.0`.
 - `memory/project_sprint_state.md` restored as tracked handoff SSOT.
 - Active `.agents/skills` files are versioned, with `.agents/skills/README.md` policy and automated inventory guard.
 
@@ -34,7 +34,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28: `pipeline_settings` migration applied and `/api/pipeline/status` returned 200.
 - Closed 2026-05-28: runtime FastAPI was reloaded and `/api/system/beat-schedule` returned 27 entries; canonical alias matching now populates existing `last_fire_*` rows.
 - Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, memory health uses available RAM floor, and fresh runtime probe records `overall_status='ok'`.
-- Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
+- Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, `/api/attribution/latest` returns it, and the task now derives NAV change from `performance_series`.
 - Closed 2026-05-28: scheduler status false positives and backup failure path remediated; `QM-SmokeTest` is disabled/retired, and `QM-DailyBackup` now has a fresh verified 14,480.2MB dump.
 - Closed 2026-05-28: `QM-ICMonitor` factor-quality alerts now carry operator disposition metadata and the System Settings scheduler row links to `/factors/monitoring`.
 - Closed 2026-05-28: `memory/project_sprint_state.md` exists and is tracked.
@@ -117,6 +117,7 @@ Initial impact:
 
 Remediation:
 - Attribution task import roots and configured `strategy_id` source were fixed.
+- The task's NAV input no longer uses the initial `0.0` stub. `_fetch_nav_change()` now reads exact-date `performance_series.daily_return`, derives from current/previous NAV when needed, and treats missing exact-date rows as PT-pause no-op.
 - Manual task apply wrote `daily_attribution.id=2` for configured `PAPER_STRATEGY_ID`.
 - `/api/attribution/latest` returned the persisted row.
 
@@ -221,7 +222,7 @@ Backlog:
 | Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries; canonical alias join now populates existing `last_fire_*` rows. |
 | Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers; memory health uses available RAM floor; regression tests and fresh runtime HTTP 200 evidence. |
 | Partially closed | Scheduler failure triage | Ops + UI | `QM-SmokeTest` stale disabled-task false positive closed; `QM-DailyBackup` partial dump path fixed and fresh verified dump produced; `QM-ICMonitor` reclassified as `alert` with `/factors/monitoring` operator disposition. Remaining partial status is only next scheduled backup first-fire evidence. |
-| Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it. Future pause-window 0-row semantics remain a P2 policy refinement. |
+| Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it; Beat wrapper now reads `performance_series` NAV input instead of hardcoding `0.0`. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
 | P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action version upgrade + `--advisory` no-noise CI mode completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
