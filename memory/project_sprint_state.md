@@ -39,7 +39,7 @@ Closed in this batch:
 
 Still open:
 - `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; API/UI now expose it as `alert` with a `/factors/monitoring` operator action.
-- GitHub Actions workflow now opts into Node 24 JavaScript action runtime to clear the near-term Node 20 deprecation warning.
+- GitHub Actions workflow now uses `actions/checkout@v6` and `actions/setup-python@v6` to clear the near-term Node 20 runtime warning.
 - `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.

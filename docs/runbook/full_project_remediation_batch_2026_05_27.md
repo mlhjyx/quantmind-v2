@@ -25,7 +25,7 @@
 | B7 | Full-project governance objective | Governance control | Completed: objective and completion criteria captured in `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`. |
 | B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
 | B9 | API O7 pipeline logs orphan | Backend/API closure | Completed: `GET /api/pipeline/{run_id}/logs` Redis HTTP backfill implemented and tested; PN-005 writer/WS remain enhancement backlog. |
-| B10 | GitHub Actions Node 20 runtime deprecation | CI governance | Completed: workflow opts into Node 24 JavaScript action runtime. |
+| B10 | GitHub Actions Node 20 runtime deprecation | CI governance | Completed: workflow uses Node 24-native action major versions. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -181,5 +181,5 @@ Evidence:
 - The warning recommended opting into Node 24 before the default switch.
 
 Result:
-- `.github/workflows/ci.yml` now sets `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` at workflow scope.
-- Existing action versions remain unchanged; this is a runner-runtime governance fix, not a CI behavior rewrite.
+- GitHub release probes verified `actions/checkout` latest tag `v6.0.2` and `actions/setup-python` latest tag `v6.2.0`.
+- `.github/workflows/ci.yml` now uses `actions/checkout@v6` and `actions/setup-python@v6`.

@@ -176,7 +176,7 @@ Remediation:
 
 GitHub Actions has `regression` and `ci_matrix` jobs marked `continue-on-error: true` (`.github/workflows/ci.yml:102`, `.github/workflows/ci.yml:122`). Local Git hooks have stronger pre-push smoke gates (`config/hooks/pre-push:90`), while pre-commit markdown canonical checks are warning-only (`config/hooks/pre-commit:190-199`).
 
-2026-05-28 remediation also opted the workflow into GitHub's Node 24 JavaScript action runtime using `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`, removing the near-term Node 20 runner deprecation warning from the governance backlog.
+2026-05-28 remediation upgraded the workflow to `actions/checkout@v6` and `actions/setup-python@v6` after verifying latest releases through GitHub, removing the near-term Node 20 JavaScript action runtime warning from the governance backlog.
 
 Impact:
 - CI/CD is partially enforceable but not equivalent to local governance.
@@ -219,7 +219,7 @@ Backlog:
 | Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
-| P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action runtime opt-in completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
+| P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action version upgrade completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
 | P2 | Scanner precision | Frontend governance | Avoid comment-only axios false positives. |
 
 ## Verification Log
