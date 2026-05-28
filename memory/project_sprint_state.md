@@ -1,5 +1,5 @@
 ---
-description: Codex remediation handoff updated after runtime, Agent LLM, CI, attribution, and mining remediation.
+description: Codex remediation handoff updated after runtime, Agent LLM, CI, attribution, mining, and GP feedback remediation.
 date: 2026-05-29 +08:00
 status: governance_runtime_remediation_in_progress
 source_report: docs/audit/FULL_PROJECT_CLOSURE_AND_GOVERNANCE_AUDIT_2026_05_27.md
@@ -38,6 +38,7 @@ Closed in this batch:
 - Closed attribution contributor empty-dict stub: `daily_attribution_compute_task` now feeds existing factor/sector/cost attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; Dashboard empty state now means no attributable latest-row inputs, not unimplemented wiring.
 - Closed BruteForce mining placeholder: `run_bruteforce_mining` now executes the existing BruteForce engine, writes `bf_` quick-gate candidates with explicit pending full-review metadata, and `BruteForceEngine._compute_ic_series` delegates to `engines.ic_calculator.compute_ic_series`.
 - Closed mining full-gate contract drift: `run_full_gate` now calls `FactorGatePipeline.run_gates` and reads `GateReport.gates` / `overall_status`, replacing the stale non-existent `run` contract.
+- Code-closed GP cross-round feedback: the scheduled Celery GP task and manual CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, run full Gate with that blacklist, and persist full-Gate rejects for the next run.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -55,4 +56,4 @@ Still open:
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Observe the next scheduled backup first-fire evidence; otherwise continue design-doc implementation-gap audit, with GP scheduling/feedback loop still open after BruteForce task closure.
+- Observe the next scheduled backup first-fire evidence and a controlled GP next-run feedback consumption proof; otherwise continue design-doc implementation-gap audit, now focusing on backtest runner unification, runtime first-fire evidence, and remaining governance drift.

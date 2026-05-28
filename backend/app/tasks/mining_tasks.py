@@ -16,11 +16,15 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger("celery.mining_tasks")
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_GP_RESULTS_DIR = _PROJECT_ROOT / "gp_results"
 
 
 def _generate_run_id(config: dict[str, Any], engine: str = "gp") -> str:
@@ -40,6 +44,127 @@ def _generate_run_id(config: dict[str, Any], engine: str = "gp") -> str:
     week = now.isocalendar()[1]
     config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
     return f"{engine}_{year}w{week:02d}_{config_hash}"
+
+
+def _gp_results_output_dir(config: dict[str, Any]) -> Path:
+    """Resolve GP cross-round cache directory from task config."""
+    raw = config.get("output_dir") or config.get("results_dir")
+    if not raw:
+        return _DEFAULT_GP_RESULTS_DIR
+    path = Path(str(raw))
+    return path if path.is_absolute() else _PROJECT_ROOT / path
+
+
+def _collect_full_gate_failed_hashes(
+    candidates: list[Any],
+    passed_factors: list[dict[str, Any]],
+    blacklist: set[str],
+) -> list[str]:
+    """Return candidate AST hashes that entered full Gate but did not pass."""
+    passed_hashes = {
+        str(factor.get("ast_hash")) for factor in passed_factors if factor.get("ast_hash")
+    }
+    failed: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        ast_hash = getattr(candidate, "ast_hash", "")
+        if not ast_hash or ast_hash in seen or ast_hash in blacklist:
+            continue
+        seen.add(ast_hash)
+        if ast_hash not in passed_hashes:
+            failed.append(ast_hash)
+    return failed
+
+
+def _merge_gp_feedback_payload(
+    previous_run: Any | None,
+    approved_feedback: list[dict[str, Any]],
+    rejected_hashes: set[str],
+) -> tuple[list[dict[str, Any]], set[str], dict[str, int], str]:
+    """Merge persisted run feedback with human approval decisions."""
+    merged_blacklist = set(getattr(previous_run, "blacklisted_hashes", set()) or set())
+    merged_blacklist.update(rejected_hashes)
+
+    top_results: list[dict[str, Any]] = []
+    seen_hashes: set[str] = set()
+    for source_items in (
+        list(getattr(previous_run, "top_results", []) or []),
+        approved_feedback,
+    ):
+        for source in source_items:
+            ast_hash = str(source.get("ast_hash", ""))
+            if not ast_hash or ast_hash in seen_hashes or ast_hash in merged_blacklist:
+                continue
+            top_results.append(dict(source))
+            seen_hashes.add(ast_hash)
+
+    rejection_reasons = dict(getattr(previous_run, "rejection_reasons", {}) or {})
+    if rejected_hashes:
+        rejection_reasons["human_rejected"] = rejection_reasons.get("human_rejected", 0) + len(
+            rejected_hashes
+        )
+
+    base_run_id = str(getattr(previous_run, "run_id", "") or "")
+    run_id = base_run_id
+    if approved_feedback or rejected_hashes:
+        run_id = f"{base_run_id}+approval_feedback" if base_run_id else "approval_feedback"
+    return top_results, merged_blacklist, rejection_reasons, run_id
+
+
+def _merge_blacklist_for_persist(
+    previous_blacklist: set[str],
+    failed_hashes: list[str],
+) -> list[str]:
+    """Persist old and newly rejected hashes into the next-run cache."""
+    return sorted(set(previous_blacklist).union(failed_hashes))
+
+
+async def _load_gp_approval_feedback(
+    db_url: str,
+    limit: int = 200,
+) -> tuple[list[dict[str, Any]], set[str]]:
+    """Load reviewed GP approval decisions for next-run seed/blacklist feedback."""
+    import asyncpg
+
+    try:
+        conn = await asyncpg.connect(db_url)
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT factor_name, factor_expr, ast_hash, gate_report, status, reviewed_at
+                FROM gp_approval_queue
+                WHERE status IN ('approved', 'rejected')
+                  AND ast_hash IS NOT NULL
+                  AND ast_hash <> ''
+                ORDER BY reviewed_at DESC NULLS LAST, created_at DESC
+                LIMIT $1
+                """,
+                limit,
+            )
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.warning("加载 GP 审批反馈失败，跳过人工反馈注入", extra={"error": str(exc)})
+        return [], set()
+
+    approved: list[dict[str, Any]] = []
+    rejected: set[str] = set()
+    for row in rows:
+        ast_hash = str(row["ast_hash"])
+        if row["status"] == "rejected":
+            rejected.add(ast_hash)
+            continue
+        approved.append(
+            {
+                "factor_expr": row["factor_expr"],
+                "ast_hash": ast_hash,
+                "factor_name": row["factor_name"],
+                "source": "gp_approval_queue",
+                "reviewed_at": row["reviewed_at"].isoformat() if row["reviewed_at"] else None,
+                "gate_report": row["gate_report"] or {},
+            }
+        )
+    return approved, rejected
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +258,14 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     """
     import os
 
-    from engines.mining.gp_engine import GPConfig, GPEngine
+    from engines.mining.gp_engine import (
+        GPConfig,
+        GPEngine,
+        PreviousRunData,
+        add_blacklist_to_results_file,
+        load_previous_results,
+        save_run_results,
+    )
     from engines.mining.pipeline_utils import (
         compute_forward_returns,
         load_existing_factor_data,
@@ -160,6 +292,30 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
 
     forward_returns = compute_forward_returns(market_data)
 
+    output_dir = _gp_results_output_dir(config)
+    previous_run_id = config.get("previous_run_id")
+    previous_run = load_previous_results(
+        output_dir,
+        str(previous_run_id) if previous_run_id else None,
+    )
+    approved_feedback, rejected_feedback = await _load_gp_approval_feedback(
+        db_url,
+        int(config.get("approval_feedback_limit", 200)),
+    )
+    top_results, merged_blacklist, rejection_reasons, feedback_run_id = _merge_gp_feedback_payload(
+        previous_run,
+        approved_feedback,
+        rejected_feedback,
+    )
+    if top_results or merged_blacklist:
+        previous_run = PreviousRunData(
+            top_results=top_results,
+            blacklisted_hashes=merged_blacklist,
+            rejection_reasons=rejection_reasons,
+            run_id=feedback_run_id,
+        )
+    previous_blacklist = previous_run.blacklisted_hashes if previous_run else set()
+
     # 初始化 GP Engine
     gp_config = GPConfig(
         n_islands=config.get("islands", 3),
@@ -173,6 +329,7 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     engine = GPEngine(
         config=gp_config,
         existing_factor_data=existing_factors,
+        previous_run=previous_run,
     )
 
     gp_results, gp_stats = engine.evolve(
@@ -188,18 +345,46 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
         "n_generations_completed": gp_stats.n_generations_completed,
         "elapsed_seconds": round(gp_stats.elapsed_seconds, 1),
         "timeout": gp_stats.timeout,
+        "previous_run_id": previous_run.run_id if previous_run else None,
+        "previous_blacklist_size": len(previous_blacklist),
+        "approval_feedback_approved": len(approved_feedback),
+        "approval_feedback_rejected": len(rejected_feedback),
     }
 
     # 完整 Gate G1-G8（取 Top 20）
     passed_factors: list[dict[str, Any]] = []
+    gate_top_k = int(config.get("gate_top_k", 20))
+    top_candidates = gp_results[:gate_top_k]
     if gp_results:
         passed_factors = run_full_gate(
-            candidates=gp_results[:20],
+            candidates=top_candidates,
             market_data=market_data,
             forward_returns=forward_returns,
-            blacklist=set(),
+            blacklist=set(previous_blacklist),
         )
     stats["passed_gate_full"] = len(passed_factors)
+
+    results_path = save_run_results(
+        gp_results,
+        gp_stats,
+        output_dir,
+        top_k=int(config.get("results_top_k", gate_top_k)),
+    )
+    failed_hashes = _collect_full_gate_failed_hashes(
+        top_candidates,
+        passed_factors,
+        set(previous_blacklist),
+    )
+    persisted_blacklist = _merge_blacklist_for_persist(set(previous_blacklist), failed_hashes)
+    if persisted_blacklist:
+        add_blacklist_to_results_file(
+            results_path,
+            persisted_blacklist,
+            rejection_reasons={"full_gate_rejected": len(failed_hashes)},
+        )
+    stats["results_file"] = str(results_path)
+    stats["new_full_gate_rejections"] = len(failed_hashes)
+    stats["persisted_blacklist_size"] = len(persisted_blacklist)
 
     # 写 DB
     await _write_results_to_db(db_url, run_id, stats, passed_factors)

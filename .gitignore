@@ -79,6 +79,7 @@ models/*.csv
 STATUS_REPORT.md
 
 # Research intermediate caches (large, regeneratable)
+gp_results/
 cache/phase3a_ic_quickscreen.csv
 cache/phase3b/
 cache/phase3b_*

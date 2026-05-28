@@ -36,6 +36,7 @@
 | B18 | Attribution contributor empty-dict stub | Eval/Beat/UI closure | Completed: Beat wrapper now feeds existing factor/sector/cost attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; frontend empty state no longer says wiring is unimplemented. |
 | B19 | BruteForce mining task placeholder | Factor mining closure | Completed: Celery task now runs the existing BruteForce engine, persists `bf_` quick-gate candidates, and BruteForce IC calculation uses the shared IC calculator API. |
 | B20 | Mining full-gate contract drift | Factor mining closure | Completed: `run_full_gate` now calls `FactorGatePipeline.run_gates` and handles `GateReport.gates` / `overall_status` instead of a non-existent `run` contract. |
+| B21 | GP cross-round feedback not wired in production runners | Factor mining closure | Completed: Celery GP task and CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -328,3 +329,53 @@ Verification:
 Follow-up:
 - Regime attribution still waits for a canonical RegimeInfo source; this is a
   bounded enhancement rather than the factor/sector/cost closure blocker.
+
+## B19 — BruteForce Mining Task Closure
+
+Result:
+- `run_bruteforce_mining` now executes the existing BruteForce engine instead of
+  returning `not_implemented`.
+- The task persists `bf_` quick-gate candidates to `gp_approval_queue` with
+  explicit pending full-review metadata.
+- `BruteForceEngine._compute_ic_series` delegates to the shared IC calculator API.
+
+Verification:
+- `ruff check backend/app/tasks/mining_tasks.py backend/engines/mining/bruteforce_engine.py backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py`
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py backend/tests/test_mining_engine.py -q`
+
+## B20 — Mining Full-Gate Contract Drift
+
+Result:
+- `backend/engines/mining/pipeline_utils.py::run_full_gate` now calls
+  `FactorGatePipeline.run_gates` instead of the stale non-existent `run` method.
+- The wrapper consumes `GateReport.gates` and `overall_status`.
+- `PARTIAL` is accepted as valid approval-queue input because current G6-G8
+  semantics are human-review pending after machine gates pass.
+
+Verification:
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_factor_gate.py -q`
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py backend/tests/test_mining_engine.py -q`
+- `ruff check backend/app/tasks/mining_tasks.py backend/engines/mining/pipeline_utils.py backend/engines/mining/bruteforce_engine.py backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py`
+- `python scripts/ci_run_phase.py --phase pre_commit`
+- `python scripts/ci_run_phase.py --phase pre_push`
+
+## B21 — GP Cross-Round Feedback
+
+Result:
+- `backend/app/tasks/mining_tasks.py` now resolves a GP result cache directory,
+  loads `PreviousRunData`, merges reviewed `gp_approval_queue` decisions,
+  passes approved seed / rejected blacklist feedback into `GPEngine`, supplies
+  the merged blacklist to full Gate, and appends full-Gate rejects to the saved
+  result JSON for the next run.
+- `scripts/run_gp_pipeline.py` now mirrors the same feedback semantics for
+  manual/CLI runs instead of only logging that previous results were loaded.
+- `gp_results/` is ignored as regeneratable runtime cache.
+
+Verification:
+- `ruff check backend/app/tasks/mining_tasks.py scripts/run_gp_pipeline.py backend/tests/test_gp_pipeline.py`
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_gp_engine.py backend/tests/test_gp_cross_round.py -q`
+
+Remaining:
+- Capture a controlled end-to-end run or the next scheduled first-fire evidence
+  showing persisted previous-run and reviewed approval feedback is consumed by
+  the following run.

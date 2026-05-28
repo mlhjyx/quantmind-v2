@@ -20,6 +20,7 @@ Closed:
 - Attribution factor/sector/cost contributor dictionaries are no longer hardcoded empty: the Beat wrapper now feeds existing attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; the Dashboard no-input state no longer claims the path is unimplemented.
 - BruteForce mining is no longer a UI/API-to-task dead end: the Celery task now runs the existing BruteForce engine, writes `bf_` quick-gate candidates with explicit `quick_gate_only` / pending full-review gate metadata, and the engine's IC series calculation delegates to `engines.ic_calculator.compute_ic_series`.
 - Mining full-gate contract drift is closed: `run_full_gate` now uses `FactorGatePipeline.run_gates` and the actual `GateReport.gates` / `overall_status` shape instead of the old non-existent `run` / `gate_results` / `overall_passed` contract.
+- GP cross-round feedback is code-wired: the Celery GP task and CLI runner now load previous results plus reviewed `gp_approval_queue` decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run; remaining status is controlled run / first-fire evidence.
 
 Closed / reclassified:
 - `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
@@ -49,6 +50,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-29: CI pre-push smoke wrapper timeout no longer false-fails the current smoke suite.
 - Closed 2026-05-29: BruteForce mining task placeholder removed; `/api/mining/run` with `engine='bruteforce'` now reaches executable task logic instead of marking the run failed as `not_implemented`.
 - Closed 2026-05-29: Mining full-gate wrapper no longer silently skips every candidate due to a stale `FactorGatePipeline.run` call.
+- Partially closed 2026-05-29: GP scheduled/manual runners now consume previous-run plus reviewed approval/rejection seed/blacklist feedback and write full-Gate rejects back to the next-run cache; first-fire evidence remains open.
 
 ## Evidence Map
 
@@ -263,6 +265,7 @@ Backlog:
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
 | Closed | Agent LLM cost/log/model-health read stubs | AI governance | Completed 2026-05-28/29: cost summary, agent logs, and observed model health now read `llm_call_log`; frontend cost display uses USD truth. |
 | Closed | Pre-push smoke timeout drift | CI governance | Completed 2026-05-29: direct smoke passed in 123s; pre-push orchestrator timeout raised from 90s to 180s. |
+| Partially closed | GP cross-round feedback | Factor mining | Completed 2026-05-29 code wiring: Celery GP task and CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run. Remaining status is controlled run / first-fire evidence. |
 | P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action version upgrade + `--advisory` no-noise CI mode completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
 | Closed | Gitlink metadata repair | Git governance | Completed 2026-05-28: restored `.gitmodules` entry for the existing mattpocock skills gitlink to remove checkout cleanup warnings. |
 | Closed | Scanner precision | Frontend governance | Completed 2026-05-28: comment-aware raw axios scanner added and wired into pre-commit + CI pre_commit. |

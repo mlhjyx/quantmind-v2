@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,7 +39,11 @@ _SKIP_WIN_ASYNC = pytest.mark.skipif(
 
 try:
     from app.tasks.mining_tasks import (
+        _collect_full_gate_failed_hashes,
+        _gp_results_output_dir,
         _mark_run_failed,
+        _merge_blacklist_for_persist,
+        _merge_gp_feedback_payload,
         _run_bruteforce_mining_async,
         _run_gp_mining_async,
         _write_results_to_db,
@@ -91,6 +96,104 @@ class TestTaskRegistration:
     def test_gp_mining_is_callable(self) -> None:
         """run_gp_mining 应是可调用对象。"""
         assert callable(run_gp_mining)
+
+
+# ---------------------------------------------------------------------------
+# 1b. GP cross-round state helpers
+# ---------------------------------------------------------------------------
+
+
+class TestGPCrossRoundTaskHelpers:
+    """Celery GP task should preserve engine-level cross-round learning state."""
+
+    def test_gp_results_output_dir_defaults_to_repo_cache_dir(self) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        assert _gp_results_output_dir({}) == project_root / "gp_results"
+
+    def test_gp_results_output_dir_accepts_config_override(self) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        assert _gp_results_output_dir({"output_dir": "tmp/gp-cache"}) == (
+            project_root / "tmp/gp-cache"
+        )
+
+    def test_collect_full_gate_failed_hashes_excludes_passed_and_existing_blacklist(self) -> None:
+        candidates = [
+            SimpleNamespace(ast_hash="pass_hash"),
+            SimpleNamespace(ast_hash="fail_hash"),
+            SimpleNamespace(ast_hash="already_blacklisted"),
+            SimpleNamespace(ast_hash="fail_hash"),
+            SimpleNamespace(ast_hash=""),
+        ]
+        passed = [{"ast_hash": "pass_hash"}]
+
+        failed = _collect_full_gate_failed_hashes(
+            candidates,
+            passed,
+            blacklist={"already_blacklisted"},
+        )
+
+        assert failed == ["fail_hash"]
+
+    def test_cli_collect_full_gate_failed_hashes_matches_task_semantics(self) -> None:
+        from scripts.run_gp_pipeline import (  # noqa: PLC0415
+            _collect_full_gate_failed_hashes as cli_collect,
+        )
+
+        candidates = [
+            SimpleNamespace(ast_hash="pass_hash"),
+            SimpleNamespace(ast_hash="fail_hash"),
+            SimpleNamespace(ast_hash="already_blacklisted"),
+        ]
+
+        assert cli_collect(
+            candidates,
+            [{"ast_hash": "pass_hash"}],
+            blacklist=["already_blacklisted"],
+        ) == ["fail_hash"]
+
+    def test_merge_gp_feedback_payload_adds_approved_and_blacklists_rejected(self) -> None:
+        previous = SimpleNamespace(
+            top_results=[
+                {"factor_expr": "old_expr", "ast_hash": "old_hash"},
+                {"factor_expr": "reject_expr", "ast_hash": "reject_hash"},
+            ],
+            blacklisted_hashes={"old_blacklist"},
+            rejection_reasons={"full_gate_rejected": 1},
+            run_id="gp_prev",
+        )
+
+        top_results, blacklist, reasons, run_id = _merge_gp_feedback_payload(
+            previous,
+            [{"factor_expr": "approved_expr", "ast_hash": "approved_hash"}],
+            {"reject_hash"},
+        )
+
+        assert [item["ast_hash"] for item in top_results] == ["old_hash", "approved_hash"]
+        assert blacklist == {"old_blacklist", "reject_hash"}
+        assert reasons == {"full_gate_rejected": 1, "human_rejected": 1}
+        assert run_id == "gp_prev+approval_feedback"
+
+    def test_merge_blacklist_for_persist_keeps_old_and_new_rejections(self) -> None:
+        assert _merge_blacklist_for_persist(
+            {"old_gate_reject", "human_reject"},
+            ["new_gate_reject", "old_gate_reject"],
+        ) == ["human_reject", "new_gate_reject", "old_gate_reject"]
+
+    def test_cli_merge_approval_feedback_matches_task_semantics(self) -> None:
+        from scripts.run_gp_pipeline import _merge_approval_feedback  # noqa: PLC0415
+
+        top, blacklist = _merge_approval_feedback(
+            [{"factor_expr": "old_expr", "ast_hash": "old_hash"}],
+            ["existing_blacklist"],
+            [
+                {"factor_expr": "approved_expr", "ast_hash": "approved_hash"},
+                {"factor_expr": "dupe_expr", "ast_hash": "old_hash"},
+            ],
+            ["rejected_hash"],
+        )
+
+        assert [item["ast_hash"] for item in top] == ["old_hash", "approved_hash"]
+        assert blacklist == ["existing_blacklist", "rejected_hash"]
 
     def test_bruteforce_mining_is_callable(self) -> None:
         """run_bruteforce_mining 应是可调用对象。"""
