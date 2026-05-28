@@ -26,6 +26,7 @@
 | B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
 | B9 | API O7 pipeline logs orphan | Backend/API closure | Completed: `GET /api/pipeline/{run_id}/logs` Redis HTTP backfill implemented and tested; PN-005 writer/WS remain enhancement backlog. |
 | B10 | GitHub Actions Node 20 runtime deprecation | CI governance | Completed: workflow uses Node 24-native action major versions. |
+| B11 | GitHub checkout submodule metadata warning | Git governance | Completed: `.gitmodules` restored for the existing mattpocock skills gitlink. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -183,3 +184,14 @@ Evidence:
 Result:
 - GitHub release probes verified `actions/checkout` latest tag `v6.0.2` and `actions/setup-python` latest tag `v6.2.0`.
 - `.github/workflows/ci.yml` now uses `actions/checkout@v6` and `actions/setup-python@v6`.
+
+## B11 — Gitlink Metadata
+
+Evidence:
+- CI checkout cleanup warned: `No url found for submodule path '.claude/external-skills/mattpocock-skills' in .gitmodules`.
+- `git ls-files -s` showed that path is already tracked as mode `160000`.
+- Local gitlink remote is `https://github.com/mattpocock/skills.git`.
+
+Result:
+- Added `.gitmodules` entry for the existing `.claude/external-skills/mattpocock-skills` gitlink.
+- Did not edit or migrate `.claude/` historical content.

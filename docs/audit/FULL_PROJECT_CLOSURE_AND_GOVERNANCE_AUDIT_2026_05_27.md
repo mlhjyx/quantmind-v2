@@ -178,6 +178,8 @@ GitHub Actions has `regression` and `ci_matrix` jobs marked `continue-on-error: 
 
 2026-05-28 remediation upgraded the workflow to `actions/checkout@v6` and `actions/setup-python@v6` after verifying latest releases through GitHub, removing the near-term Node 20 JavaScript action runtime warning from the governance backlog.
 
+Follow-up CI log review found a separate checkout cleanup warning caused by an existing gitlink at `.claude/external-skills/mattpocock-skills` with no `.gitmodules` entry. The existing local remote was verified as `https://github.com/mattpocock/skills.git`; `.gitmodules` now records that metadata without editing `.claude/` content.
+
 Impact:
 - CI/CD is partially enforceable but not equivalent to local governance.
 - Closure claims should separate "advisory CI" from "blocking CI".
@@ -220,6 +222,7 @@ Backlog:
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
 | P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action version upgrade completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
+| Closed | Gitlink metadata repair | Git governance | Completed 2026-05-28: restored `.gitmodules` entry for the existing mattpocock skills gitlink to remove checkout cleanup warnings. |
 | P2 | Scanner precision | Frontend governance | Avoid comment-only axios false positives. |
 
 ## Verification Log
