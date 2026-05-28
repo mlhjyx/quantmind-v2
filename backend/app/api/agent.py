@@ -25,7 +25,7 @@ Upgrade path (1 commit when ready):
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -408,6 +408,10 @@ _KNOWN_MODELS: tuple[str, ...] = (
     "qwen3",
 )
 
+_MODEL_HEALTH_LOOKBACK = timedelta(days=7)
+_MODEL_HEALTH_STALE_AFTER = timedelta(hours=24)
+_MODEL_HEALTH_ROW_LIMIT = 500
+
 
 def _task_to_agent(task: str) -> str:
     """Map stable LLM task enum values to the AgentConfig dashboard buckets."""
@@ -469,6 +473,15 @@ def _to_float(value: Any) -> float:
     if isinstance(value, Decimal):
         return float(value)
     return float(value)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Normalize database timestamps to aware UTC datetimes."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 # H1 真闭环 (2026-05-19, ISSUES_PENDING_REGISTRY §9 H1): prompt_history table
@@ -869,34 +882,75 @@ async def rollback_agent_config(
         raise HTTPException(status_code=500, detail=f"Rollback failed: {exc}") from exc
 
 
-@router.get("/model-health", summary="LLM 模型健康检查 (stub)")
+@router.get("/model-health", summary="LLM 模型健康检查 (llm_call_log observed)")
 async def get_model_health(
     _: None = Depends(verify_admin_token),  # P3-1 fix: 反 model/provider name leak
 ) -> list[dict[str, Any]]:
-    """返回 3 model health stub. 真实施需 backend periodic LLM ping cron."""
-    return [
-        {
-            "model": "deepseek-v4-pro",
-            "is_online": True,
-            "latency_ms": None,
-            "last_checked_at": datetime.now(UTC).isoformat(),
-            "error": "stub mode — periodic ping cron 未实施",
-        },
-        {
-            "model": "deepseek-v4-flash",
-            "is_online": True,
-            "latency_ms": None,
-            "last_checked_at": datetime.now(UTC).isoformat(),
-            "error": "stub mode",
-        },
-        {
-            "model": "qwen3-local",
+    """Return observed model health from recent LLM audit rows.
+
+    This endpoint intentionally does not live-ping providers: live probes need
+    an ops-owned periodic task so page loads never create hidden LLM spend.
+    """
+    now = datetime.now(UTC)
+    lookback_start = now - _MODEL_HEALTH_LOOKBACK
+    default_error = f"no llm_call_log observation in last {_MODEL_HEALTH_LOOKBACK.days}d"
+    health: dict[str, dict[str, Any]] = {
+        model: {
+            "model": model,
             "is_online": False,
             "latency_ms": None,
-            "last_checked_at": datetime.now(UTC).isoformat(),
-            "error": "stub mode + ollama_chat fallback only (L7 sync: qwen3 → qwen3-local)",
-        },
-    ]
+            "last_checked_at": None,
+            "error": default_error,
+        }
+        for model in _KNOWN_MODELS
+    }
+
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT actual_model, primary_alias, triggered_at, latency_ms, error_class
+                FROM llm_call_log
+                WHERE triggered_at >= %s
+                ORDER BY triggered_at DESC
+                LIMIT %s
+                """,
+                (lookback_start, _MODEL_HEALTH_ROW_LIMIT),
+            )
+            rows = cur.fetchall()
+    except Exception as exc:
+        logger.exception("get_model_health llm_call_log query failed")
+        raise HTTPException(status_code=500, detail=f"Model health query failed: {exc}") from exc
+    finally:
+        conn.close()
+
+    seen: set[str] = set()
+    for actual_model, primary_alias, triggered_at, latency_ms, error_class in rows:
+        model = _normalize_model_id(actual_model, primary_alias)
+        if model in seen:
+            continue
+        seen.add(model)
+        last_checked_at = _as_utc(triggered_at)
+        stale = last_checked_at is None or now - last_checked_at > _MODEL_HEALTH_STALE_AFTER
+        if error_class:
+            error = f"last call failed: {error_class}"
+            is_online = False
+        elif stale:
+            error = "last observation stale (>24h)"
+            is_online = False
+        else:
+            error = None
+            is_online = True
+        health[model] = {
+            "model": model,
+            "is_online": is_online,
+            "latency_ms": int(latency_ms) if latency_ms is not None else None,
+            "last_checked_at": last_checked_at.isoformat() if last_checked_at else None,
+            "error": error,
+        }
+
+    return [health[model] for model in _KNOWN_MODELS]
 
 
 @router.get("/cost-summary", summary="LLM 成本汇总 (从 llm_call_log 真值)")

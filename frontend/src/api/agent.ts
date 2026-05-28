@@ -31,7 +31,7 @@ export interface ModelHealth {
   model: ModelId;
   is_online: boolean;
   latency_ms: number | null;
-  last_checked_at: string;
+  last_checked_at: string | null;
   error?: string;
 }
 

@@ -38,7 +38,7 @@
 > **Session 57 (2026-05-19) addendum** — 本 doc 实施进度 update (per ISSUES_PENDING_REGISTRY §6 G1):
 > - **AI_ASSIST_ENABLED env flag** (NEW commit 7e8f0bb): real LLM in /api/agent/chat 路径接通, gate on F-S7-001 cost tracking修复 (commit 23ebea5)
 > - **LiteLLM cache-hit fallback** (P9, commit 6d51a77): cost 精度 +20% for repeated prompts
-> - **AgentConfig page** backend endpoints — config/history are `prompt_history` backed, cost-summary/logs are `llm_call_log` backed as of 2026-05-28; model-health remains static until periodic ping source lands.
+> - **AgentConfig page** backend endpoints — config/history are `prompt_history` backed; cost-summary/logs/model-health are `llm_call_log` backed as of 2026-05-29. Model-health is observed health from recent audit rows; periodic live ping remains a future ops enhancement.
 > - **真完成度**: 旧 ~30% (Sprint 1.18 placeholder) → 现 ~45% (AI Assist real LLM + 4 entry points + cost tracking)
 > - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §6 G1 / `LL-187` sediment
 

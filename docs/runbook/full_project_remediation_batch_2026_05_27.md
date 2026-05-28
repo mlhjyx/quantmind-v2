@@ -31,6 +31,8 @@
 | B13 | Frontend raw axios scanner precision | Frontend governance | Completed: comment-aware scanner added and wired into local pre-commit + CI pre_commit. |
 | B14 | Attribution NAV input stub | Eval/Beat closure | Completed: Beat wrapper now reads exact-date `performance_series.daily_return` / NAV fallback instead of hardcoded `0.0`; regression tests cover daily_return, derived-NAV, and paused-day no-op paths. |
 | B15 | Agent cost/log read stubs | AI governance | Completed: `/api/agent/cost-summary` and `/api/agent/{name}/logs` now read `llm_call_log`; frontend cost dashboard now displays USD truth instead of synthetic CNY. |
+| B16 | Agent model-health static stub | AI governance | Completed: `/api/agent/model-health` now reports observed model health from recent `llm_call_log` rows; missing/stale/error states are explicit. |
+| B17 | CI pre-push smoke timeout drift | CI governance | Completed: pre-push orchestrator smoke subprocess timeout raised to 180s after the current smoke suite passed in 123s but the old 90s wrapper timed out. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -256,6 +258,41 @@ Result:
 - Regression tests cover monthly aggregation, invalid month rejection, and
   per-agent log rows.
 
-Remaining:
-- `/api/agent/model-health` is still a static health view until a periodic model
-  ping source is implemented; this is a separate ops probe, not cost/log closure.
+Follow-up:
+- Periodic live model ping remains a separate ops probe enhancement. The current
+  page-load endpoint is intentionally read-only and does not create hidden LLM
+  spend.
+
+## B16 — Agent Model Health Observed Status
+
+Evidence:
+- `/api/agent/model-health` still returned hardcoded online/offline rows after
+  `llm_call_log` audit logging landed.
+- The AgentConfig page already consumed model health, so the static values could
+  mislead operators after provider errors or long idle windows.
+
+Result:
+- `/api/agent/model-health` now reads recent `llm_call_log` rows and normalizes
+  provider strings into AgentConfig model buckets.
+- Latest successful observations younger than 24h are reported online.
+- Latest failed calls, stale observations, and missing observations are reported
+  offline with explicit reasons.
+- Frontend model-health typing/display handles `last_checked_at = null`.
+
+Verification:
+- `backend/tests/test_agent_api_llm_observability.py` covers recent success,
+  latest error, stale observation, and missing observation states.
+
+## B17 — CI Pre-Push Smoke Timeout Drift
+
+Evidence:
+- `scripts/ci_run_phase.py --phase pre_push` failed with
+  `smoke_test: TIMEOUT after 90s`.
+- The same smoke selection passed when run directly:
+  `91 passed, 4 skipped, 6819 deselected` in 123s.
+
+Result:
+- `backend/qm_platform/ci/prepush.py` now allows 180s for the whole smoke
+  subprocess while preserving per-test `--timeout=60`.
+- `backend/tests/test_qm_platform_ci_prepush.py` now asserts the 180s timeout
+  and timeout detail text.

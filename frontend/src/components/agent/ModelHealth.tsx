@@ -72,7 +72,9 @@ export function ModelHealth({ models, loading }: ModelHealthProps) {
           )}
 
           <p className="text-[10px] text-slate-600">
-            检测于 {new Date(m.last_checked_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+            {m.last_checked_at
+              ? `检测于 ${new Date(m.last_checked_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
+              : "暂无观测记录"}
           </p>
         </GlassCard>
       ))}

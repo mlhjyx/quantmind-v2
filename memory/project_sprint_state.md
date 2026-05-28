@@ -33,6 +33,8 @@ Closed in this batch:
 - Fixed attribution task import roots and strategy id source; manual task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returns that row.
 - Closed attribution NAV input stub: `daily_attribution_compute_task` now reads exact-date `performance_series.daily_return` / NAV fallback instead of hardcoding `nav_change_pct=0.0`; paused-day missing rows remain explicit no-op.
 - Closed Agent LLM observability read stubs: `/api/agent/cost-summary` and `/api/agent/{name}/logs` now read `llm_call_log`, and the frontend cost dashboard displays USD truth instead of synthetic CNY.
+- Closed Agent model-health static stub: `/api/agent/model-health` now reports observed health from recent `llm_call_log` rows with explicit missing/stale/error states; live provider ping remains future ops enhancement.
+- Closed CI pre-push smoke timeout drift: direct smoke passed in 123s, so the pre-push orchestrator wrapper timeout is now 180s while preserving per-test `--timeout=60`.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.

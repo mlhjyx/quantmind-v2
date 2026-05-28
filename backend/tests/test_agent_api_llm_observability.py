@@ -7,7 +7,7 @@ log panels must read llm_call_log truth instead of returning hardcoded stubs.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -109,6 +109,52 @@ def test_cost_summary_rejects_invalid_month() -> None:
         asyncio.run(agent.get_cost_summary(month="2026-13", _=None))
 
     assert exc.value.status_code == 400
+
+
+def test_model_health_reads_recent_llm_call_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime.now(UTC)
+    recent = now - timedelta(minutes=5)
+    stale = now - timedelta(days=2)
+    cur = _FakeCursor(
+        fetchone_rows=[],
+        fetchall_rows=[
+            [
+                ("deepseek/deepseek-v4-flash", "news_classify", recent, 321, None),
+                ("deepseek/deepseek-v4-pro", "risk_reflector", recent, 1500, "TimeoutError"),
+                ("ollama/qwen3", "qwen3-local", stale, 900, None),
+            ]
+        ],
+    )
+    conn = _FakeConn(cur)
+    monkeypatch.setattr(agent, "_get_db_conn", lambda: conn)
+
+    rows = asyncio.run(agent.get_model_health(_=None))
+
+    assert conn.closed is True
+    by_model = {row["model"]: row for row in rows}
+    assert by_model["deepseek-v4-flash"] == {
+        "model": "deepseek-v4-flash",
+        "is_online": True,
+        "latency_ms": 321,
+        "last_checked_at": recent.isoformat(),
+        "error": None,
+    }
+    assert by_model["deepseek-v4-pro"] == {
+        "model": "deepseek-v4-pro",
+        "is_online": False,
+        "latency_ms": 1500,
+        "last_checked_at": recent.isoformat(),
+        "error": "last call failed: TimeoutError",
+    }
+    assert by_model["qwen3-local"] == {
+        "model": "qwen3-local",
+        "is_online": False,
+        "latency_ms": 900,
+        "last_checked_at": stale.isoformat(),
+        "error": "last observation stale (>24h)",
+    }
+    assert by_model["deepseek-r1"]["last_checked_at"] is None
+    assert by_model["deepseek-r1"]["error"] == "no llm_call_log observation in last 7d"
 
 
 def test_agent_logs_read_llm_call_log(monkeypatch: pytest.MonkeyPatch) -> None:
