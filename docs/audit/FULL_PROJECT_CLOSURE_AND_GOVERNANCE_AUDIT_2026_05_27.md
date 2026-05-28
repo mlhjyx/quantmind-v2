@@ -18,6 +18,7 @@ Closed:
 - Agent LLM observability read paths are no longer hardcoded stubs: `/api/agent/cost-summary`, `/api/agent/{name}/logs`, and `/api/agent/model-health` now read `llm_call_log`; the frontend cost dashboard displays USD fields that match the persisted audit column.
 - CI pre-push smoke timeout drift is closed: the smoke suite passed in 123s, and the orchestrator wrapper timeout now allows 180s while preserving per-test timeout guards.
 - Attribution factor/sector/cost contributor dictionaries are no longer hardcoded empty: the Beat wrapper now feeds existing attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; the Dashboard no-input state no longer claims the path is unimplemented.
+- BruteForce mining is no longer a UI/API-to-task dead end: the Celery task now runs the existing BruteForce engine, writes `bf_` quick-gate candidates with explicit `quick_gate_only` / pending full-review gate metadata, and the engine's IC series calculation delegates to `engines.ic_calculator.compute_ic_series`.
 
 Closed / reclassified:
 - `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
@@ -45,6 +46,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28: `.agents/skills` is governed as the active Codex project skill layer; `.claude/skills` remains historical.
 - Closed 2026-05-28/29: Agent cost/log/model-health panels now read `llm_call_log` truth instead of returning synthetic zero/empty/static data; periodic live model ping remains a separate ops enhancement.
 - Closed 2026-05-29: CI pre-push smoke wrapper timeout no longer false-fails the current smoke suite.
+- Closed 2026-05-29: BruteForce mining task placeholder removed; `/api/mining/run` with `engine='bruteforce'` now reaches executable task logic instead of marking the run failed as `not_implemented`.
 
 ## Evidence Map
 

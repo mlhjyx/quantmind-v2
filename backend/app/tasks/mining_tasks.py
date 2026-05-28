@@ -23,11 +23,11 @@ from app.tasks.celery_app import celery_app
 logger = logging.getLogger("celery.mining_tasks")
 
 
-def _generate_run_id(config: dict[str, Any]) -> str:
+def _generate_run_id(config: dict[str, Any], engine: str = "gp") -> str:
     """根据当前时间+配置生成唯一 run_id。
 
-    格式: gp_{YYYY}w{WW}_{hash8}
-    例如: gp_2026w14_a1b2c3d4
+    格式: {engine}_{YYYY}w{WW}_{hash8}
+    例如: gp_2026w14_a1b2c3d4 / bruteforce_2026w14_a1b2c3d4
 
     Args:
         config: GP 配置字典（用于哈希，保证同周不同配置产生不同ID）。
@@ -39,7 +39,7 @@ def _generate_run_id(config: dict[str, Any]) -> str:
     year = now.year
     week = now.isocalendar()[1]
     config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
-    return f"gp_{year}w{week:02d}_{config_hash}"
+    return f"{engine}_{year}w{week:02d}_{config_hash}"
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +222,7 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
 
 
 # ---------------------------------------------------------------------------
-# BruteForce 挖掘任务（占位，Sprint 1.18 实现）
+# BruteForce 挖掘任务
 # ---------------------------------------------------------------------------
 
 
@@ -235,14 +235,14 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     time_limit=7800,
 )
 def run_bruteforce_mining(self, run_id: str, config: dict[str, Any]) -> dict[str, Any]:
-    """BruteForce 因子挖掘 Celery 任务（Sprint 1.18 占位）。
+    """BruteForce 因子挖掘 Celery 任务。
 
     Args:
         run_id: 运行 ID。
         config: BruteForce 配置。
 
     Returns:
-        {"run_id": str, "status": "not_implemented"}
+        {"run_id": str, "status": "completed", "passed_factors": int, "stats": dict}
     """
     # D1 O3 (PN-003 iter 12) — pause gate-at-entry, see run_gp_mining for rationale.
     paused = asyncio.run(_is_pipeline_paused())
@@ -261,9 +261,142 @@ def run_bruteforce_mining(self, run_id: str, config: dict[str, Any]) -> dict[str
         )
         return {"status": "skipped_paused", "engine": "bruteforce", "run_id": run_id}
 
-    logger.warning("BruteForce 挖掘任务尚未实现", extra={"run_id": run_id})
-    asyncio.run(_mark_run_failed(run_id, "BruteForce引擎尚未实现（Sprint 1.18）"))
-    return {"run_id": run_id, "status": "not_implemented"}
+    if not run_id:
+        run_id = _generate_run_id(config, engine="bruteforce")
+        asyncio.run(_init_pipeline_run(run_id, config, engine_type="bruteforce"))
+
+    logger.info("BruteForce 挖掘任务启动", extra={"run_id": run_id, "config": config})
+    start = time.monotonic()
+
+    try:
+        result = asyncio.run(_run_bruteforce_mining_async(run_id, config))
+        elapsed = time.monotonic() - start
+        logger.info(
+            "BruteForce 挖掘任务完成",
+            extra={
+                "run_id": run_id,
+                "elapsed_min": round(elapsed / 60, 1),
+                "passed_factors": result.get("passed_factors", 0),
+            },
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "BruteForce 挖掘任务异常",
+            extra={"run_id": run_id, "error": str(exc)},
+            exc_info=True,
+        )
+        asyncio.run(_mark_run_failed(run_id, str(exc)))
+        raise
+
+
+async def _run_bruteforce_mining_async(run_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """BruteForce 挖掘主逻辑.
+
+    当前闭环为 discovery-grade: 运行 BruteForce G1-G3 快速 Gate, 将候选以
+    quick_gate_only 标记写入 gp_approval_queue, 后续仍需人工/完整 Gate 审查。
+    """
+    import os
+
+    from engines.mining.ast_dedup import ASTDeduplicator
+    from engines.mining.bruteforce_engine import FACTOR_TEMPLATES, BruteForceEngine, FactorTemplate
+    from engines.mining.pipeline_utils import (
+        load_market_data,
+        send_dingtalk_notification,
+    )
+
+    db_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
+    )
+    dingtalk_webhook = os.environ.get("DINGTALK_WEBHOOK", "")
+    dingtalk_secret = os.environ.get("DINGTALK_SECRET")
+    start = time.monotonic()
+
+    lookback_days = int(config.get("lookback_days", 365))
+    forward_days = int(config.get("forward_days", config.get("horizon", 20)))
+    max_combinations = max(1, int(config.get("max_combinations", 1000)))
+    gate_top_k = max(1, min(int(config.get("gate_top_k", 20)), 100))
+
+    market_data = await load_market_data(db_url, lookback_days=lookback_days)
+    if market_data.empty:
+        await _mark_run_failed(run_id, "BruteForce行情数据为空")
+        return {"run_id": run_id, "status": "failed", "error": "market_data_empty"}
+
+    panel_data = _prepare_bruteforce_panel(market_data)
+    forward_returns = _compute_panel_forward_returns(panel_data, forward_days=forward_days)
+    if forward_returns.dropna().empty:
+        await _mark_run_failed(run_id, "BruteForce前向收益为空")
+        return {"run_id": run_id, "status": "failed", "error": "forward_returns_empty"}
+
+    templates = _select_bruteforce_templates(
+        config=config,
+        all_templates=FACTOR_TEMPLATES,
+        template_cls=FactorTemplate,
+    )
+    templates = templates[:max_combinations]
+    if not templates:
+        await _mark_run_failed(run_id, "BruteForce模板筛选后为空")
+        return {"run_id": run_id, "status": "failed", "error": "templates_empty"}
+
+    engine = BruteForceEngine(
+        g1_ic_threshold=float(config.get("g1_ic_threshold", 0.015)),
+        g2_corr_threshold=float(config.get("g2_corr_threshold", 0.7)),
+        g3_t_threshold=float(config.get("g3_t_threshold", 2.0)),
+        min_ic_periods=int(config.get("min_ic_periods", 12)),
+    )
+    enumerated_count = len(engine.enumerate_candidates(templates))
+    quick_results = engine.run(
+        panel_data=panel_data,
+        forward_returns=forward_returns,
+        active_factors=None,
+        templates=templates,
+    )
+    quick_results.sort(key=lambda c: (abs(c.t_stat), abs(c.ic_mean)), reverse=True)
+
+    dedup = ASTDeduplicator()
+    passed_factors = [
+        _bruteforce_candidate_to_queue_payload(candidate, dedup)
+        for candidate in quick_results[:gate_top_k]
+    ]
+    best = passed_factors[0] if passed_factors else None
+    elapsed_seconds = round(time.monotonic() - start, 1)
+    stats: dict[str, Any] = {
+        "engine": "bruteforce",
+        "quick_gate_only": True,
+        "total_evaluated": enumerated_count,
+        "passed_quick_gate": len(quick_results),
+        "passed_gate_full": len(passed_factors),
+        "best_fitness": best["fitness"] if best else 0.0,
+        "best_expr": best["factor_expr"] if best else "",
+        "elapsed_seconds": elapsed_seconds,
+        "lookback_days": lookback_days,
+        "forward_days": forward_days,
+        "template_count": len(templates),
+    }
+
+    await _write_results_to_db(
+        db_url,
+        run_id,
+        stats,
+        passed_factors,
+        factor_prefix="bf",
+    )
+
+    send_dingtalk_notification(
+        webhook_url=dingtalk_webhook,
+        secret=dingtalk_secret,
+        run_id=run_id,
+        stats=stats,
+        passed_factors=passed_factors,
+    )
+
+    return {
+        "run_id": run_id,
+        "status": "completed",
+        "passed_factors": len(passed_factors),
+        "stats": stats,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -315,14 +448,118 @@ async def _is_pipeline_paused() -> tuple[Any, str | None] | None:
         return None
 
 
-async def _init_pipeline_run(run_id: str, config: dict[str, Any]) -> None:
+def _prepare_bruteforce_panel(market_data: Any) -> Any:
+    """将 pipeline_utils 行情宽表转换为 BruteForce 所需 MultiIndex 面板."""
+    rename_map = {"trade_date": "date", "code": "symbol_id", "turnover": "turnover_rate"}
+    panel = market_data.rename(columns=rename_map).copy()
+    required = {"date", "symbol_id", "close"}
+    missing = required - set(panel.columns)
+    if missing:
+        raise ValueError(f"BruteForce行情数据缺少必要列: {sorted(missing)}")
+    panel = panel.sort_values(["symbol_id", "date"], kind="mergesort")
+    return panel.set_index(["date", "symbol_id"]).sort_index()
+
+
+def _compute_panel_forward_returns(panel_data: Any, forward_days: int = 20) -> Any:
+    """按 symbol 计算 MultiIndex(date, symbol_id) 前向收益."""
+    close = panel_data["close"].astype("float64")
+    future = close.groupby(level="symbol_id").shift(-forward_days)
+    return (future / close - 1.0).rename(f"fwd_ret_{forward_days}d")
+
+
+def _select_bruteforce_templates(
+    config: dict[str, Any],
+    all_templates: list[Any],
+    template_cls: type[Any],
+) -> list[Any]:
+    """按前端 BruteForce 配置筛选内置模板和窗口."""
+    requested_fields = set(config.get("fields") or [])
+    field_aliases = {"turnover": "turnover_rate"}
+    requested_fields = {field_aliases.get(f, f) for f in requested_fields}
+    requested_windows = {int(w) for w in config.get("windows") or []}
+    requested_functions = set(config.get("functions") or [])
+
+    selected: list[Any] = []
+    for template in all_templates:
+        if requested_fields and not set(template.required_fields).issubset(requested_fields):
+            continue
+        windows = tuple(
+            w for w in template.windows if not requested_windows or w in requested_windows
+        )
+        if not windows:
+            continue
+        if requested_functions and not any(
+            fn in template.expr_template for fn in requested_functions
+        ):
+            continue
+        selected.append(
+            template_cls(
+                name=template.name,
+                category=template.category,
+                description=template.description,
+                economic_rationale=template.economic_rationale,
+                direction=template.direction,
+                required_fields=list(template.required_fields),
+                windows=windows,
+                expr_template=template.expr_template,
+                academic_support=template.academic_support,
+            )
+        )
+    return selected
+
+
+def _bruteforce_candidate_to_queue_payload(candidate: Any, dedup: Any) -> dict[str, Any]:
+    """把 BruteForce FactorCandidate 转成 gp_approval_queue 写入结构."""
+    ast_hash = dedup.ast_hash(candidate.expression)
+    direction = 1 if candidate.direction == "positive" else -1
+    fitness = abs(candidate.ic_mean) * max(abs(candidate.t_stat), 1.0)
+    return {
+        "factor_expr": candidate.expression,
+        "ast_hash": ast_hash,
+        "fitness": round(float(fitness), 6),
+        "ic_mean": round(float(candidate.ic_mean), 6),
+        "t_stat": round(float(candidate.t_stat), 4),
+        "complexity": round(len(candidate.expression) / 100.0, 4),
+        "novelty": round(1.0 - max(float(candidate.max_corr_with_active), 0.0), 4),
+        "gate_result": {
+            "G1": "PASS" if candidate.passed_g1 else "FAIL",
+            "G2": "PASS" if candidate.passed_g2 else "FAIL",
+            "G3": "PASS" if candidate.passed_g3 else "FAIL",
+            "G4": "PENDING_NEUTRAL_IC",
+            "G5": "PENDING_DIRECTION_REVIEW",
+            "G6": "PENDING_QUANT_REVIEW",
+            "G7": "PENDING_BACKTEST",
+            "G8": "PENDING_STRATEGY_FIT",
+            "quick_gate_only": True,
+            "engine": "bruteforce",
+            "factor_name": candidate.name,
+            "category": candidate.category,
+            "direction": candidate.direction,
+            "expected_direction": direction,
+            "window": candidate.window,
+            "academic_support": candidate.academic_support,
+            "economic_rationale": candidate.economic_rationale,
+        },
+        "parent_seed": candidate.name,
+        "generation": 0,
+        "island_id": 0,
+        "param_slots": {"window": candidate.window},
+    }
+
+
+async def _init_pipeline_run(
+    run_id: str,
+    config: dict[str, Any],
+    engine_type: str = "gp",
+) -> None:
     """在 pipeline_runs 写入初始记录（status='running'）。
 
     Beat 自动调度场景下由 task 自身负责写入，而非调用方。
 
     Args:
         run_id: 自动生成的运行 ID。
-        config: GP 配置字典，写入 config 列备查。
+        config: 引擎配置字典，写入 config 列备查。
+        engine_type: pipeline_runs.engine_type。
     """
     import os
 
@@ -338,10 +575,11 @@ async def _init_pipeline_run(run_id: str, config: dict[str, Any]) -> None:
             """
             INSERT INTO pipeline_runs
                 (run_id, engine_type, status, config, started_at)
-            VALUES ($1, 'gp', 'running', $2, NOW())
+            VALUES ($1, $2, 'running', $3, NOW())
             ON CONFLICT (run_id) DO NOTHING
             """,
             run_id,
+            engine_type,
             json.dumps(config),
         )
         await conn.close()
@@ -389,14 +627,16 @@ async def _write_results_to_db(
     run_id: str,
     stats: dict[str, Any],
     passed_factors: list[dict[str, Any]],
+    factor_prefix: str = "gp",
 ) -> None:
     """将运行结果写入 pipeline_runs + gp_approval_queue。
 
     Args:
         db_url: PostgreSQL 连接字符串。
         run_id: 运行 ID。
-        stats: GP 运行统计。
-        passed_factors: 通过完整 Gate 的因子列表。
+        stats: 引擎运行统计。
+        passed_factors: 待审批候选列表；可来自完整 Gate 或 quick-gate-only 发现路径。
+        factor_prefix: gp_approval_queue.factor_name 前缀。
     """
     import asyncpg
 
@@ -438,7 +678,7 @@ async def _write_results_to_db(
                 ON CONFLICT DO NOTHING
                 """,
                 run_id,
-                f"gp_{factor['ast_hash'][:8]}",
+                f"{factor_prefix}_{factor['ast_hash'][:8]}",
                 factor["factor_expr"],
                 factor["ast_hash"],
                 json.dumps(factor["gate_result"]),

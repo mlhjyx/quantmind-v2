@@ -2,7 +2,7 @@
 
 覆盖 app/tasks/mining_tasks.py:
   - run_gp_mining: 任务结构正确，mock GP Engine可执行
-  - run_bruteforce_mining: 返回 not_implemented
+  - run_bruteforce_mining: 调用 BruteForce 异步执行路径
   - _mark_run_failed: 异常时不崩溃（mock asyncpg）
   - _run_gp_mining_async: 数据为空时提前返回 failed
   - 异常处理: 任何步骤失败不导致未捕获崩溃
@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
 
 # F74/F18: Windows asyncio event loop hang — GP pipeline async tests freeze on IOCP.
@@ -36,6 +38,7 @@ _SKIP_WIN_ASYNC = pytest.mark.skipif(
 try:
     from app.tasks.mining_tasks import (
         _mark_run_failed,
+        _run_bruteforce_mining_async,
         _run_gp_mining_async,
         _write_results_to_db,
         run_bruteforce_mining,
@@ -50,6 +53,22 @@ pytestmark = pytest.mark.skipif(
     not _TASKS_AVAILABLE,
     reason="mining_tasks 导入失败（Celery未安装或导入错误）",
 )
+
+
+def _fake_asyncio_run(*results):
+    """Mock asyncio.run while closing coroutine objects created by task wrappers."""
+    iterator = iter(results)
+
+    def _run(coro):
+        close = getattr(coro, "close", None)
+        if close:
+            close()
+        result = next(iterator)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    return _run
 
 
 # ---------------------------------------------------------------------------
@@ -78,40 +97,111 @@ class TestTaskRegistration:
 
 
 # ---------------------------------------------------------------------------
-# 2. run_bruteforce_mining — not_implemented占位符
+# 2. run_bruteforce_mining — BruteForce 执行路径
 # ---------------------------------------------------------------------------
 
 
 class TestBruteforceMiningTask:
-    """run_bruteforce_mining 是Sprint 1.18占位符，应返回not_implemented。"""
+    """run_bruteforce_mining 应执行真实 BruteForce 路径。"""
 
-    def test_bruteforce_returns_not_implemented(self) -> None:
-        """run_bruteforce_mining 应返回 status=not_implemented。"""
-        with patch("app.tasks.mining_tasks._mark_run_failed") as mock_mark:
-            mock_mark.return_value = None
+    def test_bruteforce_returns_completed_result(self) -> None:
+        """run_bruteforce_mining 应返回异步执行结果。"""
+        expected = {
+            "run_id": "bf_test_001",
+            "status": "completed",
+            "passed_factors": 1,
+            "stats": {"engine": "bruteforce"},
+        }
+        with patch("asyncio.run", side_effect=_fake_asyncio_run(None, expected)):
+            result = run_bruteforce_mining.__wrapped__(
+                run_id="bf_test_001",
+                config={"max_combinations": 10},
+            )
 
-            # mock asyncio.run 避免真实 DB; return_value=None → pause gate 走 not-paused 分支
-            # (D1 O3 PN-003 iter 12 后 asyncio.run 被调 2 次: _is_pipeline_paused + _mark_run_failed)
-            with patch("asyncio.run", return_value=None):
-                # 直接调用底层函数（绕过Celery装饰器）
-                result = run_bruteforce_mining.__wrapped__(
-                    run_id="bf_test_001",
-                    config={"generations": 10},
-                )
-
-        assert result["status"] == "not_implemented"
+        assert result["status"] == "completed"
         assert result["run_id"] == "bf_test_001"
 
-    def test_bruteforce_calls_mark_failed(self) -> None:
-        """run_bruteforce_mining 应调用 _mark_run_failed 标记任务失败。"""
-        with patch("asyncio.run", return_value=None) as mock_run:
-            run_bruteforce_mining.__wrapped__(
-                run_id="bf_fail_001",
+    def test_bruteforce_calls_async_runner(self) -> None:
+        """run_bruteforce_mining 应先检查 pause gate 再执行异步 runner。"""
+        expected = {"run_id": "bf_run_001", "status": "completed", "passed_factors": 0}
+        with patch("asyncio.run", side_effect=_fake_asyncio_run(None, expected)) as mock_run:
+            result = run_bruteforce_mining.__wrapped__(
+                run_id="bf_run_001",
                 config={},
             )
-            # asyncio.run 被调 2 次: pause gate (_is_pipeline_paused) + _mark_run_failed
-            # (D1 O3 PN-003 iter 12 pause gate-at-entry sediment)
-            assert mock_run.call_count == 2
+
+        assert result is expected
+        assert mock_run.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_bruteforce_async_writes_bf_candidates(self) -> None:
+        """BruteForce async runner 应写入 bf_ 前缀候选并标记 quick_gate_only。"""
+        dates = pd.date_range("2024-01-01", periods=30, freq="B")
+        codes = [f"S{i:03d}" for i in range(25)]
+        rows = [
+            {
+                "trade_date": d,
+                "code": c,
+                "close": 10.0 + i * 0.01,
+                "volume": 1000.0 + i,
+                "amount": 10000.0 + i,
+                "turnover_rate": 0.01,
+            }
+            for i, (d, c) in enumerate((d, c) for d in dates for c in codes)
+        ]
+        market_data = pd.DataFrame(rows)
+        candidate = SimpleNamespace(
+            name="close_mean_5",
+            category="price_volume",
+            direction="positive",
+            expression="ts_mean(close, 5)",
+            window=5,
+            economic_rationale="price persistence quick gate candidate",
+            academic_support=3,
+            ic_mean=0.03,
+            t_stat=2.8,
+            max_corr_with_active=0.0,
+            passed_g1=True,
+            passed_g2=True,
+            passed_g3=True,
+        )
+
+        with (
+            patch(
+                "engines.mining.pipeline_utils.load_market_data",
+                new_callable=AsyncMock,
+                return_value=market_data,
+            ),
+            patch(
+                "engines.mining.bruteforce_engine.BruteForceEngine.enumerate_candidates",
+                return_value=[candidate],
+            ),
+            patch(
+                "engines.mining.bruteforce_engine.BruteForceEngine.run",
+                return_value=[candidate],
+            ),
+            patch(
+                "app.tasks.mining_tasks._write_results_to_db", new_callable=AsyncMock
+            ) as write_db,
+            patch("engines.mining.pipeline_utils.send_dingtalk_notification"),
+        ):
+            result = await _run_bruteforce_mining_async(
+                "bf_unit_001",
+                {
+                    "fields": ["close"],
+                    "windows": [5],
+                    "functions": ["ts_mean"],
+                    "forward_days": 1,
+                    "min_ic_periods": 1,
+                },
+            )
+
+        assert result["status"] == "completed"
+        assert result["passed_factors"] == 1
+        write_db.assert_awaited_once()
+        assert write_db.await_args.kwargs["factor_prefix"] == "bf"
+        written_factors = write_db.await_args.args[3]
+        assert written_factors[0]["gate_result"]["quick_gate_only"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +562,7 @@ class TestRunGPMiningTask:
         with (
             patch(
                 "asyncio.run",
-                side_effect=[RuntimeError("GP内部错误"), None],
+                side_effect=_fake_asyncio_run(RuntimeError("GP内部错误"), None),
             ),
             pytest.raises(RuntimeError, match="GP内部错误"),
         ):

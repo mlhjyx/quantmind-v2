@@ -435,13 +435,15 @@ def send_dingtalk_notification(
         logger.debug("未配置钉钉 Webhook，跳过通知")
         return
 
+    engine_label = "BruteForce" if stats.get("engine") == "bruteforce" else "GP"
+
     try:
         from app.services.dispatchers import dingtalk
 
         if error:
-            title = f"[P0] GP Pipeline 失败 — {run_id}"
+            title = f"[P0] {engine_label} Pipeline 失败 — {run_id}"
             content = (
-                f"## GP Pipeline 运行异常\n\n"
+                f"## {engine_label} Pipeline 运行异常\n\n"
                 f"**运行ID**: `{run_id}`\n\n"
                 f"**错误**: {error}\n\n"
                 f"**评估数量**: {stats.get('total_evaluated', 0)}\n\n"
@@ -453,7 +455,7 @@ def send_dingtalk_notification(
             best_fitness = stats.get("best_fitness", -999)
             elapsed_min = stats.get("elapsed_seconds", 0) / 60
 
-            title = f"GP本周产出 {n_passed} 个候选因子 — {run_id}"
+            title = f"{engine_label}本周产出 {n_passed} 个候选因子 — {run_id}"
 
             factor_lines = ""
             for i, f in enumerate(passed_factors[:5], 1):
@@ -464,7 +466,7 @@ def send_dingtalk_notification(
                 )
 
             content = (
-                f"## GP Pipeline 完成\n\n"
+                f"## {engine_label} Pipeline 完成\n\n"
                 f"**运行ID**: `{run_id}`\n\n"
                 f"| 指标 | 值 |\n"
                 f"|------|----|\n"
