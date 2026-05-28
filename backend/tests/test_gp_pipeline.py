@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
+from engines.mining.pipeline_utils import run_full_gate
 
 # F74/F18: Windows asyncio event loop hang — GP pipeline async tests freeze on IOCP.
 # Root cause: pytest-asyncio + Windows ProactorEventLoop. F18 async→sync 迁移后移除此 skip.
@@ -334,7 +335,70 @@ class TestWriteResultsToDB:
 
 
 # ---------------------------------------------------------------------------
-# 5. _run_gp_mining_async — 空数据提前返回
+# 5. run_full_gate — FactorGatePipeline contract
+# ---------------------------------------------------------------------------
+
+
+class TestRunFullGateContract:
+    """run_full_gate 应调用真实 run_gates 合约，而不是旧 run() 方法。"""
+
+    def test_run_full_gate_uses_run_gates_and_accepts_partial(self) -> None:
+        class FakeTree:
+            def evaluate(self, _market_data):
+                return pd.Series(
+                    [float(i) for i in range(25)], index=[f"S{i:03d}" for i in range(25)]
+                )
+
+        class FakeDSL:
+            def from_string(self, _expr):
+                return FakeTree()
+
+        class FakeReport:
+            overall_status = "PARTIAL"
+            gates = {
+                "G1": SimpleNamespace(status="PASS"),
+                "G2": SimpleNamespace(status="PASS"),
+                "G3": SimpleNamespace(status="PASS"),
+            }
+
+        fake_gate = MagicMock()
+        fake_gate.run_gates.return_value = FakeReport()
+        candidate = SimpleNamespace(
+            factor_expr="ts_mean(close, 5)",
+            ast_hash="abc123def456",
+            fitness=0.8,
+            ic_mean=0.03,
+            t_stat=2.8,
+            complexity=0.2,
+            novelty=0.7,
+            parent_seed="seed",
+            generation=1,
+            island_id=0,
+            param_slots={"window": 5},
+        )
+        forward_returns = pd.Series(
+            [float(i) / 100.0 for i in range(25)],
+            index=[f"S{i:03d}" for i in range(25)],
+        )
+
+        with (
+            patch("engines.mining.factor_dsl.FactorDSL", return_value=FakeDSL()),
+            patch("engines.factor_gate.FactorGatePipeline", return_value=fake_gate),
+        ):
+            result = run_full_gate(
+                candidates=[candidate],
+                market_data=pd.DataFrame({"close": [1.0]}),
+                forward_returns=forward_returns,
+                blacklist=set(),
+            )
+
+        assert len(result) == 1
+        assert result[0]["gate_result"] == {"G1": "PASS", "G2": "PASS", "G3": "PASS"}
+        fake_gate.run_gates.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 6. _run_gp_mining_async — 空数据提前返回
 # ---------------------------------------------------------------------------
 
 

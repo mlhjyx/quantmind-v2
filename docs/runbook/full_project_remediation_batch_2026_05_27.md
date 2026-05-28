@@ -35,6 +35,7 @@
 | B17 | CI pre-push smoke timeout drift | CI governance | Completed: pre-push orchestrator smoke subprocess timeout raised to 180s after the current smoke suite passed in 123s but the old 90s wrapper timed out. |
 | B18 | Attribution contributor empty-dict stub | Eval/Beat/UI closure | Completed: Beat wrapper now feeds existing factor/sector/cost attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; frontend empty state no longer says wiring is unimplemented. |
 | B19 | BruteForce mining task placeholder | Factor mining closure | Completed: Celery task now runs the existing BruteForce engine, persists `bf_` quick-gate candidates, and BruteForce IC calculation uses the shared IC calculator API. |
+| B20 | Mining full-gate contract drift | Factor mining closure | Completed: `run_full_gate` now calls `FactorGatePipeline.run_gates` and handles `GateReport.gates` / `overall_status` instead of a non-existent `run` contract. |
 
 ## B1 — Pipeline Settings Migration
 

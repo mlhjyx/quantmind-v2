@@ -19,6 +19,7 @@ Closed:
 - CI pre-push smoke timeout drift is closed: the smoke suite passed in 123s, and the orchestrator wrapper timeout now allows 180s while preserving per-test timeout guards.
 - Attribution factor/sector/cost contributor dictionaries are no longer hardcoded empty: the Beat wrapper now feeds existing attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; the Dashboard no-input state no longer claims the path is unimplemented.
 - BruteForce mining is no longer a UI/API-to-task dead end: the Celery task now runs the existing BruteForce engine, writes `bf_` quick-gate candidates with explicit `quick_gate_only` / pending full-review gate metadata, and the engine's IC series calculation delegates to `engines.ic_calculator.compute_ic_series`.
+- Mining full-gate contract drift is closed: `run_full_gate` now uses `FactorGatePipeline.run_gates` and the actual `GateReport.gates` / `overall_status` shape instead of the old non-existent `run` / `gate_results` / `overall_passed` contract.
 
 Closed / reclassified:
 - `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
@@ -47,6 +48,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28/29: Agent cost/log/model-health panels now read `llm_call_log` truth instead of returning synthetic zero/empty/static data; periodic live model ping remains a separate ops enhancement.
 - Closed 2026-05-29: CI pre-push smoke wrapper timeout no longer false-fails the current smoke suite.
 - Closed 2026-05-29: BruteForce mining task placeholder removed; `/api/mining/run` with `engine='bruteforce'` now reaches executable task logic instead of marking the run failed as `not_implemented`.
+- Closed 2026-05-29: Mining full-gate wrapper no longer silently skips every candidate due to a stale `FactorGatePipeline.run` call.
 
 ## Evidence Map
 
