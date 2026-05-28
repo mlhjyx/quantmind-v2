@@ -41,6 +41,7 @@ Closed in this batch:
 - Code-closed GP cross-round feedback: the scheduled Celery GP task and manual CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, run full Gate with that blacklist, and persist full-Gate rejects for the next run.
 - Closed mining evaluate service contract drift: `/api/mining/evaluate` now computes an IC series, calls `FactorGatePipeline.run_gates`, and adapts `GateReport.gates` / `overall_status` into the API response.
 - Closed SessionStart memory path drift: `.codex/hooks/session_context_inject.py` now reads repo-local `memory/project_sprint_state.md` first and only falls back to historical Claude memory when repo memory is absent.
+- Closed Backtest API worker runner drift: `app.tasks.backtest_tasks.run_backtest` now executes via `PlatformBacktestRunner` + `InMemoryBacktestRegistry` before writing the existing API result tables; direct worker calls to `run_hybrid_backtest` are removed.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -58,4 +59,4 @@ Still open:
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Observe the next scheduled backup first-fire evidence and a controlled GP next-run feedback consumption proof; otherwise continue design-doc implementation-gap audit, now focusing on backtest runner unification and runtime first-fire evidence.
+- Observe the next scheduled backup first-fire evidence, a controlled GP next-run feedback consumption proof, and a controlled Backtest API worker first-fire; otherwise continue design-doc implementation-gap audit, now focusing on remaining research-script runner bypasses and runtime first-fire evidence.

@@ -15,14 +15,18 @@ import time
 import uuid
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
 
-# Celery worker 可能缺少 backend/ 在 sys.path 中，导致 engines 模块不可用
-_backend_dir = str(Path(__file__).resolve().parent.parent.parent)
-if _backend_dir not in sys.path:
-    sys.path.append(_backend_dir)
+# Celery worker 可能缺少 repo root / backend 在 sys.path 中，导致 backend.qm_platform
+# 或 engines 模块不可用。
+_project_root = Path(__file__).resolve().parents[3]
+_backend_dir = _project_root / "backend"
+for _path in (str(_project_root), str(_backend_dir)):
+    if _path not in sys.path:
+        sys.path.append(_path)
 
 from app.tasks.celery_app import celery_app
 
@@ -73,7 +77,6 @@ def run_backtest(self, run_id: str) -> dict[str, Any]:
 
 async def _run_async(run_id: str) -> dict[str, Any]:
     import asyncpg
-    from engines.backtest_engine import BacktestConfig, run_hybrid_backtest
 
     conn = await asyncpg.connect(DB_URL)
     try:
@@ -122,21 +125,18 @@ async def _run_async(run_id: str) -> dict[str, Any]:
         directions = await _load_directions(conn, factors)
         bench_df = await _load_benchmark(conn, start_dt, end_dt, cfg.get("benchmark", "000300.SH"))
 
-        # 4. Build target portfolios
-        top_n = int(cfg.get("holding_count", cfg.get("top_n", 15)))
-        rebal_freq = cfg.get("rebalance_freq", "monthly")
-
-        # 5. Run engine (统一信号路径: SignalComposer + PortfolioBuilder)
-        bt_config = BacktestConfig(
-            initial_capital=float(cfg.get("initial_capital", 1_000_000)),
-            top_n=top_n,
-            rebalance_freq=rebal_freq,
-            slippage_mode=cfg.get("slippage_model", "volume_impact"),
-            benchmark_code=cfg.get("benchmark", "000300.SH"),
+        # 5. Run engine through PlatformBacktestRunner so API/Celery/CLI share one
+        # execution wrapper while preserving the existing API result persistence.
+        result, elapsed = _run_platform_backtest(
+            cfg=cfg,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            factors=factors,
+            factor_df=factor_df,
+            price_df=price_df,
+            bench_df=bench_df,
+            directions=directions,
         )
-        t0 = time.monotonic()
-        result = run_hybrid_backtest(factor_df, directions, price_df, bt_config, bench_df)
-        elapsed = int(time.monotonic() - t0)
 
         # cooperative-cancel 检查点 2: 引擎运行期间被取消 → 丢弃结果, 不写库
         if (
@@ -158,6 +158,110 @@ async def _run_async(run_id: str) -> dict[str, Any]:
         }
     finally:
         await conn.close()
+
+
+def _run_platform_backtest(
+    *,
+    cfg: dict[str, Any],
+    start_dt: date,
+    end_dt: date,
+    factors: list[str],
+    factor_df: pd.DataFrame,
+    price_df: pd.DataFrame,
+    bench_df: pd.DataFrame | None,
+    directions: dict[str, int],
+) -> tuple[Any, int]:
+    """通过 PlatformBacktestRunner 执行 API worker 回测.
+
+    API worker 仍负责写 `backtest_run` / `backtest_*` 结果表；这里仅把执行入口
+    统一到 Platform runner，避免 `/api/backtest/run` 与 CLI 回测长期分叉。
+    """
+    from engines.backtest.config import BacktestConfig as EngineBacktestConfig
+
+    from backend.qm_platform._types import BacktestMode
+    from backend.qm_platform.backtest import BacktestConfig as PlatformBacktestConfig
+    from backend.qm_platform.backtest import InMemoryBacktestRegistry
+    from backend.qm_platform.backtest import runner as platform_runner_mod
+
+    top_n = int(cfg.get("holding_count", cfg.get("top_n", 15)))
+    rebalance_freq = str(cfg.get("rebalance_freq", "monthly"))
+    initial_capital = float(cfg.get("initial_capital", 1_000_000))
+    benchmark_code = str(cfg.get("benchmark", "000300.SH"))
+    slippage_mode = str(cfg.get("slippage_model", cfg.get("slippage_mode", "volume_impact")))
+    cost_model = str(cfg.get("cost_model", "full"))
+    direction_map = {name: int(directions[name]) for name in factors if name in directions}
+    missing_directions = [name for name in factors if name not in directions]
+    if missing_directions:
+        logger.warning(
+            "回测因子缺少 direction, 与 legacy engine 语义一致忽略: %s",
+            ",".join(missing_directions),
+        )
+    if not direction_map:
+        raise ValueError("回测因子方向为空: factor_registry 未返回任何请求因子的 direction")
+
+    platform_cfg = PlatformBacktestConfig(
+        start=start_dt,
+        end=end_dt,
+        universe=str(cfg.get("universe_preset", "all_a")),
+        factor_pool=tuple(direction_map.keys()),
+        rebalance_freq=rebalance_freq,
+        top_n=top_n,
+        industry_cap=float(cfg.get("industry_cap", 1.0)),
+        size_neutral_beta=float(cfg.get("size_neutral_beta", 0.0)),
+        cost_model=cost_model,
+        capital=str(initial_capital),
+        benchmark="csi300" if benchmark_code == "000300.SH" else "none",
+        extra={"source": "api_backtest_worker"},
+        turnover_cap=float(cfg.get("turnover_cap", 0.50)),
+        commission_rate=float(cfg.get("commission_rate", 0.0000854)),
+        stamp_tax_rate=float(cfg.get("stamp_tax_rate", 0.0005)),
+        historical_stamp_tax=bool(cfg.get("historical_stamp_tax", cost_model == "full")),
+        transfer_fee_rate=float(cfg.get("transfer_fee_rate", 0.00001)),
+        slippage_bps=float(cfg.get("slippage_bps", 10.0)),
+        slippage_mode=slippage_mode,
+        volume_cap_pct=float(cfg.get("volume_cap_pct", 0.10)),
+        lot_size=int(cfg.get("lot_size", 100)),
+    )
+    engine_cfg = EngineBacktestConfig(
+        initial_capital=initial_capital,
+        top_n=top_n,
+        rebalance_freq=rebalance_freq,
+        slippage_bps=platform_cfg.slippage_bps,
+        slippage_mode=slippage_mode,
+        commission_rate=platform_cfg.commission_rate,
+        stamp_tax_rate=platform_cfg.stamp_tax_rate,
+        historical_stamp_tax=platform_cfg.historical_stamp_tax,
+        transfer_fee_rate=platform_cfg.transfer_fee_rate,
+        lot_size=platform_cfg.lot_size,
+        turnover_cap=platform_cfg.turnover_cap,
+        benchmark_code=benchmark_code,
+        volume_cap_pct=platform_cfg.volume_cap_pct,
+    )
+
+    def _loader(
+        _platform_cfg: PlatformBacktestConfig,
+        _start: date,
+        _end: date,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
+        return factor_df, price_df, bench_df
+
+    runner = platform_runner_mod.PlatformBacktestRunner(
+        registry=InMemoryBacktestRegistry(),
+        data_loader=_loader,
+        direction_provider=lambda pool: {name: direction_map[name] for name in pool},
+        engine_config_builder=lambda _platform_cfg: engine_cfg,
+        signal_config_builder=lambda platform_cfg: SimpleNamespace(
+            size_neutral_beta=platform_cfg.size_neutral_beta
+        ),
+    )
+    started = time.monotonic()
+    platform_result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
+    elapsed = int(time.monotonic() - started)
+    artifacts = platform_result.engine_artifacts or {}
+    engine_result = artifacts.get("engine_result")
+    if engine_result is None:
+        raise RuntimeError("PlatformBacktestRunner 未返回 engine_result artifact")
+    return engine_result, elapsed
 
 
 # ---------------------------------------------------------------------------

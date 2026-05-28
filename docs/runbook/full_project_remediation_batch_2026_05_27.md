@@ -38,6 +38,7 @@
 | B20 | Mining full-gate contract drift | Factor mining closure | Completed: `run_full_gate` now calls `FactorGatePipeline.run_gates` and handles `GateReport.gates` / `overall_status` instead of a non-existent `run` contract. |
 | B21 | GP cross-round feedback not wired in production runners | Factor mining closure | Completed: Celery GP task and CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run. |
 | B22 | Mining evaluate service + SessionStart memory drift | Factor mining / Codex governance | Completed: `/api/mining/evaluate` service now uses `FactorGatePipeline.run_gates`; SessionStart hook now prefers repo-local `memory/` before historical Claude memory. |
+| B23 | Backtest API worker bypasses Platform runner | Backtest platform closure | Completed: `run_backtest` Celery worker now delegates engine execution through `PlatformBacktestRunner` + `InMemoryBacktestRegistry`, then writes the existing API result tables. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -343,6 +344,23 @@ Result:
 Verification:
 - `ruff check backend/app/tasks/mining_tasks.py backend/engines/mining/bruteforce_engine.py backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py`
 - `pytest backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py backend/tests/test_mining_engine.py -q`
+
+## B23 — Backtest API Worker Platform Runner Closure
+
+Result:
+- `app.tasks.backtest_tasks.run_backtest` no longer imports or calls
+  `run_hybrid_backtest` directly.
+- The worker builds a Platform `BacktestConfig`, executes
+  `PlatformBacktestRunner` in `AD_HOC` mode with `InMemoryBacktestRegistry`,
+  and unwraps the `engine_result` artifact for the existing API persistence
+  path.
+- Factor directions stay fail-loud: missing directions are ignored with a
+  warning to match legacy engine semantics, but an all-missing direction map
+  raises before a misleading all-positive run can start.
+
+Verification:
+- `ruff check backend/app/tasks/backtest_tasks.py backend/tests/test_backtest_tasks.py`
+- `pytest backend/tests/test_backtest_tasks.py backend/tests/test_backtest_runner.py backend/tests/test_backtest_api.py -q`
 
 ## B20 — Mining Full-Gate Contract Drift
 
