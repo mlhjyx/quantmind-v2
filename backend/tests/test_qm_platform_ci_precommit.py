@@ -1,6 +1,6 @@
 """MVP 4.3 sub-iter 2 (iter 67) — PreCommitOrchestrator tests.
 
-Covers all 4 default checks + timeout + structural typing + non-PRE_COMMIT
+Covers default checks + timeout + structural typing + non-PRE_COMMIT
 phase skip semantics. 沿用 batch 3.x mock subprocess pattern.
 """
 
@@ -32,10 +32,16 @@ def _mk_completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> Ma
 
 
 def test_default_checks_returns_four_canonical_checks():
-    """Default checks include ruff_check, ruff_format, pytest_collect, check_llm_imports."""
+    """Default checks include all canonical pre-commit governance checks."""
     checks = default_checks()
     names = [c.name for c in checks]
-    assert names == ["ruff_check", "ruff_format", "pytest_collect", "check_llm_imports"]
+    assert names == [
+        "ruff_check",
+        "ruff_format",
+        "pytest_collect",
+        "check_llm_imports",
+        "frontend_api_discipline",
+    ]
 
 
 def test_default_timeout_constant():
@@ -61,13 +67,13 @@ def test_precommit_check_frozen():
 
 
 def test_all_checks_pass_aggregate_passed_true():
-    """All 4 checks return rc=0 → CIResult.passed=True."""
+    """All checks return rc=0 → CIResult.passed=True."""
     runner = MagicMock(return_value=_mk_completed(returncode=0, stdout="ok"))
     orch = PreCommitOrchestrator(runner=runner)
     result = orch.run_phase(CIPhase.PRE_COMMIT)
     assert result.passed is True
     assert result.phase == CIPhase.PRE_COMMIT
-    assert runner.call_count == 4  # 4 default checks
+    assert runner.call_count == 5  # 5 default checks
 
 
 def test_one_check_fails_aggregate_passed_false():
@@ -75,6 +81,7 @@ def test_one_check_fails_aggregate_passed_false():
     # ruff_check (1st invocation) fails, others pass
     returns = [
         _mk_completed(returncode=1, stderr="ruff lint error"),
+        _mk_completed(returncode=0),
         _mk_completed(returncode=0),
         _mk_completed(returncode=0),
         _mk_completed(returncode=0),
@@ -93,6 +100,7 @@ def test_ruff_format_fail():
         _mk_completed(returncode=1, stderr="format diff"),
         _mk_completed(returncode=0),
         _mk_completed(returncode=0),
+        _mk_completed(returncode=0),
     ]
     runner = MagicMock(side_effect=returns)
     orch = PreCommitOrchestrator(runner=runner)
@@ -107,6 +115,7 @@ def test_pytest_collect_fail():
         _mk_completed(returncode=0),
         _mk_completed(returncode=0),
         _mk_completed(returncode=2, stderr="collection error"),
+        _mk_completed(returncode=0),
         _mk_completed(returncode=0),
     ]
     runner = MagicMock(side_effect=returns)
@@ -123,12 +132,29 @@ def test_check_llm_imports_fail():
         _mk_completed(returncode=0),
         _mk_completed(returncode=0),
         _mk_completed(returncode=1, stderr="LLM_IMPORT_VIOLATION"),
+        _mk_completed(returncode=0),
     ]
     runner = MagicMock(side_effect=returns)
     orch = PreCommitOrchestrator(runner=runner)
     result = orch.run_phase(CIPhase.PRE_COMMIT)
     assert result.passed is False
     assert "rc=1" in result.details["check_llm_imports"]
+
+
+def test_frontend_api_discipline_fail():
+    """frontend_api_discipline failure captured."""
+    returns = [
+        _mk_completed(returncode=0),
+        _mk_completed(returncode=0),
+        _mk_completed(returncode=0),
+        _mk_completed(returncode=0),
+        _mk_completed(returncode=1, stderr="raw axios"),
+    ]
+    runner = MagicMock(side_effect=returns)
+    orch = PreCommitOrchestrator(runner=runner)
+    result = orch.run_phase(CIPhase.PRE_COMMIT)
+    assert result.passed is False
+    assert "rc=1" in result.details["frontend_api_discipline"]
 
 
 def test_subprocess_timeout_captured_not_raised():

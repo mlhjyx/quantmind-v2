@@ -25,15 +25,16 @@ git config --unset core.hooksPath
 
 | 文件 | 触发 | 作用 |
 |---|---|---|
-| `pre-commit` | `git commit` 之前 | staged LLM import block；staged `.md` canonical 数字提示；LL-188 `.env` 状态漂移 warning-only |
+| `pre-commit` | `git commit` 之前 | staged LLM import block；frontend raw axios SSOT block；staged `.md` canonical 数字提示；LL-188 `.env` 状态漂移 warning-only |
 | `pre-push` | `git push` 之前 | X10 cutover-bias scan；full LLM import block；`backend/tests/` 下 `smoke and not live_tushare` 全套，失败阻断 push |
 
 ## Pre-Commit
 
-`pre-commit` 当前包含两类检查：
+`pre-commit` 当前包含三类检查：
 
 1. **S6 LLM import block**: 调 `scripts/check_llm_imports.sh --staged`，阻断非 allowlist LLM SDK import。
-2. **staged `.md` canonical 提示**: 对 staged markdown 输出 6 类 canonical 参考值，包含 factor count、Tier0、LL、D 决议、测试 baseline、LL-188 `.env` claim drift。该部分是 warning-only，不阻断 commit。
+2. **Frontend API discipline block**: 调 `scripts/audit/check_frontend_api_discipline.py`，只识别真实 `axios` import/require/dynamic import；生产代码仅允许 `frontend/src/api/client.ts` 直接 import axios，测试目录和注释不会误报。
+3. **staged `.md` canonical 提示**: 对 staged markdown 输出 6 类 canonical 参考值，包含 factor count、Tier0、LL、D 决议、测试 baseline、LL-188 `.env` claim drift。该部分是 warning-only，不阻断 commit。
 
 紧急绕过:
 
@@ -81,6 +82,7 @@ Co-Authored-By: ...
 | `psycopg2.OperationalError: could not connect` | PG 未起 | `D:\pgsql\bin\pg_ctl.exe -D D:\pgdata16 start` (Windows 本机) |
 | `FlagNotFound: use_db_direction` | feature_flags 表被 migrate 冲 | `python scripts/registry/register_feature_flags.py --apply` |
 | `scripts/check_llm_imports.sh` block | 新增了非 allowlist LLM SDK import | 改走 LiteLLM 路由或按 `docs/LLM_IMPORT_POLICY.md` 加明确 allowlist marker |
+| `frontend-api-discipline` block | 生产前端代码直接 import/require axios | 改走 `frontend/src/api/client.ts` 的 `apiClient`；注释或测试 mock 不会触发 |
 
 ## 升级路径
 

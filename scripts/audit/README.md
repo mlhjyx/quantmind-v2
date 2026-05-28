@@ -20,6 +20,7 @@
 | 脚本 | 用途 | 退出码语义 |
 |---|---|---|
 | `audit_orphan_factors.py` | 检查 factor_registry 中无对应 factor_values 的孤儿因子 | 0=clean, 1=orphans found |
+| `check_frontend_api_discipline.py` | 检查生产前端 raw axios 是否只存在于 `frontend/src/api/client.ts`，忽略注释和测试 mock | 0=clean, 1=violations found, 2=script error |
 | `check_insert_bypass.py` | 检查 production code 是否绕 DataPipeline 直 INSERT (铁律 17) | 0=no bypass, 1=bypass detected |
 | `phase_c_freeze_baseline.py` | Phase C factor_engine 拆分前 baseline 冻结 | 0=success |
 | `phase_c_verify_split.py` | Phase C factor_engine 拆分后 verify | 0=match, 1=drift |

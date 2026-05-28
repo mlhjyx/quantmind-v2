@@ -42,9 +42,10 @@ Still open:
 - GitHub Actions workflow now uses `actions/checkout@v6` and `actions/setup-python@v6` to clear the near-term Node 20 runtime warning.
 - Existing `.claude/external-skills/mattpocock-skills` gitlink now has matching `.gitmodules` metadata; no `.claude/` historical content was edited.
 - Advisory `regression` and `ci_matrix` CI jobs now use `scripts/ci_run_phase.py --advisory`: structured failures log `ADVISORY_FAIL` and exit 0, while uncaught runner exceptions still fail.
+- Frontend raw axios scanner precision is closed: `scripts/audit/check_frontend_api_discipline.py` ignores comments/tests, blocks production raw axios outside `frontend/src/api/client.ts`, and is wired into local pre-commit + CI pre_commit.
 - `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Observe the PR CI run after the advisory-mode update; then continue backup first-fire or scanner precision governance.
+- Observe the next scheduled backup first-fire evidence; otherwise continue design-doc implementation-gap audit.

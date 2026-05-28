@@ -6,6 +6,7 @@ wrapped orchestrator:
   2. `ruff format --check` — formatting consistency
   3. `pytest --collect-only` — lightweight CI/platform discovery sanity
   4. `scripts/check_llm_imports.sh --staged` — S2/PR-219 LLM import allowlist
+  5. `scripts/audit/check_frontend_api_discipline.py` — raw axios SSOT guard
 
 Each check runs sequentially via subprocess.run with configurable timeout.
 Individual check failure does NOT raise — captured in CIResult.passed=False
@@ -36,6 +37,7 @@ PYTEST_COLLECT_TARGETS = [
     "backend/tests/test_qm_platform_ci_regression.py",
     "backend/tests/test_qm_platform_ci_review.py",
     "backend/tests/test_qm_platform_ci_entry_script.py",
+    "backend/tests/test_frontend_api_discipline_audit.py",
     "backend/tests/test_platform_skeleton.py",
 ]
 
@@ -79,6 +81,11 @@ def default_checks() -> list[PreCommitCheck]:
         PreCommitCheck(
             name="check_llm_imports",
             cmd=["bash", "scripts/check_llm_imports.sh", "--staged"],
+            timeout_seconds=15,
+        ),
+        PreCommitCheck(
+            name="frontend_api_discipline",
+            cmd=["python", "scripts/audit/check_frontend_api_discipline.py"],
             timeout_seconds=15,
         ),
     ]

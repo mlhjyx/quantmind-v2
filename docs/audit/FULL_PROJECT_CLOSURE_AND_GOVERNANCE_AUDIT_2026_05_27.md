@@ -191,17 +191,18 @@ Backlog:
 - Keep README explicit about warning-only checks.
 - Add a CI governance matrix to the next audit report.
 
-### P2 — Frontend API discipline is mostly good, with one intentional exception
+### Closed 2026-05-28 — Frontend API discipline scanner is precise
 
 Static scan found raw axios only in `frontend/src/api/client.ts`, `frontend/src/__tests__/api.test.ts`, and `frontend/src/store/notificationStore.ts`. The store file contains no actual axios import; it only documents why it remains a Zustand notification SSOT.
 
+Remediation added `scripts/audit/check_frontend_api_discipline.py`: a comment-aware scanner that detects real `axios` import/require/dynamic import usage, excludes tests by default, and allows only `frontend/src/api/client.ts` in production. The scanner is wired into local `config/hooks/pre-commit` and the GitHub `pre_commit` CI orchestrator.
+
 Impact:
-- API wrapper discipline is effectively intact.
-- Existing text comments can trigger naive raw-axios scans unless the scanner distinguishes imports from prose.
+- API wrapper discipline is effectively intact and now machine-verifiable.
+- Existing text comments no longer trigger raw-axios false positives.
 
 Backlog:
-- Keep `frontend/src/api/client.ts` as the only production axios import.
-- Update future scanners to parse imports, not comments.
+- Keep `frontend/src/api/client.ts` as the only production axios import; promote the scanner to any future frontend-only CI lane if CI topology changes.
 
 ## Closed / Healthy Areas
 
@@ -225,7 +226,7 @@ Backlog:
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
 | P2 | CI advisory-to-blocking roadmap | CI/CD | Node 24 action version upgrade + `--advisory` no-noise CI mode completed 2026-05-28; promote advisory jobs after baselines and runner assumptions are stable. |
 | Closed | Gitlink metadata repair | Git governance | Completed 2026-05-28: restored `.gitmodules` entry for the existing mattpocock skills gitlink to remove checkout cleanup warnings. |
-| P2 | Scanner precision | Frontend governance | Avoid comment-only axios false positives. |
+| Closed | Scanner precision | Frontend governance | Completed 2026-05-28: comment-aware raw axios scanner added and wired into pre-commit + CI pre_commit. |
 
 ## Verification Log
 

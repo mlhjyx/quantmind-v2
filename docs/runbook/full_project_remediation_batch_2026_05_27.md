@@ -28,6 +28,7 @@
 | B10 | GitHub Actions Node 20 runtime deprecation | CI governance | Completed: workflow uses Node 24-native action major versions. |
 | B11 | GitHub checkout submodule metadata warning | Git governance | Completed: `.gitmodules` restored for the existing mattpocock skills gitlink. |
 | B12 | Advisory CI red annotation noise | CI governance | Completed: `--advisory` mode logs structured failures as `ADVISORY_FAIL` with exit 0; runner exceptions still fail. |
+| B13 | Frontend raw axios scanner precision | Frontend governance | Completed: comment-aware scanner added and wired into local pre-commit + CI pre_commit. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -212,3 +213,21 @@ Result:
 - Uncaught exceptions still exit 1, so broken runners are not hidden.
 - `.github/workflows/ci.yml` now uses `--advisory` for `regression` and `ci_matrix`
   and no longer relies on `continue-on-error`.
+
+## B13 — Frontend Raw Axios Scanner Precision
+
+Evidence:
+- The audit backlog still had a P2 scanner precision item because naive grep found
+  `axios` in comments/prose, including the Zustand notification store note.
+- Production policy remains: only `frontend/src/api/client.ts` imports axios;
+  feature/page code should use `apiClient` via the `src/api` layer.
+
+Result:
+- Added `scripts/audit/check_frontend_api_discipline.py`.
+- The scanner strips TS/JS comments while preserving line numbers, detects real
+  `axios` import/require/dynamic import usage, excludes tests by default, and
+  allows only `frontend/src/api/client.ts` in production.
+- Wired the scanner into `config/hooks/pre-commit` and the CI `pre_commit`
+  orchestrator.
+- Added regression tests proving comment-only mentions do not fail while real
+  imports outside the allowlist do fail.
