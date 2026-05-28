@@ -17,6 +17,7 @@ Closed:
 - Active `.agents/skills` files are versioned, with `.agents/skills/README.md` policy and automated inventory guard.
 - Agent LLM observability read paths are no longer hardcoded stubs: `/api/agent/cost-summary`, `/api/agent/{name}/logs`, and `/api/agent/model-health` now read `llm_call_log`; the frontend cost dashboard displays USD fields that match the persisted audit column.
 - CI pre-push smoke timeout drift is closed: the smoke suite passed in 123s, and the orchestrator wrapper timeout now allows 180s while preserving per-test timeout guards.
+- Attribution factor/sector/cost contributor dictionaries are no longer hardcoded empty: the Beat wrapper now feeds existing attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; the Dashboard no-input state no longer claims the path is unimplemented.
 
 Closed / reclassified:
 - `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
@@ -37,6 +38,7 @@ The project is partially closed, not fully closed. Build and core collect-only c
 - Closed 2026-05-28: runtime FastAPI was reloaded and `/api/system/beat-schedule` returned 27 entries; canonical alias matching now populates existing `last_fire_*` rows.
 - Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, memory health uses available RAM floor, and fresh runtime probe records `overall_status='ok'`.
 - Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, `/api/attribution/latest` returns it, and the task now derives NAV change from `performance_series`.
+- Closed 2026-05-29: Wave 4 attribution contributor wiring now uses existing factor/sector/cost engines instead of persisting empty dictionaries by construction.
 - Closed 2026-05-28: scheduler status false positives and backup failure path remediated; `QM-SmokeTest` is disabled/retired, and `QM-DailyBackup` now has a fresh verified 14,480.2MB dump.
 - Closed 2026-05-28: `QM-ICMonitor` factor-quality alerts now carry operator disposition metadata and the System Settings scheduler row links to `/factors/monitoring`.
 - Closed 2026-05-28: `memory/project_sprint_state.md` exists and is tracked.
@@ -122,11 +124,19 @@ Initial impact:
 Remediation:
 - Attribution task import roots and configured `strategy_id` source were fixed.
 - The task's NAV input no longer uses the initial `0.0` stub. `_fetch_nav_change()` now reads exact-date `performance_series.daily_return`, derives from current/previous NAV when needed, and treats missing exact-date rows as PT-pause no-op.
+- The task now populates `by_factor`, `by_sector`, and `by_cost` by calling the
+  existing attribution engines with read-only component inputs from
+  `position_snapshot`, `factor_values`, `factor_ic_history`, `symbols`,
+  `klines_daily`, and `trade_log`.
+- The Dashboard no-input state now describes a latest row with no attributable
+  inputs instead of claiming factor/industry contribution is not implemented.
 - Manual task apply wrote `daily_attribution.id=2` for configured `PAPER_STRATEGY_ID`.
 - `/api/attribution/latest` returned the persisted row.
 
 Follow-up:
 - Define "0 rows acceptable" conditions explicitly for future PT pause windows where attribution should not be produced.
+- Regime attribution remains a bounded enhancement pending a canonical RegimeInfo
+  source.
 
 ### Partially Closed 2026-05-28 — Scheduler operational status is now typed
 
@@ -244,7 +254,7 @@ Backlog:
 | Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries; canonical alias join now populates existing `last_fire_*` rows. |
 | Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers; memory health uses available RAM floor; regression tests and fresh runtime HTTP 200 evidence. |
 | Partially closed | Scheduler failure triage | Ops + UI | `QM-SmokeTest` stale disabled-task false positive closed; `QM-DailyBackup` partial dump path fixed and fresh verified dump produced; `QM-ICMonitor` reclassified as `alert` with `/factors/monitoring` operator disposition. Remaining partial status is only next scheduled backup first-fire evidence. |
-| Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it; Beat wrapper now reads `performance_series` NAV input instead of hardcoding `0.0`. Future pause-window 0-row semantics remain a P2 policy refinement. |
+| Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28/29: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it; Beat wrapper now reads `performance_series` NAV input and computes factor/sector/cost contributors via existing attribution engines instead of hardcoded empty dicts. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
 | Closed | `.agents/skills` version policy | Agent governance | Completed 2026-05-28: active `.agents/skills` files are versioned with policy docs and inventory guard. |
 | Closed | Agent LLM cost/log/model-health read stubs | AI governance | Completed 2026-05-28/29: cost summary, agent logs, and observed model health now read `llm_call_log`; frontend cost display uses USD truth. |

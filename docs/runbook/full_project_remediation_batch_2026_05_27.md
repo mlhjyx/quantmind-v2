@@ -33,6 +33,7 @@
 | B15 | Agent cost/log read stubs | AI governance | Completed: `/api/agent/cost-summary` and `/api/agent/{name}/logs` now read `llm_call_log`; frontend cost dashboard now displays USD truth instead of synthetic CNY. |
 | B16 | Agent model-health static stub | AI governance | Completed: `/api/agent/model-health` now reports observed model health from recent `llm_call_log` rows; missing/stale/error states are explicit. |
 | B17 | CI pre-push smoke timeout drift | CI governance | Completed: pre-push orchestrator smoke subprocess timeout raised to 180s after the current smoke suite passed in 123s but the old 90s wrapper timed out. |
+| B18 | Attribution contributor empty-dict stub | Eval/Beat/UI closure | Completed: Beat wrapper now feeds existing factor/sector/cost attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; frontend empty state no longer says wiring is unimplemented. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -296,3 +297,32 @@ Result:
   subprocess while preserving per-test `--timeout=60`.
 - `backend/tests/test_qm_platform_ci_prepush.py` now asserts the 180s timeout
   and timeout detail text.
+
+## B18 — Attribution Contributor Wiring
+
+Evidence:
+- `backend/qm_platform/eval/attribution.py` already had tested pure engines for
+  factor, sector, and cost contribution calculation.
+- `daily_attribution_compute_task` still persisted empty `by_factor`, `by_sector`,
+  and `by_cost` dictionaries, so the Dashboard showed the feature as an MVP 4.2
+  wiring stub even after attribution rows existed.
+
+Result:
+- `daily_attribution_compute_task` now loads component inputs from existing
+  read-only stores: `position_snapshot`, `factor_values`, `factor_ic_history`,
+  `symbols`, `klines_daily`, and `trade_log`.
+- The task calls `compute_by_factor`, `compute_by_sector`, and `compute_by_cost`
+  before residual calculation and persistence.
+- Scheduler audit result JSON now includes factor/sector/cost contributor counts.
+- Dashboard empty-state copy now describes a no-input latest row instead of an
+  unimplemented attribution path.
+
+Verification:
+- `ruff check backend/app/tasks/attribution_tasks.py backend/tests/test_wave4_audit_envelope.py`
+- `pytest backend/tests/test_wave4_audit_envelope.py -q`
+- `pytest backend/tests/test_qm_platform_attribution.py -q`
+- `npm run build -- --mode development`
+
+Follow-up:
+- Regime attribution still waits for a canonical RegimeInfo source; this is a
+  bounded enhancement rather than the factor/sector/cost closure blocker.

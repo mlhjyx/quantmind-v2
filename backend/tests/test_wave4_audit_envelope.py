@@ -163,15 +163,26 @@ class TestAttributionAuditEnvelope:
         fake_attribution_initial.alpha_vs_benchmark = 0.0
 
         fake_attribution_module.DailyAttribution.return_value = fake_attribution_initial
+        fake_attribution_module.compute_by_factor.return_value = {"bp_ratio": 0.001}
+        fake_attribution_module.compute_by_sector.return_value = {"银行": 0.0005}
+        fake_attribution_module.compute_by_cost.return_value = {
+            "commission": -0.0001,
+            "slippage": -0.00002,
+            "impact": 0.0,
+            "overnight_gap": 0.0,
+        }
         fake_attribution_module.compute_unexplained_residual.return_value = 0.001
         fake_attribution_module.persist_attribution.return_value = 999
         fake_attribution_module.fire_residual_alert.return_value = False
 
         fake_conn = MagicMock(name="fake_conn")
-        fake_cur = MagicMock(name="fake_cursor")
-        fake_cur.fetchone.return_value = (1_000_000.0, 0.0123)
-        fake_conn.cursor.return_value = fake_cur
         fake_get_pg = MagicMock(return_value=fake_conn)
+        weights = {"000001.SZ": 1.0}
+        exposures = {"bp_ratio": {"000001.SZ": 0.5}}
+        factor_returns = {"bp_ratio": 0.002}
+        industry_map = {"000001.SZ": "银行"}
+        industry_returns = {"银行": 0.0005}
+        cost_trades = [{"commission": 10.0, "slippage": 2.0, "impact": 0.0, "overnight_gap": 0.0}]
 
         with (
             patch.dict(
@@ -181,6 +192,21 @@ class TestAttributionAuditEnvelope:
             # iter 132: patch canonical conn factory (`app.services.db.get_sync_conn`)
             # post W2-A F7 fix at attribution_tasks.py:193 (phantom `app.core.db` removed).
             patch("app.services.db.get_sync_conn", fake_get_pg),
+            patch.object(
+                task_mod,
+                "_fetch_nav_snapshot",
+                return_value=(0.0123, 1_000_000.0, 0.0002),
+            ),
+            patch.object(task_mod, "_get_pt_factor_names", return_value=["bp_ratio"]),
+            patch.object(task_mod, "_fetch_portfolio_weights", return_value=weights),
+            patch.object(task_mod, "_fetch_factor_exposures", return_value=exposures),
+            patch.object(task_mod, "_fetch_factor_returns", return_value=factor_returns),
+            patch.object(
+                task_mod,
+                "_fetch_sector_inputs",
+                return_value=(industry_map, industry_returns),
+            ),
+            patch.object(task_mod, "_fetch_cost_trades", return_value=cost_trades),
             patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
         ):
             result = task_mod.daily_attribution_compute_task.apply(args=[]).get()
@@ -189,6 +215,23 @@ class TestAttributionAuditEnvelope:
         assert result["strategy_id"] == task_mod.settings.PAPER_STRATEGY_ID
         assert result["row_id"] == 999
         assert result["residual_bps"] == pytest.approx(10.0)
+        assert result["factor_contributors"] == 1
+        assert result["sector_contributors"] == 1
+        assert result["cost_contributors"] == 2
+        fake_attribution_module.compute_by_factor.assert_called_once_with(
+            weights,
+            exposures,
+            factor_returns,
+        )
+        fake_attribution_module.compute_by_sector.assert_called_once_with(
+            weights,
+            industry_map,
+            industry_returns,
+        )
+        fake_attribution_module.compute_by_cost.assert_called_once_with(
+            cost_trades,
+            nav=1_000_000.0,
+        )
 
         # iter 132 PR #484 reviewer P2: single-conn lifecycle regression guard.
         # Production bug (W2-A F8 P0): factory `get_pg_connection` passed to
@@ -233,6 +276,7 @@ class TestAttributionAuditEnvelope:
         assert call_args[0][0] == "daily_attribution_compute"
         assert call_args[0][2] == "success"
         assert call_args[0][3]["row_id"] == 999
+        assert call_args[0][3]["factor_contributors"] == 1
 
     def test_writes_error_row_fail_soft_no_reraise(self) -> None:
         """Exception path → status='error' + RETURN error dict (NOT raise — fail-soft preserved)."""
@@ -282,7 +326,7 @@ class TestAttributionAuditEnvelope:
 
         fake_conn = MagicMock(name="fake_conn")
         fake_cur = MagicMock(name="fake_cursor")
-        fake_cur.fetchone.return_value = (1_000_000.0, 0.0125)
+        fake_cur.fetchone.return_value = (1_000_000.0, 0.0125, 0.001)
         fake_conn.cursor.return_value = fake_cur
 
         nav_change = task_mod._fetch_nav_change(
@@ -305,7 +349,7 @@ class TestAttributionAuditEnvelope:
         fake_conn = MagicMock(name="fake_conn")
         fake_cur = MagicMock(name="fake_cursor")
         fake_cur.fetchone.side_effect = [
-            (1_010_000.0, None),
+            (1_010_000.0, None, 0.002),
             (1_000_000.0,),
         ]
         fake_conn.cursor.return_value = fake_cur

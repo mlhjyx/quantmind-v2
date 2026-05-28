@@ -193,10 +193,10 @@ export function AttributionPanel() {
           </div>
         )}
 
-        {/* No contributors at all = MVP iter 65 stub (empty dicts persisted) */}
+        {/* No contributors at all = latest row has no attributable inputs */}
         {topFactors.length === 0 && topSectors.length === 0 && (
           <div className="text-center py-2" style={{ fontSize: 10, color: C.text4 }}>
-            因子/行业贡献暂未实现 (MVP 4.2 stub, 真 wiring 在 iter 60+)
+            当前归因行无持仓/成交/行业输入贡献
           </div>
         )}
       </div>
