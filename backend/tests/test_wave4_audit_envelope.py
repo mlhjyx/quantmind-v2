@@ -17,9 +17,20 @@ Sibling pattern to test_factor_lifecycle_audit_envelope.py (iter 103 PR #479 LL-
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _backup_result(target: str, passed: bool = True):
+    return SimpleNamespace(
+        target=SimpleNamespace(value=target),
+        passed=passed,
+        bytes_written=1024 if passed else 0,
+        duration_ms=100,
+    )
+
 
 # ─────────────────────────────────────────────────────────────
 # §1: meta_monitor_tasks audit envelope coverage
@@ -280,7 +291,113 @@ class TestAttributionAuditEnvelope:
 
 
 # ─────────────────────────────────────────────────────────────
-# §3: cross-module canonical pattern parity (sibling consistency)
+# §3: backup_tasks audit envelope coverage (iter 133 gap closure)
+# ─────────────────────────────────────────────────────────────
+
+
+class TestBackupAuditEnvelope:
+    """Verify backup Beat tasks write scheduler_task_log rows on success and failure."""
+
+    def test_daily_backup_writes_success_row(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        fake_db = MagicMock()
+        fake_db.run_all.return_value = [_backup_result("db")]
+        fake_fs = MagicMock()
+        fake_fs.run_all.return_value = [_backup_result("filesystem")]
+        fake_cfg = MagicMock()
+        fake_cfg.run_all.return_value = [_backup_result("config")]
+
+        with (
+            patch("backend.qm_platform.backup.DBBackupOrchestrator", return_value=fake_db),
+            patch("backend.qm_platform.backup.FilesystemBackupOrchestrator", return_value=fake_fs),
+            patch("backend.qm_platform.backup.ConfigBackupOrchestrator", return_value=fake_cfg),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.daily_backup_run_task.apply(args=[]).get()
+
+        assert result["passed"] is True
+        mock_audit.assert_called_once()
+        assert mock_audit.call_args.args[0] == "daily_backup_run"
+        assert mock_audit.call_args.args[2] == "success"
+        assert mock_audit.call_args.args[3]["passed"] is True
+
+    def test_daily_backup_writes_failed_row_when_target_fails(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        fake_db = MagicMock()
+        fake_db.run_all.return_value = [_backup_result("db", passed=False)]
+        fake_fs = MagicMock()
+        fake_fs.run_all.return_value = [_backup_result("filesystem")]
+        fake_cfg = MagicMock()
+        fake_cfg.run_all.return_value = [_backup_result("config")]
+
+        with (
+            patch("backend.qm_platform.backup.DBBackupOrchestrator", return_value=fake_db),
+            patch("backend.qm_platform.backup.FilesystemBackupOrchestrator", return_value=fake_fs),
+            patch("backend.qm_platform.backup.ConfigBackupOrchestrator", return_value=fake_cfg),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.daily_backup_run_task.apply(args=[]).get()
+
+        assert result["passed"] is False
+        assert mock_audit.call_args.args[0] == "daily_backup_run"
+        assert mock_audit.call_args.args[2] == "failed"
+
+    def test_daily_backup_exception_writes_failed_row_without_reraising(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        with (
+            patch(
+                "backend.qm_platform.backup.DBBackupOrchestrator",
+                side_effect=RuntimeError("synthetic backup failure"),
+            ),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.daily_backup_run_task.apply(args=[]).get()
+
+        assert "synthetic backup failure" in result["error"]
+        assert mock_audit.call_args.args[0] == "daily_backup_run"
+        assert mock_audit.call_args.args[2] == "failed"
+        assert "synthetic backup failure" in mock_audit.call_args.args[3]["error"]
+
+    def test_weekly_backup_verify_rpo_breach_writes_alert_row(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        fake_verifier = MagicMock()
+        fake_verifier.run_all.return_value = [_backup_result("db")]
+        fake_db = MagicMock()
+        fake_db.spec.artifact_dir = "backups/db"
+        snapshot = SimpleNamespace(
+            rpo_hours_actual=48.0,
+            rto_hours_actual=0.5,
+            rpo_breached=True,
+            rto_breached=False,
+        )
+
+        with (
+            patch(
+                "backend.qm_platform.backup.restore_verification.RestoreVerificationOrchestrator",
+                return_value=fake_verifier,
+            ),
+            patch("backend.qm_platform.backup.DBBackupOrchestrator", return_value=fake_db),
+            patch(
+                "backend.qm_platform.backup.rpo_rto.compute_rpo_rto_snapshot",
+                return_value=snapshot,
+            ),
+            patch("backend.qm_platform.backup.rpo_rto.fire_rpo_rto_alert", return_value=True),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.weekly_backup_verify_task.apply(args=[]).get()
+
+        assert result["verify_passed"] is True
+        assert result["rpo_breached"] is True
+        assert mock_audit.call_args.args[0] == "weekly_backup_verify"
+        assert mock_audit.call_args.args[2] == "alert"
+
+
+# ─────────────────────────────────────────────────────────────
+# §4: cross-module canonical pattern parity (sibling consistency)
 # ─────────────────────────────────────────────────────────────
 
 

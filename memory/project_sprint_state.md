@@ -27,6 +27,9 @@ Closed in this batch:
 - Applied `backend/migrations/pipeline_settings.sql`; `/api/pipeline/status` now returns 200.
 - Restarted FastAPI, Celery Worker, and Celery Beat; `/api/system/beat-schedule` now returns 27 entries.
 - Fixed `/api/system/health`: bounded checks, sequential datasource reads, and Windows Celery solo-worker process fallback; runtime returns `overall_status=ok`.
+- Fixed Beat schedule `last_fire_*` alias drift: Celery dotted task names now match canonical `scheduler_task_log` rows such as `meta_monitor`, `daily_attribution_compute`, `news_ingest_*`, and `factor_lifecycle`.
+- Added scheduler audit envelope to backup Beat tasks: `daily_backup_run` writes `success`/`failed`; `weekly_backup_verify` writes `success`/`alert`/`failed`.
+- Fixed `/api/system/health` memory false critical by using available RAM floor (`available_gb >= 8`) instead of used RAM <16GB.
 - Fixed attribution task import roots and strategy id source; manual task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returns that row.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
@@ -37,6 +40,7 @@ Closed in this batch:
 Still open:
 - `QM-ICMonitor` latest code `1` is an IC P1 alert signal, not a scheduler crash; API/UI now expose it as `alert`, and operator/factor-quality disposition remains.
 - `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
+- Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:

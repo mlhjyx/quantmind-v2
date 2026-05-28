@@ -265,15 +265,18 @@ def _check_memory() -> dict[str, Any]:
     """检查系统内存使用情况。
 
     Returns:
-        包含 ok、used_gb、total_gb、percent 的字典。CLAUDE.md 要求总占用 <16GB。
+        包含 ok、used_gb、available_gb、total_gb、percent 的字典。
+        AGENTS.md 资源规则: RAM 可用 <8GB 时不启动重型任务。
     """
     try:
         vm = psutil.virtual_memory()
         used_gb = vm.used / (1024**3)
+        available_gb = vm.available / (1024**3)
         total_gb = vm.total / (1024**3)
         return {
-            "ok": used_gb < 16,
+            "ok": available_gb >= 8,
             "used_gb": round(used_gb, 1),
+            "available_gb": round(available_gb, 1),
             "total_gb": round(total_gb, 1),
             "percent": vm.percent,
         }
@@ -364,6 +367,32 @@ def _task_scheduler_status(task_name: str, task_state: str, last_result: int | N
     if task_name == "QM-ICMonitor" and last_result == 1:
         return "alert"
     return "failed"
+
+
+def _beat_log_aliases(beat_key: str, task_name: str) -> set[str]:
+    """Return scheduler_task_log names that can represent a Beat entry."""
+    aliases = {task_name}
+    if task_name:
+        tail = task_name.rsplit(".", 1)[-1]
+        aliases.add(tail)
+        if tail.endswith("_task"):
+            aliases.add(tail.removesuffix("_task"))
+
+    key_alias = beat_key.replace("-", "_")
+    aliases.add(key_alias)
+    for suffix in ("_tick", "_run", "_weekly"):
+        if key_alias.endswith(suffix):
+            aliases.add(key_alias.removesuffix(suffix))
+
+    explicit_alias = {
+        "daily-attribution-compute": "daily_attribution_compute",
+        "daily-backup-run": "daily_backup_run",
+        "meta-monitor-tick": "meta_monitor",
+        "weekly-backup-verify": "weekly_backup_verify",
+    }.get(beat_key)
+    if explicit_alias:
+        aliases.add(explicit_alias)
+    return {alias for alias in aliases if alias}
 
 
 # ---------------------------------------------------------------------------
@@ -497,10 +526,16 @@ async def get_beat_schedule(
     if not CELERY_BEAT_SCHEDULE:
         return {"entries": [], "total_count": 0}
 
-    # Collect all task_names referenced in Beat schedule for LATERAL JOIN
-    task_names = sorted(
-        {str(entry.get("task", "")) for entry in CELERY_BEAT_SCHEDULE.values() if entry.get("task")}
-    )
+    # Collect all task_names and canonical scheduler_task_log aliases referenced
+    # by Beat schedule. Celery uses dotted task names, while audit rows use
+    # short names such as `meta_monitor` and `daily_attribution_compute`.
+    aliases_by_beat_key: dict[str, set[str]] = {}
+    task_names: set[str] = set()
+    for beat_key, entry in CELERY_BEAT_SCHEDULE.items():
+        task_name = str(entry.get("task", ""))
+        aliases = _beat_log_aliases(str(beat_key), task_name)
+        aliases_by_beat_key[str(beat_key)] = aliases
+        task_names.update(aliases)
 
     # Fetch last_fire per task_name from scheduler_task_log (single query, index-optimized)
     last_fires: dict[str, dict[str, Any]] = {}
@@ -514,7 +549,7 @@ async def get_beat_schedule(
                 WHERE task_name = ANY(:names)
                 ORDER BY task_name, start_time DESC
             """
-            result = await session.execute(text(sql), {"names": task_names})
+            result = await session.execute(text(sql), {"names": sorted(task_names)})
             for row in result.fetchall():
                 last_fires[row.task_name] = {
                     "last_fire_time": row.start_time,
@@ -533,7 +568,15 @@ async def get_beat_schedule(
         # gives "X seconds". repr() is best-effort display string.
         schedule_display = repr(schedule_obj) if schedule_obj is not None else ""
         options = entry.get("options", {}) or {}
-        fire = last_fires.get(task_name, {})
+        fire = {}
+        for alias in aliases_by_beat_key.get(str(beat_key), {task_name}):
+            candidate = last_fires.get(alias)
+            if candidate and (
+                not fire
+                or str(candidate.get("last_fire_time") or "")
+                > str(fire.get("last_fire_time") or "")
+            ):
+                fire = candidate
         entries.append(
             {
                 "beat_key": beat_key,

@@ -17,8 +17,8 @@
 |---|---|---|---|
 | B0 | Missing `memory/project_sprint_state.md` | Doc governance | Completed: minimal handoff restored and updated. |
 | B1 | `pipeline_settings` missing | DB migration | Completed: migration applied, singleton row verified. |
-| B2 | Runtime route drift for `/api/system/beat-schedule` | Servy runtime ops | Completed: FastAPI/Worker/Beat restarted; route returns 200. |
-| B3 | `/api/system/health` timeout / session concurrency | Backend code | Completed: bounded health checks, sequential datasource reads, Windows Celery fallback. |
+| B2 | Runtime route drift for `/api/system/beat-schedule` | Servy runtime ops | Completed: FastAPI/Worker/Beat restarted; route returns 200 and canonical alias join populates existing `last_fire_*`. |
+| B3 | `/api/system/health` timeout / session concurrency | Backend code | Completed: bounded health checks, sequential datasource reads, Windows Celery fallback, available-RAM memory threshold. |
 | B4 | `daily_attribution` 0 rows | Runtime/data evidence | Completed: task apply writes row for configured `PAPER_STRATEGY_ID`; API returns latest row. |
 | B5 | Scheduler failures | Ops triage | Partially closed: disabled-task false positive fixed, DailyBackup DR risk repaired, ICMonitor API/UI reclassified as alert signal. |
 | B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
@@ -54,6 +54,8 @@ Result:
 - Left QMT Data Service stopped because it is manual and outside this remediation.
 - `GET /api/system/beat-schedule`: 200 with 27 Beat entries.
 - `GET /api/system/health`: 200 with `overall_status='ok'` after the Windows solo-worker fallback fix.
+- Follow-up fix: `/api/system/beat-schedule` now maps Celery dotted task names to canonical `scheduler_task_log` aliases, so existing rows populate `last_fire_*`.
+- Backup Beat tasks now write `scheduler_task_log` rows for `daily_backup_run` and `weekly_backup_verify`.
 
 ## B3 — System API Health Fix Candidate
 
@@ -67,6 +69,7 @@ Result:
 - `/api/system/datasources` now queries sequentially on the request `AsyncSession`.
 - `/api/system/health` now bounds PG/Redis/Celery sub-checks and degrades instead of hanging.
 - Windows Celery solo-pool health now uses process fallback first and exposes a warning that `inspect` was skipped.
+- Memory health now follows the project resource floor: ok when `available_gb >= 8`, instead of false-critical around 16GB used on a 32GB host.
 - Added regression tests for Celery timeout behavior and Windows process fallback.
 
 ## B4 — Attribution Evidence Policy

@@ -5,6 +5,7 @@
 不依赖真实数据库或 Redis，只验证路由层逻辑（状态码、响应结构、字段类型）。
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -187,6 +188,38 @@ class TestHealthEndpoint:
                 assert field in data, f"缺少字段: {field}"
         finally:
             app.dependency_overrides.pop(get_db, None)
+
+    def test_check_memory_uses_available_memory_not_absolute_used_gb(self):
+        """32GB machine at ~16GB used is healthy when available RAM remains >8GB."""
+        from app.api import system as system_mod
+
+        vm = SimpleNamespace(
+            used=17 * 1024**3,
+            available=15 * 1024**3,
+            total=32 * 1024**3,
+            percent=53.1,
+        )
+        with patch("app.api.system.psutil.virtual_memory", return_value=vm):
+            result = system_mod._check_memory()
+
+        assert result["ok"] is True
+        assert result["available_gb"] == 15.0
+
+    def test_check_memory_fails_when_available_ram_below_resource_floor(self):
+        """Resource floor remains fail-loud when available RAM drops below 8GB."""
+        from app.api import system as system_mod
+
+        vm = SimpleNamespace(
+            used=25 * 1024**3,
+            available=7 * 1024**3,
+            total=32 * 1024**3,
+            percent=78.1,
+        )
+        with patch("app.api.system.psutil.virtual_memory", return_value=vm):
+            result = system_mod._check_memory()
+
+        assert result["ok"] is False
+        assert result["available_gb"] == 7.0
 
     @pytest.mark.asyncio
     async def test_overall_ok_when_all_pass(self):

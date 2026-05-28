@@ -187,6 +187,57 @@ class TestBeatScheduleEndpoint:
             app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
+    async def test_last_fire_uses_canonical_scheduler_log_alias(self):
+        """Dotted Celery task names should match canonical scheduler_task_log aliases."""
+        from app.db import get_db
+
+        class MockSchedule:
+            def __repr__(self) -> str:
+                return "<test schedule>"
+
+        fake_schedule = {
+            "meta-monitor-tick": {
+                "task": "app.tasks.meta_monitor_tasks.meta_monitor_tick",
+                "schedule": MockSchedule(),
+                "options": {},
+            },
+            "daily-attribution-compute": {
+                "task": "app.tasks.attribution_tasks.daily_attribution_compute_task",
+                "schedule": MockSchedule(),
+                "options": {},
+            },
+        }
+        rows = [
+            {
+                "task_name": "meta_monitor",
+                "start_time": "2026-05-28T00:15:51+08:00",
+                "status": "success",
+            },
+            {
+                "task_name": "daily_attribution_compute",
+                "start_time": "2026-05-28T00:14:42+08:00",
+                "status": "success",
+            },
+        ]
+        mock_session = _make_mock_session_for_last_fire(rows)
+        app.dependency_overrides[get_db] = _override_get_db(mock_session)
+        try:
+            with patch("app.tasks.beat_schedule.CELERY_BEAT_SCHEDULE", fake_schedule):
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.get("/api/system/beat-schedule")
+            assert resp.status_code == 200
+            entries_by_key = {e["beat_key"]: e for e in resp.json()["entries"]}
+            assert entries_by_key["meta-monitor-tick"]["last_fire_time"] == (
+                "2026-05-28T00:15:51+08:00"
+            )
+            assert entries_by_key["daily-attribution-compute"]["last_fire_time"] == (
+                "2026-05-28T00:14:42+08:00"
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
     async def test_db_error_degraded_mode_no_last_fire(self):
         """DB exception during last_fire query → degraded mode (entries still returned without last_fire)."""
         from app.db import get_db

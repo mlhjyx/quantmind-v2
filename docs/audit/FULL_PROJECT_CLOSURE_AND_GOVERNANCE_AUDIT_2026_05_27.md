@@ -9,8 +9,8 @@ The first remediation batch has been executed after user authorization for relat
 
 Closed:
 - `pipeline_settings` migration applied; `/api/pipeline/status` returns 200 with automation level `L0`.
-- FastAPI, Celery Worker, and Celery Beat restarted; `/api/system/beat-schedule` returns 27 entries.
-- `/api/system/health` fixed for DB-session concurrency and slow sub-checks; runtime now returns `overall_status='ok'`.
+- FastAPI, Celery Worker, and Celery Beat restarted; `/api/system/beat-schedule` returns 27 entries and now resolves canonical `scheduler_task_log` aliases for `last_fire_*`.
+- `/api/system/health` fixed for DB-session concurrency, slow sub-checks, and memory false-critical threshold; runtime now returns `overall_status='ok'`.
 - Celery health now reports Windows solo worker liveness through process fallback and includes a warning when `inspect` is skipped.
 - Attribution task import roots and `strategy_id` source fixed; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
 - `memory/project_sprint_state.md` restored as tracked handoff SSOT.
@@ -19,6 +19,7 @@ Closed:
 Closed / reclassified:
 - `QM-SmokeTest` scheduler failure was a stale disabled-task LastResult false positive; the system scheduler API/UI now exposes `task_state`, `enabled`, and `disabled` status.
 - `QM-DailyBackup` 2026-05-28 active failure was traced to a truncated dump plus backup-script guard gaps; `scripts/pg_backup.py` now writes `.tmp` then atomically replaces, rejects undersized dumps, and verifies size before `pg_restore --list`. A controlled rerun produced a 14,480.2MB dump and `pg_restore --list` passed with 712 tables / 2,359 objects.
+- Backup Beat tasks now write `scheduler_task_log` audit rows: `daily_backup_run` writes `success`/`failed`; `weekly_backup_verify` writes `success`/`alert`/`failed`.
 
 Still open:
 - `QM-ICMonitor` is now classified as an operational `alert` signal, not an infrastructure crash: latest code `1` corresponds to a P1 IC decay alert in `logs/ic_monitor.log`, and `/api/system/scheduler` preserves that distinction for the UI.
@@ -31,8 +32,8 @@ QuantMind V2 has broad implementation coverage across backend, frontend, factor 
 The project is partially closed, not fully closed. Build and core collect-only checks pass, and the Codex hook layer is now structurally wired. The first remediation batch closed the largest runtime/schema/governance blockers from the initial audit; the remaining risk is concentrated in scheduler disposition, intentionally stopped QMT runtime, and later first-fire evidence capture:
 
 - Closed 2026-05-28: `pipeline_settings` migration applied and `/api/pipeline/status` returned 200.
-- Closed 2026-05-28: runtime FastAPI was reloaded and `/api/system/beat-schedule` returned 27 entries.
-- Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, and fresh runtime probe records `overall_status='ok'`.
+- Closed 2026-05-28: runtime FastAPI was reloaded and `/api/system/beat-schedule` returned 27 entries; canonical alias matching now populates existing `last_fire_*` rows.
+- Closed 2026-05-28: `/api/system/health` timeout/session-concurrency remediation is implemented; DB-bound checks no longer share one `AsyncSession` concurrently, slow Redis/Celery probes are bounded, memory health uses available RAM floor, and fresh runtime probe records `overall_status='ok'`.
 - Closed 2026-05-28: Wave 4 attribution evidence now exists; `daily_attribution.id=2` exists for configured `PAPER_STRATEGY_ID`, and `/api/attribution/latest` returns it.
 - Closed 2026-05-28: scheduler status false positives and backup failure path remediated; `QM-SmokeTest` is disabled/retired, and `QM-DailyBackup` now has a fresh verified 14,480.2MB dump.
 - P1: `QM-ICMonitor` still needs factor-quality/operator disposition, but the scheduler API/UI no longer labels the alert as a broken scheduled task.
@@ -83,6 +84,8 @@ Initial impact:
 Remediation:
 - FastAPI, Celery Worker, and Celery Beat were restarted on 2026-05-28.
 - `GET /api/system/beat-schedule` returned 200 with 27 Beat entries.
+- Follow-up runtime probe showed `last_fire_*` was initially all-null because the endpoint joined `scheduler_task_log.task_name` on Celery dotted task names while audit rows use canonical short names. The endpoint now resolves alias sets per Beat entry and populates rows such as `meta_monitor`, `daily_attribution_compute`, `news_ingest_*`, and `factor_lifecycle`.
+- Backup Beat tasks now write scheduler audit rows for `daily_backup_run` and `weekly_backup_verify`; next scheduled backup first-fire remains the runtime proof point for those new rows.
 
 Follow-up:
 - Add a small runtime route snapshot check so future route additions cannot be claimed closed before service reload.
@@ -208,8 +211,8 @@ Backlog:
 | Priority | Item | Owner surface | Notes |
 |---|---|---|---|
 | Closed | Apply/reconcile `pipeline_settings` migration | DB + PipelineConsole | Completed 2026-05-28: migration applied, singleton row verified, `/api/pipeline/status` returned 200. |
-| Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries. |
-| Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers, regression tests, and fresh runtime HTTP 200 evidence. |
+| Closed | Servy restart + route runtime re-verify | Ops runtime | Completed 2026-05-28: FastAPI/Worker/Beat restarted and `/api/system/beat-schedule` returned 27 entries; canonical alias join now populates existing `last_fire_*` rows. |
+| Closed | Fix `/api/system/health` timeout/session concurrency | Backend system API | Completed 2026-05-28: DB checks are sequential on one `AsyncSession`; Redis/Celery probes have bounded timeout wrappers; memory health uses available RAM floor; regression tests and fresh runtime HTTP 200 evidence. |
 | Partially closed | Scheduler failure triage | Ops + UI | `QM-SmokeTest` stale disabled-task false positive closed; `QM-DailyBackup` partial dump path fixed and fresh verified dump produced; `QM-ICMonitor` reclassified as `alert`; IC quality disposition remains. |
 | Closed | Attribution evidence policy | Eval/Beat/UI | Completed 2026-05-28: task apply wrote `daily_attribution.id=2`; `/api/attribution/latest` returned it. Future pause-window 0-row semantics remain a P2 policy refinement. |
 | Closed | Handoff SSOT repair | Docs governance | Completed 2026-05-28: `memory/project_sprint_state.md` restored and tracked. |
