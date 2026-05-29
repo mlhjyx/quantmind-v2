@@ -40,6 +40,7 @@
 | B22 | Mining evaluate service + SessionStart memory drift | Factor mining / Codex governance | Completed: `/api/mining/evaluate` service now uses `FactorGatePipeline.run_gates`; SessionStart hook now prefers repo-local `memory/` before historical Claude memory. |
 | B23 | Backtest API worker bypasses Platform runner | Backtest platform closure | Completed: `run_backtest` Celery worker now delegates engine execution through `PlatformBacktestRunner` + `InMemoryBacktestRegistry`, then writes the existing API result tables. |
 | B24 | Backtest research-script bypass drift can silently regrow | Backtest governance | Completed: historical research bypasses are explicitly allowlisted, and pre-commit/CI blocks new untracked direct `run_hybrid_backtest` / `run_composite_backtest` callers. |
+| B25 | Task Scheduler 0x41301 false failure | Runtime observability | Completed: `/api/system/scheduler` now maps Windows LastResult `267009` (`0x41301`, currently running) to `running` instead of `failed`. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -379,6 +380,21 @@ Result:
 Verification:
 - `python scripts/audit/check_backtest_runner_bypass.py`
 - `pytest backend/tests/test_backtest_runner_bypass_audit.py backend/tests/test_qm_platform_ci_precommit.py -q`
+
+## B25 — Task Scheduler Running-State Classification
+
+Result:
+- Runtime probe on 2026-05-29 showed `QM-HealthCheck` with
+  `last_result_code=267009` but `/api/system/scheduler` classified it as
+  `failed`.
+- Windows Task Scheduler code `267009` (`0x41301`) means the task is currently
+  running; `scripts/health_audit_v2.py` already treated it as a known non-fail
+  state.
+- `_task_scheduler_status` now maps `267009` to `running`, preserving existing
+  `Disabled`, `Running`, `0`, `267011`, and `QM-ICMonitor` alert semantics.
+
+Verification:
+- `pytest backend/tests/test_system_api.py -q`
 
 ## B20 — Mining Full-Gate Contract Drift
 

@@ -360,9 +360,11 @@ def _task_scheduler_status(task_name: str, task_state: str, last_result: int | N
         return "disabled"
     if normalized_state == "running":
         return "running"
-    # Windows Task Scheduler: 0=成功, 267011=还未运行
+    # Windows Task Scheduler: 0=成功, 267009=当前运行, 267011=还未运行
     if last_result == 0:
         return "success"
+    if last_result == 267009:
+        return "running"
     if last_result == 267011:
         return "never_run"
     if task_name == "QM-ICMonitor" and last_result == 1:

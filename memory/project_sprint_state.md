@@ -12,8 +12,8 @@ source_report: docs/audit/FULL_PROJECT_CLOSURE_AND_GOVERNANCE_AUDIT_2026_05_27.m
 Mode: remediation batch after full project closure and governance audit.
 
 Current scope:
-- Preserve the staged Codex governance package as the working baseline.
-- Do not commit, unstage, or revert unrelated staged changes.
+- Current PR branch is `codex/governance-runtime-remediation`; local `.codex/config.toml` permission settings are user-owned and should remain unstaged unless explicitly requested.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
 - First repair batch completed for pipeline settings, runtime route refresh, system health, import-root setup, and attribution evidence.
 - User authorized related remediation operations on 2026-05-28.
 - Still avoid broker calls, `.env` edits, Servy config edits, Task Scheduler changes, and production YAML changes unless the action is specifically required.
@@ -43,6 +43,7 @@ Closed in this batch:
 - Closed SessionStart memory path drift: `.codex/hooks/session_context_inject.py` now reads repo-local `memory/project_sprint_state.md` first and only falls back to historical Claude memory when repo memory is absent.
 - Closed Backtest API worker runner drift: `app.tasks.backtest_tasks.run_backtest` now executes via `PlatformBacktestRunner` + `InMemoryBacktestRegistry` before writing the existing API result tables; direct worker calls to `run_hybrid_backtest` are removed.
 - Closed Backtest research-script bypass regrowth risk: historical one-off `scripts/research/` direct engine calls are explicitly allowlisted, and `check_backtest_runner_bypass.py` is wired into pre-commit/CI to block new untracked bypasses.
+- Closed Task Scheduler running-state false failure: runtime probe found `QM-HealthCheck` LastResult `267009` misclassified as `failed`; `/api/system/scheduler` now maps it to `running`.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -55,7 +56,7 @@ Still open:
 - Existing `.claude/external-skills/mattpocock-skills` gitlink now has matching `.gitmodules` metadata; no `.claude/` historical content was edited.
 - Advisory `regression` and `ci_matrix` CI jobs now use `scripts/ci_run_phase.py --advisory`: structured failures log `ADVISORY_FAIL` and exit 0, while uncaught runner exceptions still fail.
 - Frontend raw axios scanner precision is closed: `scripts/audit/check_frontend_api_discipline.py` ignores comments/tests, blocks production raw axios outside `frontend/src/api/client.ts`, and is wired into local pre-commit + CI pre_commit.
-- `QM-DailyBackup` Task Scheduler LastResult remains the failed 02:00 run until next scheduled first-fire, but today's DR artifact has been recovered manually.
+- `QM-DailyBackup` Task Scheduler first-fire is now runtime-verified success on 2026-05-29 02:00 (`last_result_code=0`); Celery Beat `daily-backup-run` / `weekly-backup-verify` still need their own first-fire evidence.
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 

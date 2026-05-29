@@ -533,6 +533,7 @@ class TestSchedulerEndpoint:
         assert _task_scheduler_status("QM-SmokeTest", "Disabled", 3221225786) == "disabled"
         assert _task_scheduler_status("QM-SmokeTest", "Ready", 3221225786) == "failed"
         assert _task_scheduler_status("QM-SmokeTest", "Running", 267011) == "running"
+        assert _task_scheduler_status("QM-HealthCheck", "Ready", 267009) == "running"
         assert _task_scheduler_status("QM-SmokeTest", "Ready", 267011) == "never_run"
 
     def test_task_scheduler_status_ic_monitor_alert_is_not_infra_failure(self):
