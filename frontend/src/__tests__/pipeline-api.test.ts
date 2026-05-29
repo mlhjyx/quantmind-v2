@@ -26,6 +26,7 @@ import {
   setAutomationLevel,
   pausePipeline,
   resumePipeline,
+  cancelPipeline,
   type TriggerPipelineResult,
 } from "@/api/pipeline";
 
@@ -167,5 +168,27 @@ describe("resumePipeline (D1 O3 PN-003)", () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith("/pipeline/resume");
     expect(res).toEqual({ paused_at: null, paused_reason: null });
+  });
+});
+
+describe("cancelPipeline", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("POSTs /pipeline/runs/{runId}/cancel and returns res.data", async () => {
+    post.mockResolvedValue({
+      data: {
+        task_id: "gp_2026w21_abc123",
+        run_id: "gp_2026w21_abc123",
+        cancelled: true,
+        message: "取消信号已发送",
+      },
+    });
+
+    const res = await cancelPipeline("gp_2026w21_abc123");
+
+    expect(post).toHaveBeenCalledWith("/pipeline/runs/gp_2026w21_abc123/cancel");
+    expect(res.cancelled).toBe(true);
   });
 });

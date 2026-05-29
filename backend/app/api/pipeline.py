@@ -40,6 +40,8 @@ from app.tasks.celery_app import celery_app
 logger = structlog.get_logger(__name__)
 
 _LOCALHOST_IPS = {"127.0.0.1", "::1", "localhost"}
+_PIPELINE_STALE_DEFAULT_MINUTES = 24 * 60
+_PIPELINE_STALE_BUDGET_MULTIPLIER = 3
 
 
 def _require_local(request: Request) -> None:
@@ -109,6 +111,15 @@ class TriggerPipelineResponse(BaseModel):
     task_id: str
     engine: str
     status: str
+
+
+class CancelPipelineResponse(BaseModel):
+    """取消 Pipeline 运行的响应。"""
+
+    task_id: str
+    run_id: str
+    cancelled: bool
+    message: str
 
 
 class PipelineLogEntry(BaseModel):
@@ -268,6 +279,38 @@ async def trigger_pipeline(
     )
 
 
+@router.post(
+    "/runs/{run_id}/cancel",
+    summary="取消 Pipeline 运行",
+    response_model=CancelPipelineResponse,
+)
+async def cancel_pipeline_run(
+    run_id: str,
+    session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
+) -> CancelPipelineResponse:
+    """Cancel a running Pipeline row via the existing MiningService path.
+
+    This is intentionally explicit and localhost-only. It lets operators close
+    stale `running` rows without hiding a DB mutation behind GET /status.
+    """
+    svc = MiningService(session)
+    try:
+        result = await svc.cancel_task(run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    emit_pipeline_log(
+        run_id=result["run_id"],
+        agent="orchestrator",
+        level="decision",
+        content=f"Pipeline cancelled: run_id={result['run_id']}",
+    )
+    return CancelPipelineResponse(**result)
+
+
 @router.get(
     "/{run_id}/logs",
     summary="Pipeline 决策日志 HTTP backfill (PN-005 O7)",
@@ -413,6 +456,59 @@ def _gp_weekly_schedule_next() -> tuple[str, str]:
     return ("0 22 * * 0", target.astimezone(UTC).isoformat())
 
 
+def _pipeline_stale_after_minutes(config: dict[str, Any]) -> int:
+    """Return stale-running threshold for a mining run.
+
+    The GP task has a hard Celery limit near 3h, but status is operator-facing.
+    A 24h floor avoids mislabeling unusually slow manual experiments while still
+    catching rows that would otherwise block the weekly pipeline indefinitely.
+    """
+    raw_budget = config.get("time_budget_minutes")
+    try:
+        budget_minutes = float(raw_budget)
+    except (TypeError, ValueError):
+        budget_minutes = 0.0
+    if budget_minutes <= 0:
+        return _PIPELINE_STALE_DEFAULT_MINUTES
+    return int(
+        max(
+            _PIPELINE_STALE_DEFAULT_MINUTES,
+            budget_minutes * _PIPELINE_STALE_BUDGET_MULTIPLIER,
+        )
+    )
+
+
+def _running_stale_info(
+    *,
+    status: str,
+    started_at: datetime | None,
+    config: dict[str, Any],
+    now: datetime | None = None,
+) -> tuple[bool, int | None, str | None]:
+    """Classify stale `running` rows without mutating DB state."""
+    if status != "running" or started_at is None:
+        return (False, None, None)
+
+    now_utc = now or datetime.now(UTC)
+    started_utc = started_at
+    if started_utc.tzinfo is None:
+        started_utc = started_utc.replace(tzinfo=UTC)
+    else:
+        started_utc = started_utc.astimezone(UTC)
+
+    stale_after_minutes = _pipeline_stale_after_minutes(config)
+    age = now_utc - started_utc
+    if age <= timedelta(minutes=stale_after_minutes):
+        return (False, stale_after_minutes, None)
+
+    age_hours = age.total_seconds() / 3600
+    reason = (
+        f"running for {age_hours:.1f}h exceeds stale threshold "
+        f"{stale_after_minutes}m; operator cancel/retry required"
+    )
+    return (True, stale_after_minutes, reason)
+
+
 @router.post(
     "/pause",
     summary="暂停 Pipeline gate-at-entry (D1 O3, PN-003)",
@@ -537,6 +633,9 @@ async def get_pipeline_status(
             "schedule_cron": schedule_cron,
             "next_run_at": next_run_at,
             "last_run_at": None,
+            "is_stale_running": False,
+            "stale_after_minutes": None,
+            "stale_reason": None,
             "current_node": None,
             "paused_at": paused_at_iso,
             "paused_reason": paused_reason,
@@ -560,6 +659,12 @@ async def get_pipeline_status(
     last_run_dt = row["finished_at"] or row["started_at"]
     last_run_iso = last_run_dt.isoformat() if last_run_dt else None
     is_running = row["status"] == "running"
+    is_stale_running, stale_after_minutes, stale_reason = _running_stale_info(
+        status=row["status"],
+        started_at=row["started_at"],
+        config=config,
+    )
+    status_label = "stale_running" if is_stale_running else row["status"]
 
     return {
         # NEW frontend-aligned keys (PN-004)
@@ -572,12 +677,15 @@ async def get_pipeline_status(
         "schedule_cron": schedule_cron,
         "next_run_at": next_run_at,
         "last_run_at": last_run_iso,
+        "is_stale_running": is_stale_running,
+        "stale_after_minutes": stale_after_minutes,
+        "stale_reason": stale_reason,
         "paused_at": paused_at_iso,
         "paused_reason": paused_reason,
         # LEGACY aliases (deprecated, 1-sprint retention per PN-004 §2.2)
         "active_run_id": row["run_id"],
         "active_engine": row["engine"],
-        "status": row["status"],
+        "status": status_label,
         "node_statuses": node_statuses_dict,
         "progress": {
             "total_candidates": stats.get("total_evaluated", 0),

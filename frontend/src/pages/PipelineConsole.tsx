@@ -15,6 +15,8 @@ import {
   getPipelineRun,
   triggerPipeline,
   pausePipeline,
+  resumePipeline,
+  cancelPipeline,
   approveItem,
   rejectItem,
   holdItem,
@@ -66,6 +68,7 @@ export default function PipelineConsole() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [triggering, setTriggering] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CandidateItem[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -204,10 +207,27 @@ export default function PipelineConsole() {
 
   const handlePause = async () => {
     try {
-      await pausePipeline();
+      if (status?.is_paused) {
+        await resumePipeline();
+      } else {
+        await pausePipeline();
+      }
       await loadStatus();
     } catch {
-      setError("暂停操作失败");
+      setError(status?.is_paused ? "恢复操作失败" : "暂停操作失败");
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!status?.run_id) return;
+    setCancelling(true);
+    try {
+      await cancelPipeline(status.run_id);
+      await loadStatus();
+    } catch {
+      setError("取消运行失败，请检查任务状态");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -354,6 +374,15 @@ export default function PipelineConsole() {
             {status.is_paused ? "继续" : "暂停"}
           </Button>
           <Button
+            variant="secondary"
+            size="sm"
+            loading={cancelling}
+            onClick={handleCancel}
+            disabled={!status.is_running || !status.run_id}
+          >
+            {status.is_stale_running ? "取消卡住运行" : "取消运行"}
+          </Button>
+          <Button
             size="sm"
             loading={triggering}
             onClick={handleTrigger}
@@ -417,12 +446,24 @@ export default function PipelineConsole() {
       {/* Status indicator */}
       <div className="flex items-center gap-3 mb-4">
         <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border ${
-          status.is_running
+          status.is_stale_running
+            ? "text-amber-300 bg-amber-500/15 border-amber-500/30"
+            : status.is_running
             ? "text-blue-300 bg-blue-500/15 border-blue-500/30"
             : "text-slate-400 bg-slate-800/40 border-white/10"
         }`}>
-          <span className={`w-2 h-2 rounded-full ${status.is_running ? "bg-blue-400 animate-pulse" : "bg-slate-600"}`} />
-          {status.is_running ? (status.is_paused ? "已暂停" : "运行中") : "空闲"}
+          <span className={`w-2 h-2 rounded-full ${
+            status.is_stale_running
+              ? "bg-amber-400"
+              : status.is_running
+              ? "bg-blue-400 animate-pulse"
+              : "bg-slate-600"
+          }`} />
+          {status.is_stale_running
+            ? "运行卡住"
+            : status.is_running
+            ? (status.is_paused ? "已暂停" : "运行中")
+            : "空闲"}
         </div>
         {status.last_run_at && (
           <span className="text-xs text-slate-500">
@@ -430,6 +471,12 @@ export default function PipelineConsole() {
           </span>
         )}
       </div>
+
+      {status.is_stale_running && (
+        <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {status.stale_reason ?? "Pipeline 运行已超过预期时间，请取消后重新触发。"}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-white/5 pb-1">

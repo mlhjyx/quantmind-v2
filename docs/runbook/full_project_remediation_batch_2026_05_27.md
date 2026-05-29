@@ -432,3 +432,40 @@ Remaining:
 - Capture a controlled end-to-end run or the next scheduled first-fire evidence
   showing persisted previous-run and reviewed approval feedback is consumed by
   the following run.
+
+## B26 — Pipeline Stale-Running Runtime Closure
+
+Result:
+- Runtime probe on 2026-05-29 found `/api/pipeline/status` blocked by old
+  `pipeline_runs.status='running'` rows (`gp_2026w16_000147e8`, then
+  `gp_2026w15_000147e8`) that had no live task and no terminal timestamp.
+- `/api/pipeline/status` now keeps `is_running=true` for DB truth but adds
+  `is_stale_running`, `stale_after_minutes`, and `stale_reason`; legacy
+  `status` is surfaced as `stale_running` for operator visibility.
+- Added localhost-only `POST /api/pipeline/runs/{run_id}/cancel`, wired to the
+  existing `MiningService.cancel_task`, and added a Pipeline Console cancel
+  button. The existing pause button now calls `resumePipeline()` when already
+  paused.
+- FastAPI was restarted and the two stale rows were explicitly cancelled via
+  the new endpoint. `/api/pipeline/status` now returns the latest terminal GP
+  run (`gp_2026w20_000147e8`, `status=failed`) instead of a stale active run.
+- The next visible failure was the pre-existing GP dependency gap:
+  `DEAP未安装`. `deap>=1.4.1` is now declared in `pyproject.toml` and installed
+  in the local `.venv` (`deap.__version__ == 1.4`).
+
+Redline / runtime notes:
+- `backend/.env` still shows `LIVE_TRADING_DISABLED=true`,
+  `EXECUTION_MODE=paper`, and `QMT_ACCOUNT_ID=81001102`.
+- Read-only account verification was attempted, but miniQMT connection returned
+  `-1` because QMT is not connected in this shell. No broker, `.env`, yaml, or
+  Task Scheduler mutation was performed; DB writes were limited to explicit
+  operator cancellation of stale `pipeline_runs` metadata rows.
+
+Verification:
+- `ruff check backend/app/api/pipeline.py backend/tests/test_pipeline_status_contract.py`
+- `pytest backend/tests/test_pipeline_status_contract.py -q`
+- `npm exec vitest -- --run src/__tests__/pipeline-api.test.ts src/__tests__/PipelineConsole.test.tsx`
+- `npm run build -- --mode development`
+- `pytest backend/tests/test_gp_engine.py backend/tests/test_gp_cross_round.py -q`
+- Runtime: `/api/pipeline/status` stale flag before cancellation; cancel endpoint
+  success for both stale rows; `/api/system/health` returned `overall_status=ok`.

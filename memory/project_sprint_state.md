@@ -44,6 +44,8 @@ Closed in this batch:
 - Closed Backtest API worker runner drift: `app.tasks.backtest_tasks.run_backtest` now executes via `PlatformBacktestRunner` + `InMemoryBacktestRegistry` before writing the existing API result tables; direct worker calls to `run_hybrid_backtest` are removed.
 - Closed Backtest research-script bypass regrowth risk: historical one-off `scripts/research/` direct engine calls are explicitly allowlisted, and `check_backtest_runner_bypass.py` is wired into pre-commit/CI to block new untracked bypasses.
 - Closed Task Scheduler running-state false failure: runtime probe found `QM-HealthCheck` LastResult `267009` misclassified as `failed`; `/api/system/scheduler` now maps it to `running`.
+- Closed Pipeline stale-running runtime blockage: `/api/pipeline/status` now surfaces `is_stale_running` / `stale_reason`, localhost-only `POST /api/pipeline/runs/{run_id}/cancel` is wired to `MiningService.cancel_task`, Pipeline Console exposes cancel and correct pause/resume semantics, and stale rows `gp_2026w16_000147e8` / `gp_2026w15_000147e8` were explicitly cancelled.
+- Closed GP dependency gap for scheduled mining: `deap>=1.4.1` is declared in `pyproject.toml`, installed in `.venv`, and GP engine/cross-round tests now run instead of skipping.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -61,4 +63,4 @@ Still open:
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 
 Next safe step:
-- Observe the next scheduled backup first-fire evidence, a controlled GP next-run feedback consumption proof, and a controlled Backtest API worker first-fire; otherwise continue design-doc implementation-gap audit, now focusing on runtime first-fire evidence and optional batched migration of allowlisted historical research scripts with reproducibility checks.
+- Observe the next scheduled backup first-fire evidence, a controlled GP next-run feedback consumption proof after DEAP installation, and a controlled Backtest API worker first-fire; otherwise continue design-doc implementation-gap audit, now focusing on runtime first-fire evidence and optional batched migration of allowlisted historical research scripts with reproducibility checks.

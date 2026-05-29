@@ -41,6 +41,9 @@ export interface PipelineStatus {
   automation_level: AutomationLevel;
   is_running: boolean;
   is_paused: boolean;
+  is_stale_running?: boolean;
+  stale_after_minutes?: number | null;
+  stale_reason?: string | null;
   current_node: string | null;
   nodes: PipelineNode[];
   schedule_cron: string;
@@ -109,6 +112,13 @@ export interface TriggerPipelineResult {
   status: string;
 }
 
+export interface CancelPipelineResult {
+  task_id: string;
+  run_id: string;
+  cancelled: boolean;
+  message: string;
+}
+
 // ---- API calls ----
 
 export async function getPipelineStatus(): Promise<PipelineStatus> {
@@ -143,6 +153,11 @@ export async function pausePipeline(reason?: string): Promise<PauseStatus> {
  *  Backend: POST /api/pipeline/resume (idempotent — always returns null state). */
 export async function resumePipeline(): Promise<PauseStatus> {
   const res = await apiClient.post<PauseStatus>("/pipeline/resume");
+  return res.data;
+}
+
+export async function cancelPipeline(runId: string): Promise<CancelPipelineResult> {
+  const res = await apiClient.post<CancelPipelineResult>(`/pipeline/runs/${runId}/cancel`);
   return res.data;
 }
 
