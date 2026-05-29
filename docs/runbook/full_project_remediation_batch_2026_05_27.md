@@ -43,6 +43,7 @@
 | B25 | Task Scheduler 0x41301 false failure | Runtime observability | Completed: `/api/system/scheduler` now maps Windows LastResult `267009` (`0x41301`, currently running) to `running` instead of `failed`. |
 | B26 | Pipeline stale-running rows block operator view | Runtime/API/UI closure | Completed: stale GP rows are surfaced, cancellable from localhost/UI, and two stale rows were explicitly closed. |
 | B27 | `signal_phase` reports empty factors after missing T-day data | Runtime fail-loud closure | Completed: T-day `klines_daily` / `daily_basic` readiness is checked immediately after fetch so the scheduler log names the data outage before empty factor generation. |
+| B28 | Celery backup orchestrators depend on missing PG CLI PATH | Backup/DR runtime closure | Completed: Platform backup tasks now resolve `pg_dump.exe` / `pg_restore.exe` from `PG_BIN` or known Windows install paths and pass `PGPASSWORD` into subprocesses. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -495,3 +496,23 @@ Result:
 Verification:
 - `ruff check scripts/run_paper_trading.py backend/tests/test_pt_data_service_fail_loud.py`
 - `pytest backend/tests/test_pt_data_service_fail_loud.py -q`
+
+## B28 - Celery Backup PG Tool Resolution
+
+Evidence:
+- Runtime PATH probe on 2026-05-29 returned `pg_dump=None` and `pg_restore=None`, while `tar` was available.
+- `backend/qm_platform/backup/db_backup.py` called bare `pg_dump`; `restore_verification.py` called bare `pg_restore`.
+- The previously repaired Task Scheduler backup path already resolved PostgreSQL tools from `D:\pgsql\bin`, so the Celery backup chain had a Windows service-environment drift risk.
+
+Result:
+- Added `backend/qm_platform/backup/pg_tools.py` with shared PostgreSQL CLI resolution and subprocess env loading.
+- `DBBackupOrchestrator` now calls resolved `pg_dump.exe` and passes `PGPASSWORD` to subprocesses.
+- `RestoreVerificationOrchestrator` now calls resolved `pg_restore.exe` and passes `PGPASSWORD` to subprocesses.
+- Runtime resolution probe now returns `D:\pgsql\bin\pg_dump.exe`, `D:\pgsql\bin\pg_restore.exe`, and `has_pgpassword=True`.
+
+Verification:
+- `ruff check backend/qm_platform/backup/pg_tools.py backend/qm_platform/backup/db_backup.py backend/qm_platform/backup/restore_verification.py backend/tests/test_qm_platform_backup_concrete.py`
+- `pytest backend/tests/test_qm_platform_backup_concrete.py backend/tests/test_qm_platform_backup_verify_rpo.py backend/tests/test_wave4_audit_envelope.py -q` -> 71 passed.
+
+Remaining:
+- This closes the executable/env precondition for Celery backup tasks. Scheduled `daily-backup-run` and `weekly-backup-verify` still need next-window Beat first-fire evidence.

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend.qm_platform.backup.orchestrator import BackupTarget, BackupTargetResult
+from backend.qm_platform.backup.pg_tools import pg_subprocess_env, resolve_pg_binary
 
 DEFAULT_RESTORE_TIMEOUT_SECONDS = 1800  # 30min sample restore
 
@@ -29,6 +30,7 @@ def _default_runner(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
     return subprocess.run(  # noqa: S603
         cmd,
         capture_output=True,
+        env=pg_subprocess_env(),
         text=True,
         timeout=timeout,
         check=False,
@@ -122,7 +124,10 @@ class RestoreVerificationOrchestrator:
 
         try:
             # Step 1: pg_restore --list (cheap verification of artifact integrity)
-            result = self.runner(["pg_restore", "--list", str(artifact)], self.spec.timeout_seconds)
+            result = self.runner(
+                [resolve_pg_binary("pg_restore"), "--list", str(artifact)],
+                self.spec.timeout_seconds,
+            )
             details["pg_restore_list_rc"] = str(result.returncode)
             if result.returncode != 0:
                 passed = False
