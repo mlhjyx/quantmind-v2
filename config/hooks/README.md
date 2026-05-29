@@ -30,11 +30,12 @@ git config --unset core.hooksPath
 
 ## Pre-Commit
 
-`pre-commit` 当前包含三类检查：
+`pre-commit` 当前包含四类检查：
 
 1. **S6 LLM import block**: 调 `scripts/check_llm_imports.sh --staged`，阻断非 allowlist LLM SDK import。
 2. **Frontend API discipline block**: 调 `scripts/audit/check_frontend_api_discipline.py`，只识别真实 `axios` import/require/dynamic import；生产代码仅允许 `frontend/src/api/client.ts` 直接 import axios，测试目录和注释不会误报。
-3. **staged `.md` canonical 提示**: 对 staged markdown 输出 6 类 canonical 参考值，包含 factor count、Tier0、LL、D 决议、测试 baseline、LL-188 `.env` claim drift。该部分是 warning-only，不阻断 commit。
+3. **Backtest runner discipline block**: 调 `scripts/audit/check_backtest_runner_bypass.py`，阻断 `backend/` + `scripts/` 新增未 allowlist 的 `run_hybrid_backtest` / `run_composite_backtest` 直调；历史一次性研究脚本例外集中在 `scripts/audit/backtest_runner_bypass_allowlist.txt`。
+4. **staged `.md` canonical 提示**: 对 staged markdown 输出 6 类 canonical 参考值，包含 factor count、Tier0、LL、D 决议、测试 baseline、LL-188 `.env` claim drift。该部分是 warning-only，不阻断 commit。
 
 紧急绕过:
 
@@ -83,6 +84,7 @@ Co-Authored-By: ...
 | `FlagNotFound: use_db_direction` | feature_flags 表被 migrate 冲 | `python scripts/registry/register_feature_flags.py --apply` |
 | `scripts/check_llm_imports.sh` block | 新增了非 allowlist LLM SDK import | 改走 LiteLLM 路由或按 `docs/LLM_IMPORT_POLICY.md` 加明确 allowlist marker |
 | `frontend-api-discipline` block | 生产前端代码直接 import/require axios | 改走 `frontend/src/api/client.ts` 的 `apiClient`；注释或测试 mock 不会触发 |
+| `backtest-runner-bypass` block | 新增回测调用直接绕过 PlatformBacktestRunner | 改走 `backend.qm_platform.backtest.runner.PlatformBacktestRunner`；仅历史一次性研究脚本可显式加入 allowlist |
 
 ## 升级路径
 

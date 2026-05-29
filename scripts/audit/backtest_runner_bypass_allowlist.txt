@@ -1,0 +1,17 @@
+# Historical one-off research scripts that still call the engine functions
+# directly. They are allowed only to preserve old experiment reproducibility.
+# New production/API/CI/CLI callers must go through PlatformBacktestRunner.
+scripts/research/backtest_vwap_bias_weekly.py
+scripts/research/composite_dsr_improvement.py
+scripts/research/factor_swap_paired_bootstrap.py
+scripts/research/mdd_reduction_dual_modifier.py
+scripts/research/paired_bootstrap_top9.py
+scripts/research/phase24_audit_questions.py
+scripts/research/phase22_gate_verification.py
+scripts/research/phase24_research_exploration.py
+scripts/research/phase3b_factor_characteristics.py
+scripts/research/phase3b_wf_p1_evaluation.py
+scripts/research/size_neutral_backtest.py
+scripts/research/validate_optimization.py
+scripts/research/wf_minute_candidates_validation.py
+scripts/research/wf_phase24_validation.py

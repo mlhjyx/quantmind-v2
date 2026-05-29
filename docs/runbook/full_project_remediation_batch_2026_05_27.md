@@ -39,6 +39,7 @@
 | B21 | GP cross-round feedback not wired in production runners | Factor mining closure | Completed: Celery GP task and CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run. |
 | B22 | Mining evaluate service + SessionStart memory drift | Factor mining / Codex governance | Completed: `/api/mining/evaluate` service now uses `FactorGatePipeline.run_gates`; SessionStart hook now prefers repo-local `memory/` before historical Claude memory. |
 | B23 | Backtest API worker bypasses Platform runner | Backtest platform closure | Completed: `run_backtest` Celery worker now delegates engine execution through `PlatformBacktestRunner` + `InMemoryBacktestRegistry`, then writes the existing API result tables. |
+| B24 | Backtest research-script bypass drift can silently regrow | Backtest governance | Completed: historical research bypasses are explicitly allowlisted, and pre-commit/CI blocks new untracked direct `run_hybrid_backtest` / `run_composite_backtest` callers. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -361,6 +362,23 @@ Result:
 Verification:
 - `ruff check backend/app/tasks/backtest_tasks.py backend/tests/test_backtest_tasks.py`
 - `pytest backend/tests/test_backtest_tasks.py backend/tests/test_backtest_runner.py backend/tests/test_backtest_api.py -q`
+
+## B24 — Backtest Runner Bypass Guard
+
+Result:
+- Existing non-archive `scripts/research/` direct calls to
+  `run_hybrid_backtest` / `run_composite_backtest` are triaged as historical
+  one-off experiments and tracked in
+  `scripts/audit/backtest_runner_bypass_allowlist.txt`.
+- `scripts/audit/check_backtest_runner_bypass.py` scans `backend/` and
+  `scripts/`, ignores engine internals/tests/archive, and blocks any new
+  unallowlisted direct engine call.
+- The guard is wired into both local `config/hooks/pre-commit` and the CI
+  `PreCommitOrchestrator`.
+
+Verification:
+- `python scripts/audit/check_backtest_runner_bypass.py`
+- `pytest backend/tests/test_backtest_runner_bypass_audit.py backend/tests/test_qm_platform_ci_precommit.py -q`
 
 ## B20 — Mining Full-Gate Contract Drift
 

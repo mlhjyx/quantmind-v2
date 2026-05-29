@@ -41,6 +41,18 @@ if [ -f scripts/audit/check_frontend_api_discipline.py ]; then
     fi
 fi
 
+# === Backtest Platform runner discipline (MVP 2.3 / B1 closure) ===
+# scope: backend/ + scripts/ Python files. Historical one-off research scripts
+# are explicit allowlist entries; new app/script callers must use PlatformBacktestRunner.
+if [ -f scripts/audit/check_backtest_runner_bypass.py ]; then
+    if ! "$PY" scripts/audit/check_backtest_runner_bypass.py; then
+        echo ""
+        echo "[pre-commit] Backtest runner discipline — commit 被阻断."
+        echo "[pre-commit] 新回测调用必须走 PlatformBacktestRunner；历史研究例外需显式 allowlist。"
+        exit 1
+    fi
+fi
+
 # Check staged .md files
 STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.md$' || true)
 if [ -z "$STAGED_MD" ]; then
