@@ -46,6 +46,8 @@ Closed in this batch:
 - Closed Task Scheduler running-state false failure: runtime probe found `QM-HealthCheck` LastResult `267009` misclassified as `failed`; `/api/system/scheduler` now maps it to `running`.
 - Closed Pipeline stale-running runtime blockage: `/api/pipeline/status` now surfaces `is_stale_running` / `stale_reason`, localhost-only `POST /api/pipeline/runs/{run_id}/cancel` is wired to `MiningService.cancel_task`, Pipeline Console exposes cancel and correct pause/resume semantics, and stale rows `gp_2026w16_000147e8` / `gp_2026w15_000147e8` were explicitly cancelled.
 - Closed GP dependency gap for scheduled mining: `deap>=1.4.1` is declared in `pyproject.toml`, installed in `.venv`, and GP engine/cross-round tests now run instead of skipping.
+- Closed 2026-05-29 `signal_phase` data-gap runtime failure: Tushare later had same-day data; controlled fetch wrote 5,477 `klines_daily` / 5,477 `daily_basic` / 5,477 `stock_status_daily` rows, rerun wrote 131,448 `factor_values` rows and 5 paper `signals`, and latest `scheduler_task_log.signal_phase` is `success`.
+- Added a T-day data readiness guard in `scripts/run_paper_trading.py` so future same-day data outages fail at `klines_daily` / `daily_basic` readiness instead of misleadingly surfacing as empty factor generation.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -61,6 +63,7 @@ Still open:
 - `QM-DailyBackup` Task Scheduler first-fire is now runtime-verified success on 2026-05-29 02:00 (`last_result_code=0`); Celery Beat `daily-backup-run` / `weekly-backup-verify` still need their own first-fire evidence.
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
+- 2026-05-29 Tushare `daily_basic` had high `pe_ttm` / `dv_ttm` null-ratio warnings during controlled fetch; DataPipeline logged the warning and still upserted valid rows. Treat as data-quality signal, not a signal-chain blocker after successful factor/signal rerun.
 
 Next safe step:
 - Observe the next scheduled backup first-fire evidence, a controlled GP next-run feedback consumption proof after DEAP installation, and a controlled Backtest API worker first-fire; otherwise continue design-doc implementation-gap audit, now focusing on runtime first-fire evidence and optional batched migration of allowlisted historical research scripts with reproducibility checks.

@@ -41,6 +41,8 @@
 | B23 | Backtest API worker bypasses Platform runner | Backtest platform closure | Completed: `run_backtest` Celery worker now delegates engine execution through `PlatformBacktestRunner` + `InMemoryBacktestRegistry`, then writes the existing API result tables. |
 | B24 | Backtest research-script bypass drift can silently regrow | Backtest governance | Completed: historical research bypasses are explicitly allowlisted, and pre-commit/CI blocks new untracked direct `run_hybrid_backtest` / `run_composite_backtest` callers. |
 | B25 | Task Scheduler 0x41301 false failure | Runtime observability | Completed: `/api/system/scheduler` now maps Windows LastResult `267009` (`0x41301`, currently running) to `running` instead of `failed`. |
+| B26 | Pipeline stale-running rows block operator view | Runtime/API/UI closure | Completed: stale GP rows are surfaced, cancellable from localhost/UI, and two stale rows were explicitly closed. |
+| B27 | `signal_phase` reports empty factors after missing T-day data | Runtime fail-loud closure | Completed: T-day `klines_daily` / `daily_basic` readiness is checked immediately after fetch so the scheduler log names the data outage before empty factor generation. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -469,3 +471,27 @@ Verification:
 - `pytest backend/tests/test_gp_engine.py backend/tests/test_gp_cross_round.py -q`
 - Runtime: `/api/pipeline/status` stale flag before cancellation; cancel endpoint
   success for both stale rows; `/api/system/health` returned `overall_status=ok`.
+
+## B27 — Signal Phase Market-Data Readiness Guard
+
+Runtime finding:
+- `scheduler_task_log` showed `signal_phase` failed on 2026-05-29 16:31 with
+  `因子缺失` for the 4 PT factors.
+- Read-only DB probe showed `klines_daily`, `daily_basic`, and the 4 PT factors
+  all had latest `trade_date=2026-05-28`; 2026-05-29 had 0 rows.
+- `logs/paper_trading.log` showed the fetch step returned
+  `klines=0, basic=0, index=0` but the pipeline still continued to factor
+  calculation, making the final error look like a factor problem.
+
+Result:
+- `scripts/run_paper_trading.py` now checks same-day `klines_daily` and
+  `daily_basic` counts immediately after `fetch_daily_data()`.
+- If T-day market/base data are absent, the task raises a clear fail-loud
+  `RuntimeError` with DB counts and fetch row counts before generating empty
+  factors.
+- Zero fetch upsert counts still pass when same-day DB rows already exist,
+  preserving safe rerun / idempotent behavior.
+
+Verification:
+- `ruff check scripts/run_paper_trading.py backend/tests/test_pt_data_service_fail_loud.py`
+- `pytest backend/tests/test_pt_data_service_fail_loud.py -q`
