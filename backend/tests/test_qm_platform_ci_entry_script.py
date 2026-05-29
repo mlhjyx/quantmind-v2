@@ -78,10 +78,42 @@ def test_exit_code_1_when_phase_fails():
     assert exit_code == 1
 
 
+def test_advisory_failure_logs_but_exits_0(capsys):
+    """--advisory keeps structured phase failures visible without failing CI."""
+    from backend.qm_platform.ci.orchestrator import CIPhase, CIResult
+
+    fake_result = CIResult(
+        phase=CIPhase.REGRESSION,
+        passed=False,
+        duration_ms=10,
+        details={"baseline": "FILE_MISSING"},
+    )
+    fake_orch = MagicMock()
+    fake_orch.run_phase = MagicMock(return_value=fake_result)
+
+    with patch.object(ci_run_phase, "_build_orchestrator", return_value=fake_orch):
+        exit_code = ci_run_phase.main(["--phase", "regression", "--advisory"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "status=ADVISORY_FAIL" in captured.out
+    assert "structured failure captured" in captured.out
+
+
 def test_exit_code_1_on_uncaught_exception(capsys):
     """Uncaught exception in orchestrator → exit 1 + stderr stack trace (铁律 33 tier-2)."""
     with patch.object(ci_run_phase, "_build_orchestrator", side_effect=RuntimeError("boom")):
         exit_code = ci_run_phase.main(["--phase", "regression"])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "RuntimeError" in captured.err
+    assert "boom" in captured.err
+
+
+def test_advisory_does_not_swallow_uncaught_exception(capsys):
+    """--advisory only covers structured CIResult failures, not broken runners."""
+    with patch.object(ci_run_phase, "_build_orchestrator", side_effect=RuntimeError("boom")):
+        exit_code = ci_run_phase.main(["--phase", "regression", "--advisory"])
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "RuntimeError" in captured.err

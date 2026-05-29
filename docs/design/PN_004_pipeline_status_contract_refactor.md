@@ -3,10 +3,11 @@
 > Iter 15 Inner-loop-B step 3 design doc — L4+R loop. 铁律 24 (≤2 pages).
 > SSOT: docs/L4R_LOOP_SPEC.md §10. Predecessors: PN-001 (O8 automation-level),
 > PN-002 (O10 correlation prune), PN-003 (O3 pipeline pause gate).
+> **Status addendum 2026-05-28**: IMPLEMENTED. `GET /api/pipeline/status` now exposes frontend-aligned keys while retaining compatibility aliases; `backend/tests/test_pipeline_status_contract.py` covers the contract.
 
 ## §1 Scope & Intent
 
-**Problem**: `API_COVERAGE.md §6.1` NEW finding (Phase K reconciliation 2026-05-22):
+**Design-time problem**: `API_COVERAGE.md §6.1` NEW finding (Phase K reconciliation 2026-05-22):
 `GET /api/pipeline/status` is consumed by frontend (`pipeline.ts` + `PipelineConsole.tsx`)
 but the backend response shape does **NOT match** the frontend `PipelineStatus` type. The
 frontend feeds `undefined` to many fields (FlowChart `nodes[]`, automation-level display,
@@ -17,7 +18,7 @@ schedule-cron card, next-run / last-run displays).
 `schedule_cron`, `next_run_at`, `last_run_at`, plus `paused_at` + `paused_reason`
 (added in PN-003).
 
-**Backend currently returns** (pipeline.py:271-419 — post PN-001/003):
+**Backend returned at design time** (pipeline.py:271-419 — post PN-001/003):
 `active_run_id`, `active_engine`, `status`, `current_node`, `node_statuses` (dict),
 `progress`, `started_at`, `finished_at`, `error`, `paused_at`, `paused_reason`,
 `config_summary`.

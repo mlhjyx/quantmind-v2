@@ -101,23 +101,25 @@ def test_market_regime_real_yamls_substitute_rag_context():
     from backend.qm_platform.risk.regime.interface import MarketIndicators
 
     bull_resp = LLMResponse(
-        content=json.dumps(
-            {"arguments": [{"argument": "a", "evidence": "e", "weight": 0.4}] * 3}
-        ),
+        content=json.dumps({"arguments": [{"argument": "a", "evidence": "e", "weight": 0.4}] * 3}),
         model="deepseek-v4-pro",
-        tokens_in=200, tokens_out=100, cost_usd=Decimal("0.0002"),
+        tokens_in=200,
+        tokens_out=100,
+        cost_usd=Decimal("0.0002"),
     )
     bear_resp = LLMResponse(
-        content=json.dumps(
-            {"arguments": [{"argument": "b", "evidence": "e", "weight": 0.4}] * 3}
-        ),
+        content=json.dumps({"arguments": [{"argument": "b", "evidence": "e", "weight": 0.4}] * 3}),
         model="deepseek-v4-pro",
-        tokens_in=200, tokens_out=100, cost_usd=Decimal("0.0002"),
+        tokens_in=200,
+        tokens_out=100,
+        cost_usd=Decimal("0.0002"),
     )
     judge_resp = LLMResponse(
         content=json.dumps({"regime": "Bull", "confidence": 0.7, "reasoning": "smoke"}),
         model="deepseek-v4-pro",
-        tokens_in=300, tokens_out=80, cost_usd=Decimal("0.0003"),
+        tokens_in=300,
+        tokens_out=80,
+        cost_usd=Decimal("0.0003"),
     )
     router = MagicMock()
     router.completion.side_effect = [bull_resp, bear_resp, judge_resp]
@@ -125,9 +127,12 @@ def test_market_regime_real_yamls_substitute_rag_context():
 
     indicators = MarketIndicators(
         timestamp=datetime(2026, 5, 26, 14, 30, tzinfo=UTC),
-        sse_return=0.0185, hs300_return=0.0212,
-        breadth_up=2800, breadth_down=1500,
-        north_flow_cny=87.5, iv_50etf=0.185,
+        sse_return=0.0185,
+        hs300_return=0.0212,
+        breadth_up=2800,
+        breadth_down=1500,
+        north_flow_cny=87.5,
+        iv_50etf=0.185,
     )
     # MarketRegimeService default-constructs BullAgent/BearAgent/RegimeJudge
     # which load DEFAULT_PROMPT_PATH (production yamls).
@@ -177,24 +182,36 @@ def test_real_yamls_backward_compat_when_rag_none():
             content=json.dumps(
                 {"arguments": [{"argument": "a", "evidence": "e", "weight": 0.4}] * 3}
             ),
-            model="m", tokens_in=1, tokens_out=1, cost_usd=Decimal("0"),
+            model="m",
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=Decimal("0"),
         ),
         LLMResponse(
             content=json.dumps(
                 {"arguments": [{"argument": "b", "evidence": "e", "weight": 0.4}] * 3}
             ),
-            model="m", tokens_in=1, tokens_out=1, cost_usd=Decimal("0"),
+            model="m",
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=Decimal("0"),
         ),
         LLMResponse(
             content=json.dumps({"regime": "Neutral", "confidence": 0.5, "reasoning": "n"}),
-            model="m", tokens_in=1, tokens_out=1, cost_usd=Decimal("0"),
+            model="m",
+            tokens_in=1,
+            tokens_out=1,
+            cost_usd=Decimal("0"),
         ),
     ]
     indicators = MarketIndicators(
         timestamp=datetime(2026, 5, 26, 14, 30, tzinfo=UTC),
-        sse_return=0.01, hs300_return=0.01,
-        breadth_up=1000, breadth_down=1000,
-        north_flow_cny=0.0, iv_50etf=0.15,
+        sse_return=0.01,
+        hs300_return=0.01,
+        breadth_up=1000,
+        breadth_down=1000,
+        north_flow_cny=0.0,
+        iv_50etf=0.15,
     )
     regime_service = MarketRegimeService(
         router=router_regime,

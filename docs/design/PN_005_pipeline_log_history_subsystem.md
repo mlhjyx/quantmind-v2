@@ -1,7 +1,8 @@
 # PN-005: Pipeline Log History Subsystem (D1 O7) — Design + Scope Assessment
 
-> **Status**: DRAFT (iter 21, 2026-05-24)
-> **Verdict**: **DEFER** pending product input — see §8.
+> **Status**: PARTIAL_IMPLEMENTED (draft design iter 21, 2026-05-24; HTTP backfill implemented 2026-05-28)
+> **Status addendum 2026-05-28**: HTTP backfill + first writer instrumentation implemented. Remaining scope: broader pipeline task instrumentation, optional WebSocket live tailing, and durable-retention decision.
+> **Verdict**: **PARTIAL IMPLEMENT** — O7 frontend-only orphan closed; PN-005 subsystem still has enhancement backlog.
 > **Scope**: D1 O7 "log-history endpoint" final remaining frontend orphan per F-XS-1 sediment (iter 17). On scope-honest investigation surfaced as a 4-component subsystem, not a single missing endpoint.
 > **Author**: L4+R loop CC (Inner-loop-B design step 3)
 > **Related**: ADR-087 (PN-001 automation_level) / ADR-088 (PN-002 correlation-prune) / ADR-089 (PN-003 pipeline pause) / ADR-090 (PN-004 /status contract). ADR-091 candidate slot reserved for this PN if/when user approves IMPLEMENT.
@@ -10,20 +11,20 @@
 
 ## §1 Background — Current State (verified by code-grep, iter 21)
 
-Frontend `PipelineConsole.tsx` shows an "AI决策日志" tab (line 47, tab #4 of 5) that consumes pipeline log entries. The tab is wired against two backend interfaces, **neither of which exists today**:
+Frontend `PipelineConsole.tsx` shows an "AI决策日志" tab (line 47, tab #4 of 5) that consumes pipeline log entries. As of 2026-05-28, the HTTP backfill interface exists; WebSocket live tailing remains missing:
 
 | Frontend reference | Backend reality |
 |---|---|
-| `getPipelineLogs(runId)` calling `GET /pipeline/{runId}/logs` (api/pipeline.ts:177-182) | **No `@router.get(...)` for this path in any backend module.** API_COVERAGE.md §6.1 O7 row. |
+| `getPipelineLogs(runId)` calling `GET /pipeline/{runId}/logs` (api/pipeline.ts) | **Implemented 2026-05-28** in `backend/app/api/pipeline.py` as Redis-list HTTP backfill. |
 | `new WebSocket('/ws/pipeline/${status.run_id}')` (PipelineConsole.tsx:174) | **No `/ws/pipeline/{run_id}` endpoint in any FastAPI WebSocket route. Backend `websocket/manager.py` only handles `backtest:{run_id}` rooms.** |
 
 Beyond the 2 missing read-side endpoints, **no write-side emission exists either**:
 - No `pipeline_run_logs` table (verified `migrations/`).
 - No `pipeline_runs.logs` JSONB column (DDL `pipeline_runs` at QUANTMIND_V2_DDL_FINAL.sql:777).
 - No `qm:pipeline:*` Redis Streams or list publishing path (grep `qm:pipeline` → 0 hits).
-- No instrumentation in `run_gp_mining` / `run_bruteforce_mining` / pipeline orchestration tasks emitting structured log events.
+- Partial instrumentation exists for manual trigger / approve / reject decision events via `backend/app/services/pipeline_log.py`. Broader mining task instrumentation in `run_gp_mining` / `run_bruteforce_mining` remains open.
 
-In other words, the "AI决策日志" tab today is a frontend skeleton with **0 backend infrastructure**. The previous F-XS-1 sediment iter 17 line "still receives live logs via ws/pipeline/{run_id} WebSocket during an active run" was aspirational copy — verified false by code-grep iter 21. **META-finding repeat of RN-001 §6**: candidate that "looked partially built" was actually entirely absent. Code-grep-verify before any IMPLEMENT verdict.
+In other words, the "AI决策日志" tab is no longer a pure frontend skeleton: it has a backend HTTP reader and first decision-event writer call sites. The previous F-XS-1 sediment iter 17 line "still receives live logs via ws/pipeline/{run_id} WebSocket during an active run" remains aspirational for WebSocket live tailing — verified false by code-grep iter 21. **META-finding repeat of RN-001 §6**: code-grep-verify before any IMPLEMENT verdict.
 
 ## §2 Use Case (assumed, requires product confirmation)
 
@@ -45,10 +46,10 @@ A complete D1 O7 closure requires all four:
 
 | # | Component | Backend file | Complexity | Notes |
 |---|---|---|---|---|
-| C1 | Storage schema | `migrations/pipeline_run_logs.sql` OR Redis list spec OR file rotation policy | small if Redis, medium if DB | gates everything else |
-| C2 | Emission path | Instrumentation in run_gp_mining / run_bruteforce_mining / Phase 3 LLM agent tasks | medium-large | needs to find every "decision event" call site |
+| C1 | Storage schema | Redis list `pipeline:logs:{run_id}` | ✅ implemented | DB history remains future option |
+| C2 | Emission path | Trigger / approve / reject now emit; broader run_gp_mining / run_bruteforce_mining / Phase 3 LLM agent tasks remain | partial | needs to find every "decision event" call site |
 | C3 | WebSocket live-stream | `backend/app/websocket/manager.py` extension or new pipeline_ws.py module | small once C1+C2 land | live consumption during active run |
-| C4 | HTTP backfill | `@router.get('/pipeline/{run_id}/logs')` in `api/pipeline.py` | small once C1 lands | historical replay for completed runs |
+| C4 | HTTP backfill | `@router.get('/pipeline/{run_id}/logs')` in `api/pipeline.py` | ✅ implemented | Redis recent-log replay |
 
 Total: probably 200-400 lines of code + 1 migration + frontend type alignment verification.
 
@@ -68,15 +69,15 @@ Total: probably 200-400 lines of code + 1 migration + frontend type alignment ve
 Smallest-first MVP using option (c):
 
 1. **Storage** (C1): Redis list `pipeline:logs:{run_id}` with `LPUSH` + `LTRIM 0 9999` (maxlen 10K lines per run). Lines are JSON-encoded `PipelineLogEntry` objects.
-2. **Emission helper** (`backend/app/services/pipeline_log.py`):
+2. **Emission helper** (`backend/app/services/pipeline_log.py`) — **implemented 2026-05-28**:
    ```python
    def emit_pipeline_log(*, run_id: str, agent: str, level: Literal["info","warning","error","decision"], content: str) -> None:
        """LPUSH JSON-encoded log entry + LTRIM maxlen. Fail-safe (silent on Redis down per 铁律 33 silent_ok marker)."""
    ```
    This is the contract that pipeline tasks call. Single function signature, no Service-layer.
 3. **WebSocket live-stream** (C3, `/ws/pipeline/{run_id}`): pub/sub or per-connection LRANGE polling at 1s cadence. Simpler: client opens WS, server reads recent + tails new via Redis Pub/Sub on `qm:pipeline:logs:{run_id}` channel.
-4. **HTTP backfill** (C4, `GET /pipeline/{run_id}/logs?limit=1000`): LRANGE the Redis list, JSON-decode, return as `PipelineLogEntry[]`. Pydantic model + endpoint in `api/pipeline.py`.
-5. **Instrumentation** (C2): grep `pipeline_runs` callers (mining_tasks.py / run_gp_mining etc) and add `emit_pipeline_log(...)` at decision points. Probably 5-15 call sites total. For decision-level emissions specifically, integrate with the AI evolution `dual-write` Celery Beat pattern.
+4. **HTTP backfill** (C4, `GET /pipeline/{run_id}/logs?limit=1000`): LRANGE the Redis list, JSON-decode, return as `PipelineLogEntry[]`. Pydantic model + endpoint in `api/pipeline.py` — **implemented 2026-05-28**.
+5. **Instrumentation** (C2): trigger / approve / reject decision events implemented 2026-05-28. Next pass should grep `pipeline_runs` callers (mining_tasks.py / run_gp_mining etc) and add `emit_pipeline_log(...)` at remaining decision points.
 
 Estimated LOC: ~300 backend + ~50 test + 0 frontend (already wired).
 
@@ -101,27 +102,38 @@ Estimated LOC: ~300 backend + ~50 test + 0 frontend (already wired).
 | 7 | Beat schedule 改 | NEGATIVE |
 | 8 | Self-protection (loop spec) | NEGATIVE |
 
-All NEGATIVE → design itself is loop-permissible. IMPLEMENT decision requires §6 product input.
+All NEGATIVE → design itself is loop-permissible. The 2026-05-28 implementation
+lands the Redis MVP path without touching redline surfaces; §6 remains useful
+for future DB retention / WebSocket scope decisions.
 
 ## §8 Verdict + Sediment
 
-**Verdict: DEFER pending product input** per Q1-Q5 above.
+**Verdict: PARTIAL IMPLEMENT + enhancement backlog**.
 
 Rationale:
-1. Honest scope: this is a 4-component feature subsystem, not a 1-endpoint orphan. Implementing without product input on retention + semantics risks rework on the storage choice (b vs c is a 2-3x scope swing depending on retention answer).
-2. Coupling to PT restart sequencing: Q4 + the AI evolution overlap Q5 suggests this should land coordinated with the broader V3 §3.2/§5.2/§8.4 prompt-driven agent infrastructure rollout, not as a standalone Inner-loop-B cycle.
-3. Frontend impact is already graceful (404 silently handled by `try/catch` per F-XS-1 iter 17 sediment); the "AI决策日志" tab shows empty state but doesn't break the UX flow.
+1. Honest scope: this is a 4-component feature subsystem, not a 1-endpoint orphan.
+   The Redis MVP closes the API orphan and provides first real decision events
+   without forcing a DB retention decision.
+2. Broader instrumentation should still be sequenced with the AI evolution
+   pipeline rollout, because "decision event" semantics should not fork across
+   mining, LLM, and operator flows.
+3. Frontend impact is now better than graceful empty-state handling: the tab can
+   call a real backend route and show trigger / approve / reject events when they
+   exist.
 
 **Why not ARCHIVE**: feature has genuine value (debugging pipeline runs, audit trail for L0-L3 automation decisions). Not dead code.
 
-**Why not IMPLEMENT a smaller subset (e.g. only C4 with a stub-empty response)**: stub-only would close the orphan visually but provide 0 product value; would also require maintaining a stub through the eventual real implementation. Cleaner to surface the DEFER with concrete product questions than to ship technical debt.
+**Why not stop at C4 only**: stub-only would close the orphan visually but provide 0 product value. The 2026-05-28 implementation therefore includes the Redis writer helper and first trigger / approve / reject writer call sites.
 
 **Sediment locations**:
 - This document (PN-005 draft).
 - `.omc/state/l4r_loop_state.md` iter 21 entry (DEFER verdict).
-- `docs/API_COVERAGE.md` §6.1 O7 row already accurately reflects "STILL ORPHAN ... gap is the absence of an HTTP log-history backfill" — extend with reference to this PN-005 doc.
+- `docs/API_COVERAGE.md` §10 now records O7 HTTP backfill closure and remaining enhancement backlog.
 - META-finding (RN-001 §6 repeat): "AI决策日志 ws/pipeline live-stream" claim in iter 17 F-XS-1 sediment was aspirational copy, verified false iter 21. Sustained anti-pattern reminder: code-grep-verify before sediment.
 
-**Ratio impact**: iter 21 defer → 11:2:5 = 61.1% (sustained mid-band; §4.5 guard sustained-released).
+**Ratio impact**: O7 no longer counts as frontend-only orphan. Remaining PN-005
+items count as enhancement backlog.
 
-**User redirect surface** (§4.1 control surface): if user wants D1 O7 IMPLEMENT, please answer Q1-Q5 in §6 + indicate scope preference (MVP Redis-only per §5 vs DB-persistent per §4 option b). Otherwise this defers indefinitely until PT-restart + AI evolution Phase 3 sequencing surfaces a natural integration point.
+**Next decision surface**: if durable historical replay is needed, promote Redis
+recent logs to the DB option in §4(b). If live tailing becomes operationally
+important, add `/ws/pipeline/{run_id}` on top of the same Redis event contract.

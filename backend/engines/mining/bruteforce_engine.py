@@ -23,6 +23,8 @@ import pandas as pd
 import structlog
 from scipy import stats
 
+from engines.ic_calculator import compute_ic_series
+
 logger = structlog.get_logger(__name__)
 
 
@@ -1062,51 +1064,28 @@ class BruteForceEngine:
         factor_values: pd.Series,
         forward_returns: pd.Series | pd.DataFrame,
     ) -> pd.Series:
-        """计算截面 Spearman rank IC 序列
+        """计算截面 Spearman rank IC 序列.
 
-        .. deprecated:: Phase E F56 (2026-04-16)
-            铁律 19 要求所有 IC 计算走 ``engines.ic_calculator``.
-            本方法使用 raw return (非超额收益) 且无中性化, 与生产 IC 口径不一致.
-            GP 管道重启前必须迁移到 ``ic_calculator.compute_ic_series``.
+        BruteForce 的快速 Gate 现在复用 ``engines.ic_calculator.compute_ic_series``
+        做截面 Rank IC，避免在挖掘引擎中保留另一套 Spearman 实现。调用方仍需保证
+        forward_returns 已按研究任务要求构造；task 层会把候选标记为 quick-gate-only。
         """
-        # TODO(F56): 铁律19要求走ic_calculator, GP管道重启前必须迁移
-        fwd = (
-            forward_returns.iloc[:, 0]
+        factor_wide = BruteForceEngine._series_to_wide_frame(factor_values)
+        returns_wide = (
+            forward_returns
             if isinstance(forward_returns, pd.DataFrame)
-            else forward_returns
+            else BruteForceEngine._series_to_wide_frame(forward_returns)
         )
+        return compute_ic_series(factor_wide, returns_wide).dropna()
 
-        common_idx = factor_values.index.intersection(fwd.index)
-        f = factor_values.loc[common_idx]
-        r = fwd.loc[common_idx]
-
-        ic_by_date: dict[Any, float] = {}
-        for date, grp_f in f.groupby(level="date"):
-            try:
-                grp_r = r.xs(date, level="date")
-            except KeyError:
-                continue
-
-            # groupby(level="date") 保留 2 级 MultiIndex (date, symbol_id),
-            # 而 r.xs(..., level="date") 已 drop date 级 → 1 级 (symbol_id).
-            # 不对齐级数, 后续 grp_r.reindex(aligned.index) 会全 NaN →
-            # valid.sum()==0 → 整段 IC 序列空. droplevel 对齐到 symbol_id 单级.
-            grp_f = grp_f.droplevel("date")
-
-            aligned = grp_f.align(grp_r, join="inner")[0]
-            ret_aligned = grp_r.reindex(aligned.index)
-            valid = (~grp_f.reindex(aligned.index).isna()) & (~ret_aligned.isna())
-            if valid.sum() < 10:
-                continue
-
-            ic, _ = stats.spearmanr(
-                grp_f.reindex(aligned.index)[valid].values,
-                ret_aligned[valid].values,
-            )
-            if not np.isnan(float(ic)):
-                ic_by_date[date] = float(ic)
-
-        return pd.Series(ic_by_date)
+    @staticmethod
+    def _series_to_wide_frame(series: pd.Series) -> pd.DataFrame:
+        """将 (date, symbol_id) MultiIndex 序列转为 date × symbol 宽表."""
+        if not isinstance(series.index, pd.MultiIndex):
+            raise ValueError("BruteForce IC 计算要求 MultiIndex(date, symbol_id) 序列")
+        names = list(series.index.names)
+        symbol_level = "symbol_id" if "symbol_id" in names else names[1]
+        return series.unstack(symbol_level).sort_index()
 
     @staticmethod
     def _check_correlation(

@@ -96,9 +96,7 @@ def backfill_risk_memory_embeddings(*, batch_size: int = 100) -> dict:
         rows = cur.fetchall()
 
         if not rows:
-            logger.info(
-                "[embedding-backfill] 0 NULL rows found; nothing to do (idempotent no-op)."
-            )
+            logger.info("[embedding-backfill] 0 NULL rows found; nothing to do (idempotent no-op).")
             return {"processed": 0, "batch_size": batch_size, "embedding_dim": None}
 
         embedding_dim: int | None = None

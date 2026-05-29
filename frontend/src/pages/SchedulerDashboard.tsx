@@ -52,6 +52,7 @@ function HealthSummary({
     (t) => t.status === "failed" && (t.start_time ?? "").startsWith(today),
   ).length;
   const overdueCount = schtasks.filter((t) => {
+    if (!t.enabled) return false;
     if (!t.next_run) return false;
     try {
       return new Date(t.next_run) < new Date();
@@ -118,6 +119,11 @@ function SchtaskListSection({
                 >
                   {t.last_status ?? "—"}
                 </span>
+                {!t.enabled ? (
+                  <span className="inline-flex items-center text-xs px-2 py-0.5 rounded bg-slate-700/40 text-slate-500 border border-slate-700">
+                    disabled
+                  </span>
+                ) : null}
                 <span className="font-mono text-sm text-slate-200 truncate flex-1">
                   {t.name}
                 </span>

@@ -34,6 +34,10 @@ from backend.qm_platform.backup.filesystem_backup import (
     default_filesystem_spec,
 )
 from backend.qm_platform.backup.orchestrator import BackupTarget
+from backend.qm_platform.backup.restore_verification import (
+    RestoreVerificationOrchestrator,
+    RestoreVerificationSpec,
+)
 
 
 def _mk_completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
@@ -91,6 +95,20 @@ def test_db_pg_dump_success(tmp_path):
     fake_runner.assert_called_once()
 
 
+def test_db_pg_dump_uses_resolved_pg_binary(tmp_path, monkeypatch):
+    """Windows runtime: pg_dump may be outside PATH but present under PG_BIN."""
+    pg_bin = tmp_path / "pgbin"
+    pg_bin.mkdir()
+    pg_dump = pg_bin / "pg_dump.exe"
+    pg_dump.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PG_BIN", str(pg_bin))
+
+    spec = DBBackupSpec(database="quantmind_v2", artifact_dir=tmp_path)
+    cmd = DBBackupOrchestrator(spec=spec)._build_pg_dump_cmd(tmp_path / "x.dump")
+
+    assert cmd[0] == str(pg_dump)
+
+
 def test_db_pg_dump_fail(tmp_path):
     """pg_dump rc != 0 → passed=False, err_tail captured."""
     spec = DBBackupSpec(database="quantmind_v2", artifact_dir=tmp_path)
@@ -143,6 +161,29 @@ def test_db_run_all_single_element():
     results = orch.run_all()
     assert len(results) == 1
     assert results[0].target == BackupTarget.DB
+
+
+def test_restore_verify_uses_resolved_pg_restore(tmp_path, monkeypatch):
+    pg_bin = tmp_path / "pgbin"
+    pg_bin.mkdir()
+    pg_restore = pg_bin / "pg_restore.exe"
+    pg_restore.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PG_BIN", str(pg_bin))
+
+    artifact = tmp_path / "latest.dump"
+    artifact.write_bytes(b"fake dump")
+    runner = MagicMock(return_value=_mk_completed(returncode=0, stdout="toc\nentry\n"))
+    spec = RestoreVerificationSpec(artifact_dir=tmp_path)
+    orch = RestoreVerificationOrchestrator(
+        spec=spec,
+        runner=runner,
+        artifact_finder=lambda _dir: artifact,
+    )
+
+    result = orch.run_target(BackupTarget.DB)
+
+    assert result.passed is True
+    assert runner.call_args.args[0][0] == str(pg_restore)
 
 
 # ────────────────────────────────────────────────────────────

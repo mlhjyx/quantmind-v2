@@ -15,6 +15,8 @@ from backend.qm_platform.ci.orchestrator import CIOrchestrator, CIPhase, CIResul
 from backend.qm_platform.ci.prepush import (
     DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS,
     DEFAULT_SMOKE_TIMEOUT_SECONDS,
+    SMOKE_COLLECT_ONLY_ENV,
+    SMOKE_COLLECT_TARGETS,
     X10_HARD_PATTERNS,
     PrePushCheck,
     PrePushOrchestrator,
@@ -91,8 +93,36 @@ def test_default_subprocess_checks_two_entries():
     assert names == ["smoke_test", "datapipeline_guard"]
 
 
-def test_default_smoke_timeout_90s():
-    assert DEFAULT_SMOKE_TIMEOUT_SECONDS == 90
+def test_smoke_check_matches_git_hook_scope():
+    """CI pre-push smoke scope mirrors config/hooks/pre-push."""
+    smoke_check = next(c for c in default_subprocess_checks() if c.name == "smoke_test")
+    assert smoke_check.cmd == [
+        "pytest",
+        "backend/tests/",
+        "-m",
+        "smoke and not live_tushare",
+        "--tb=line",
+        "-q",
+        "--timeout=60",
+    ]
+
+
+def test_smoke_check_collect_only_mode_for_github(monkeypatch):
+    """GitHub-hosted CI can collect smoke wiring without live services."""
+    monkeypatch.setenv(SMOKE_COLLECT_ONLY_ENV, "1")
+    smoke_check = next(c for c in default_subprocess_checks() if c.name == "smoke_test")
+    assert smoke_check.cmd == [
+        "pytest",
+        "--collect-only",
+        "-q",
+        "-m",
+        "smoke and not live_tushare",
+        *SMOKE_COLLECT_TARGETS,
+    ]
+
+
+def test_default_smoke_timeout_180s():
+    assert DEFAULT_SMOKE_TIMEOUT_SECONDS == 180
 
 
 def test_default_datapipeline_timeout_30s():
@@ -169,11 +199,11 @@ def test_datapipeline_guard_fail():
 
 def test_subprocess_timeout_captured_not_raised():
     """TimeoutExpired → details + aggregate False."""
-    runner = MagicMock(side_effect=subprocess.TimeoutExpired(cmd=["pytest"], timeout=90))
+    runner = MagicMock(side_effect=subprocess.TimeoutExpired(cmd=["pytest"], timeout=180))
     orch = PrePushOrchestrator(runner=runner, branch_name="main", commit_subjects=["fix: x"])
     result = orch.run_phase(CIPhase.PRE_PUSH)
     assert result.passed is False
-    assert "TIMEOUT after 90s" in result.details["smoke_test"]
+    assert "TIMEOUT after 180s" in result.details["smoke_test"]
 
 
 def test_oserror_captured_not_raised():

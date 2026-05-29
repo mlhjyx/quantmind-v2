@@ -68,17 +68,23 @@ class TestRunBackup:
     def test_success(self, tmp_backup_dirs):
         """pg_dump 成功，返回备份路径。"""
         daily = tmp_backup_dirs["daily"]
+        temp_path = None
 
         def fake_run(cmd, **kwargs):
+            nonlocal temp_path
             # 模拟 pg_dump 创建输出文件
             out_file = Path(cmd[cmd.index("-f") + 1])
+            temp_path = out_file
             out_file.write_bytes(b"x" * (150 * 1024 * 1024))  # 150MB
             r = MagicMock()
             r.returncode = 0
             r.stderr = ""
             return r
 
-        with patch("subprocess.run", side_effect=fake_run):
+        with (
+            patch("subprocess.run", side_effect=fake_run),
+            patch.object(pg_backup, "MIN_BACKUP_SIZE_MB", 100),
+        ):
             result = pg_backup.run_backup(dry_run=False)
 
         assert result is not None
@@ -86,6 +92,9 @@ class TestRunBackup:
         assert result.parent == daily
         assert result.name.startswith("quantmind_v2_")
         assert result.suffix == ".dump"
+        assert temp_path is not None
+        assert temp_path.suffix == ".tmp"
+        assert not temp_path.exists()
 
     def test_dry_run_returns_none(self, tmp_backup_dirs):
         """dry_run 模式不执行备份，返回 None。"""
@@ -125,10 +134,13 @@ class TestRunBackup:
         assert "超时" in mock_alert.call_args[0][0]
 
     def test_file_too_small_warns(self, tmp_backup_dirs):
-        """备份文件偏小时发出警告（但仍返回路径）。"""
+        """备份文件偏小时发出告警并丢弃临时文件。"""
+        temp_path = None
 
         def fake_run_small(cmd, **kwargs):
+            nonlocal temp_path
             out_file = Path(cmd[cmd.index("-f") + 1])
+            temp_path = out_file
             out_file.write_bytes(b"x" * (50 * 1024 * 1024))  # 50MB < MIN(100MB)
             r = MagicMock()
             r.returncode = 0
@@ -138,11 +150,13 @@ class TestRunBackup:
         with (
             patch("subprocess.run", side_effect=fake_run_small),
             patch.object(pg_backup, "send_alert") as mock_alert,
+            patch.object(pg_backup, "MIN_BACKUP_SIZE_MB", 100),
         ):
             result = pg_backup.run_backup(dry_run=False)
 
-        # 应该仍然返回文件路径（告警但不中断）
-        assert result is not None
+        assert result is None
+        assert temp_path is not None
+        assert not temp_path.exists()
         # 应发出大小警告
         mock_alert.assert_called_once()
         assert "偏小" in mock_alert.call_args[0][0]
@@ -290,7 +304,10 @@ class TestVerifyBackup:
         mock_result.stdout = mock_output
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result):
+        with (
+            patch("subprocess.run", return_value=mock_result),
+            patch.object(pg_backup, "MIN_BACKUP_SIZE_MB", 100),
+        ):
             ok = pg_backup.verify_backup()
 
         assert ok is True
@@ -312,7 +329,10 @@ class TestVerifyBackup:
         mock_result.stdout = mock_output
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result):
+        with (
+            patch("subprocess.run", return_value=mock_result),
+            patch.object(pg_backup, "MIN_BACKUP_SIZE_MB", 100),
+        ):
             ok = pg_backup.verify_backup()
 
         assert ok is False
@@ -333,7 +353,10 @@ class TestVerifyBackup:
         mock_result.stdout = ""
         mock_result.stderr = "pg_restore: error: invalid archive"
 
-        with patch("subprocess.run", return_value=mock_result):
+        with (
+            patch("subprocess.run", return_value=mock_result),
+            patch.object(pg_backup, "MIN_BACKUP_SIZE_MB", 100),
+        ):
             ok = pg_backup.verify_backup()
 
         assert ok is False
@@ -346,8 +369,16 @@ class TestVerifyBackup:
         dump_file = daily / "quantmind_v2_20260328.dump"
         dump_file.write_bytes(b"x" * (150 * 1024 * 1024))
 
-        with patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pg_restore", timeout=120)
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="pg_restore", timeout=120),
+            ),
+            patch.object(
+                pg_backup,
+                "MIN_BACKUP_SIZE_MB",
+                100,
+            ),
         ):
             ok = pg_backup.verify_backup()
 
@@ -369,16 +400,18 @@ class TestExportParquetSnapshots:
         mock_df_klines = pd.DataFrame(
             {
                 "trade_date": ["2026-03-28"] * 100,
-                "symbol_id": list(range(100)),
+                "code": [f"{i:06d}.SZ" for i in range(100)],
                 "close": [10.0] * 100,
             }
         )
         mock_df_fv = pd.DataFrame(
             {
                 "trade_date": ["2026-03-28"] * 50,
-                "symbol_id": list(range(50)),
+                "code": [f"{i:06d}.SZ" for i in range(50)],
                 "factor_name": ["turnover_mean_20"] * 50,
-                "value": [0.01] * 50,
+                "raw_value": [0.01] * 50,
+                "neutral_value": [0.02] * 50,
+                "zscore": [0.03] * 50,
             }
         )
 
@@ -389,7 +422,7 @@ class TestExportParquetSnapshots:
         with (
             patch.dict("sys.modules", {"psycopg2": MagicMock()}),
             patch("psycopg2.connect", return_value=mock_conn),
-            patch("pandas.read_sql", side_effect=[mock_df_klines, mock_df_fv]),
+            patch("pandas.read_sql", side_effect=[mock_df_klines, mock_df_fv]) as mock_read_sql,
             patch.object(
                 pd.DataFrame, "to_parquet", side_effect=fake_to_parquet
             ) as mock_to_parquet,
@@ -398,6 +431,10 @@ class TestExportParquetSnapshots:
 
         assert result is True
         assert mock_to_parquet.call_count == 2
+        queries = "\n".join(str(call.args[0]) for call in mock_read_sql.call_args_list)
+        assert "symbol_id" not in queries
+        assert "SELECT trade_date, code" in queries
+        assert "raw_value, neutral_value, zscore" in queries
         # 验证两个parquet文件都已创建
         today_str = date.today().strftime("%Y%m%d")
         assert (parquet_dir / f"klines_daily_{today_str}.parquet").exists()

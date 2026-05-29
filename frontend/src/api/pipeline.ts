@@ -3,7 +3,7 @@ import apiClient from "./client";
 // ---- Types ----
 
 export type PipelineNodeStatus = "idle" | "running" | "completed" | "failed" | "skipped";
-export type AutomationLevel = "L0" | "L1" | "L2" | "L3";
+export type AutomationLevel = "L0" | "L1" | "L2" | "L3" | "L4";
 export type ApprovalItemType = "factor" | "strategy";
 export type ApprovalDecision = "approved" | "rejected" | "hold";
 export type CandidateStatus = "pending" | "approved" | "rejected";
@@ -41,6 +41,9 @@ export interface PipelineStatus {
   automation_level: AutomationLevel;
   is_running: boolean;
   is_paused: boolean;
+  is_stale_running?: boolean;
+  stale_after_minutes?: number | null;
+  stale_reason?: string | null;
   current_node: string | null;
   nodes: PipelineNode[];
   schedule_cron: string;
@@ -109,6 +112,13 @@ export interface TriggerPipelineResult {
   status: string;
 }
 
+export interface CancelPipelineResult {
+  task_id: string;
+  run_id: string;
+  cancelled: boolean;
+  message: string;
+}
+
 // ---- API calls ----
 
 export async function getPipelineStatus(): Promise<PipelineStatus> {
@@ -146,6 +156,11 @@ export async function resumePipeline(): Promise<PauseStatus> {
   return res.data;
 }
 
+export async function cancelPipeline(runId: string): Promise<CancelPipelineResult> {
+  const res = await apiClient.post<CancelPipelineResult>(`/pipeline/runs/${runId}/cancel`);
+  return res.data;
+}
+
 export async function getPipelineHistory(): Promise<PipelineRun[]> {
   // F63-P2-9: /pipeline/history → /pipeline/runs (backend endpoint)
   const res = await apiClient.get<PipelineRun[]>("/pipeline/runs");
@@ -175,8 +190,6 @@ export async function holdItem(id: string, note?: string): Promise<void> {
 }
 
 export async function getPipelineLogs(runId: string): Promise<PipelineLogEntry[]> {
-  // NOTE: No backend endpoint exists yet. GET /api/pipeline/{run_id}/logs is not
-  // implemented in backend/app/api/pipeline.py. Will return 404 until added.
   const res = await apiClient.get<PipelineLogEntry[]>(`/pipeline/${runId}/logs`);
   return res.data;
 }

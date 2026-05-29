@@ -446,9 +446,7 @@ async def get_ic_monitoring(
         # Reviewer P1 iter 202: `from exc` preserves exception chain for upstream
         # middleware __cause__ inspection. Sibling iter 199 scheduler-task-log used
         # `from None`; this endpoint preserves chain for richer error handling.
-        raise HTTPException(
-            status_code=500, detail="ic-monitoring query failed"
-        ) from exc
+        raise HTTPException(status_code=500, detail="ic-monitoring query failed") from exc
 
     decay_heatmap = [
         {

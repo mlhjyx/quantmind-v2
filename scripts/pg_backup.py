@@ -69,8 +69,8 @@ DB_HOST = os.environ.get("PG_HOST", "localhost")
 DB_PORT = os.environ.get("PG_PORT", "5432")
 
 RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", "7"))
-# 备份文件最小合法大小: 当前数据~2.8GB，-Fc压缩后预计>100MB
-MIN_BACKUP_SIZE_MB = float(os.environ.get("MIN_BACKUP_SIZE_MB", "100"))
+# 备份文件最小合法大小: 当前库含 TimescaleDB 大表，-Fc 压缩后仍应明显大于 1GB。
+MIN_BACKUP_SIZE_MB = float(os.environ.get("MIN_BACKUP_SIZE_MB", "1024"))
 
 
 # ── 日志 ──────────────────────────────────────────────
@@ -78,6 +78,7 @@ def setup_logging() -> logging.Logger:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     _logger = logging.getLogger("pg_backup")
     _logger.setLevel(logging.DEBUG)
+    _logger.handlers.clear()
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     fh = logging.FileHandler(LOG_DIR / "backup.log", encoding="utf-8")
     fh.setLevel(logging.INFO)
@@ -226,6 +227,7 @@ def run_backup(dry_run: bool = False) -> Path | None:
     _ensure_dirs()
     date_str = datetime.now().strftime("%Y%m%d")
     backup_file = DAILY_DIR / f"quantmind_v2_{date_str}.dump"
+    temp_file = backup_file.with_suffix(backup_file.suffix + ".tmp")
 
     cmd = [
         str(PG_DUMP),
@@ -241,13 +243,16 @@ def run_backup(dry_run: bool = False) -> Path | None:
         "-Z",
         "5",  # 压缩级别5（平衡速度和大小）
         "-f",
-        str(backup_file),
+        str(temp_file),
     ]
     logger.info(f"备份命令: {' '.join(cmd)}")
 
     if dry_run:
         logger.info("[DRY-RUN] 跳过实际执行")
         return None
+
+    if temp_file.exists():
+        temp_file.unlink()
 
     start = datetime.now()
     try:
@@ -260,6 +265,8 @@ def run_backup(dry_run: bool = False) -> Path | None:
         )
     except subprocess.TimeoutExpired:
         logger.error("pg_dump 超时(>30分钟)，已终止")
+        if temp_file.exists():
+            temp_file.unlink()
         send_alert("pg_dump备份超时", "pg_dump执行超过30分钟，已终止。请检查数据库状态。")
         return None
 
@@ -267,24 +274,29 @@ def run_backup(dry_run: bool = False) -> Path | None:
 
     if result.returncode != 0:
         logger.error(f"pg_dump 失败(exit={result.returncode}): {result.stderr}")
+        if temp_file.exists():
+            temp_file.unlink()
         send_alert("pg_dump备份失败", f"exit={result.returncode}\n{result.stderr[:500]}")
         return None
 
-    if not backup_file.exists():
+    if not temp_file.exists():
         logger.error("备份文件不存在（命令成功但无输出）")
         send_alert("pg_dump备份失败", "备份命令返回0但文件不存在")
         return None
 
-    size_mb = backup_file.stat().st_size / (1024 * 1024)
+    size_mb = temp_file.stat().st_size / (1024 * 1024)
     logger.info(f"pg_dump 完成: {backup_file.name} ({size_mb:.1f}MB, {elapsed:.0f}秒)")
 
     if size_mb < MIN_BACKUP_SIZE_MB:
         logger.warning(f"备份文件偏小({size_mb:.1f}MB < {MIN_BACKUP_SIZE_MB}MB)，可能不完整")
+        temp_file.unlink()
         send_alert(
             "pg_dump备份文件偏小",
             f"文件: {backup_file.name}\n大小: {size_mb:.1f}MB (预期>{MIN_BACKUP_SIZE_MB}MB)",
         )
+        return None
 
+    temp_file.replace(backup_file)
     return backup_file
 
 
@@ -357,8 +369,9 @@ def export_parquet_snapshots() -> bool:
         klines_file = PARQUET_DIR / f"klines_daily_{today_str}.parquet"
         logger.info("导出 klines_daily...")
         df_klines = pd.read_sql(
-            "SELECT trade_date, symbol_id, open, high, low, close, volume, amount,"
-            " adj_factor, adj_close FROM klines_daily ORDER BY trade_date DESC, symbol_id",
+            "SELECT trade_date, code, open, high, low, close, volume, amount,"
+            " adj_factor, (close * COALESCE(adj_factor, 1)) AS adj_close"
+            " FROM klines_daily ORDER BY trade_date DESC, code",
             conn,
         )
         df_klines.to_parquet(klines_file, compression="zstd", index=False)
@@ -372,14 +385,14 @@ def export_parquet_snapshots() -> bool:
         logger.info("导出 factor_values（前5因子，近90天）...")
         df_fv = pd.read_sql(
             """
-            SELECT trade_date, symbol_id, factor_name, value
+            SELECT trade_date, code, factor_name, raw_value, neutral_value, zscore
             FROM factor_values
             WHERE factor_name IN (
                 SELECT factor_name FROM factor_values
                 GROUP BY factor_name ORDER BY COUNT(*) DESC LIMIT 5
             )
             AND trade_date >= CURRENT_DATE - INTERVAL '90 days'
-            ORDER BY trade_date DESC, factor_name, symbol_id
+            ORDER BY trade_date DESC, factor_name, code
             """,
             conn,
         )
@@ -414,6 +427,16 @@ def verify_backup() -> bool:
 
     latest = backups[-1]
     logger.info(f"验证备份: {latest}")
+
+    size_mb = latest.stat().st_size / (1024 * 1024)
+    if size_mb < MIN_BACKUP_SIZE_MB:
+        logger.error(
+            "备份文件过小: %s (%.1fMB < %.1fMB)",
+            latest.name,
+            size_mb,
+            MIN_BACKUP_SIZE_MB,
+        )
+        return False
 
     try:
         result = subprocess.run(

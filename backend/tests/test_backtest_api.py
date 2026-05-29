@@ -186,21 +186,23 @@ async def test_submit_backtest_returns_run_id():
 
     app.dependency_overrides[_get_session] = lambda: session
     try:
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.post(
-                "/api/backtest/run",
-                json={
-                    "strategy_id": _uuid(),
-                    "start_date": "2023-01-01",
-                    "end_date": "2023-12-31",
-                },
-            )
+        with patch("app.tasks.backtest_tasks.run_backtest.delay") as delay:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    "/api/backtest/run",
+                    json={
+                        "strategy_id": _uuid(),
+                        "start_date": "2023-01-01",
+                        "end_date": "2023-12-31",
+                    },
+                )
         assert resp.status_code == 200
         data = resp.json()
         assert "run_id" in data
         assert data["status"] == "running"
         assert uuid.UUID(data["run_id"])  # 验证是合法UUID
+        delay.assert_called_once_with(data["run_id"])
     finally:
         app.dependency_overrides.clear()
 
@@ -214,23 +216,25 @@ async def test_submit_backtest_with_custom_config():
 
     app.dependency_overrides[_get_session] = lambda: session
     try:
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.post(
-                "/api/backtest/run",
-                json={
-                    "strategy_id": _uuid(),
-                    "start_date": "2023-01-01",
-                    "end_date": "2023-12-31",
-                    "initial_capital": 2000000,
-                    "benchmark": "000905.SH",
-                    "rebalance_freq": "monthly",
-                    "cost_multiplier": 1.5,
-                },
-            )
+        with patch("app.tasks.backtest_tasks.run_backtest.delay") as delay:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    "/api/backtest/run",
+                    json={
+                        "strategy_id": _uuid(),
+                        "start_date": "2023-01-01",
+                        "end_date": "2023-12-31",
+                        "initial_capital": 2000000,
+                        "benchmark": "000905.SH",
+                        "rebalance_freq": "monthly",
+                        "cost_multiplier": 1.5,
+                    },
+                )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "running"
+        delay.assert_called_once_with(data["run_id"])
     finally:
         app.dependency_overrides.clear()
 
@@ -584,9 +588,7 @@ async def test_compare_factor_list_array():
     """iter 206 MVP 5.3 C1: factor_list is array, empty list when null/missing."""
     rid1 = _uuid()
     rid2 = _uuid()
-    run1 = _make_run_row(
-        rid1, factor_list=["turnover_mean_20", "bp_ratio", "dv_ttm"]
-    )
+    run1 = _make_run_row(rid1, factor_list=["turnover_mean_20", "bp_ratio", "dv_ttm"])
     run2 = _make_run_row(rid2, factor_list=None)  # Missing factor_list → []
 
     session = _mock_session_multi_execute(run1, run2)

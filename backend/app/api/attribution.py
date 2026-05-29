@@ -48,16 +48,28 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "trade_date": row["trade_date"].isoformat() if row["trade_date"] else None,
         "strategy_id": row["strategy_id"],
         "execution_mode": row["execution_mode"],
-        "nav_change_pct": float(row["nav_change_pct"]) if row["nav_change_pct"] is not None else 0.0,
-        "nav_change_bps": float(row["nav_change_pct"]) * 10000.0 if row["nav_change_pct"] is not None else 0.0,
+        "nav_change_pct": float(row["nav_change_pct"])
+        if row["nav_change_pct"] is not None
+        else 0.0,
+        "nav_change_bps": float(row["nav_change_pct"]) * 10000.0
+        if row["nav_change_pct"] is not None
+        else 0.0,
         "by_factor": row["by_factor_json"] or {},
         "by_sector": row["by_sector_json"] or {},
         "by_regime": row["by_regime_json"],  # nullable
         "by_cost": row["by_cost_json"] or {},
-        "alpha_vs_benchmark": float(row["alpha_vs_benchmark"]) if row["alpha_vs_benchmark"] is not None else 0.0,
-        "alpha_vs_benchmark_bps": float(row["alpha_vs_benchmark"]) * 10000.0 if row["alpha_vs_benchmark"] is not None else 0.0,
-        "unexplained_residual": float(row["unexplained_residual"]) if row["unexplained_residual"] is not None else 0.0,
-        "unexplained_residual_bps": float(row["unexplained_residual"]) * 10000.0 if row["unexplained_residual"] is not None else 0.0,
+        "alpha_vs_benchmark": float(row["alpha_vs_benchmark"])
+        if row["alpha_vs_benchmark"] is not None
+        else 0.0,
+        "alpha_vs_benchmark_bps": float(row["alpha_vs_benchmark"]) * 10000.0
+        if row["alpha_vs_benchmark"] is not None
+        else 0.0,
+        "unexplained_residual": float(row["unexplained_residual"])
+        if row["unexplained_residual"] is not None
+        else 0.0,
+        "unexplained_residual_bps": float(row["unexplained_residual"]) * 10000.0
+        if row["unexplained_residual"] is not None
+        else 0.0,
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
     }
 

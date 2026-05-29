@@ -5,6 +5,7 @@
 不依赖真实数据库或 Redis，只验证路由层逻辑（状态码、响应结构、字段类型）。
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -188,6 +189,38 @@ class TestHealthEndpoint:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
+    def test_check_memory_uses_available_memory_not_absolute_used_gb(self):
+        """32GB machine at ~16GB used is healthy when available RAM remains >8GB."""
+        from app.api import system as system_mod
+
+        vm = SimpleNamespace(
+            used=17 * 1024**3,
+            available=15 * 1024**3,
+            total=32 * 1024**3,
+            percent=53.1,
+        )
+        with patch("app.api.system.psutil.virtual_memory", return_value=vm):
+            result = system_mod._check_memory()
+
+        assert result["ok"] is True
+        assert result["available_gb"] == 15.0
+
+    def test_check_memory_fails_when_available_ram_below_resource_floor(self):
+        """Resource floor remains fail-loud when available RAM drops below 8GB."""
+        from app.api import system as system_mod
+
+        vm = SimpleNamespace(
+            used=25 * 1024**3,
+            available=7 * 1024**3,
+            total=32 * 1024**3,
+            percent=78.1,
+        )
+        with patch("app.api.system.psutil.virtual_memory", return_value=vm):
+            result = system_mod._check_memory()
+
+        assert result["ok"] is False
+        assert result["available_gb"] == 7.0
+
     @pytest.mark.asyncio
     async def test_overall_ok_when_all_pass(self):
         """所有组件正常时 overall_status 应为 ok。"""
@@ -272,6 +305,126 @@ class TestHealthEndpoint:
             assert resp.json()["overall_status"] == "degraded"
         finally:
             app.dependency_overrides.pop(get_db, None)
+
+    @pytest.mark.asyncio
+    async def test_overall_degraded_when_celery_times_out(self):
+        """Celery 检查超时时 endpoint 应返回 degraded，而不是挂住请求。"""
+        from app.db import get_db
+
+        mock_session = _make_mock_session()
+        app.dependency_overrides[get_db] = _override_get_db(mock_session)
+        try:
+            with (
+                patch("app.api.system._HEALTH_SYNC_TIMEOUT_SEC", 0.01),
+                patch("app.api.system._check_redis", return_value={"ok": True}),
+                patch(
+                    "app.api.system._check_celery", side_effect=lambda: __import__("time").sleep(1)
+                ),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
+            ):
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.get("/api/system/health")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["overall_status"] == "degraded"
+            assert body["celery"]["ok"] is False
+            assert "timeout" in body["celery"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    @pytest.mark.asyncio
+    async def test_overall_critical_when_redis_times_out(self):
+        """Redis 检查超时时 endpoint 应返回 critical，而不是挂住请求。"""
+        from app.db import get_db
+
+        mock_session = _make_mock_session()
+        app.dependency_overrides[get_db] = _override_get_db(mock_session)
+        try:
+            with (
+                patch("app.api.system._HEALTH_SYNC_TIMEOUT_SEC", 0.01),
+                patch(
+                    "app.api.system._check_redis", side_effect=lambda: __import__("time").sleep(1)
+                ),
+                patch("app.api.system._check_celery", return_value={"ok": True, "worker_count": 1}),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
+            ):
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.get("/api/system/health")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["overall_status"] == "critical"
+            assert body["redis"]["ok"] is False
+            assert "timeout" in body["redis"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_check_celery_process_fallback_when_inspect_no_response(self):
+        """Windows solo worker liveness should not wait on celery inspect."""
+        from app.api import system as system_mod
+
+        fake_proc_parent = MagicMock()
+        fake_proc_parent.info = {
+            "pid": 100,
+            "cmdline": [
+                "python",
+                "-m",
+                "celery",
+                "-A",
+                "app.tasks.celery_app",
+                "worker",
+                "--pool=solo",
+                "-n",
+                "worker-main@XIN",
+            ],
+        }
+        fake_proc_child = MagicMock()
+        fake_proc_child.info = {
+            "pid": 101,
+            "cmdline": [
+                "python",
+                "-m",
+                "celery",
+                "-A",
+                "app.tasks.celery_app",
+                "worker",
+                "--pool=solo",
+                "-n",
+                "worker-main@XIN",
+            ],
+        }
+
+        with (
+            patch("app.api.system.platform.system", return_value="Windows"),
+            patch("app.api.system.subprocess.run") as mock_run,
+            patch(
+                "app.api.system.psutil.process_iter",
+                return_value=[fake_proc_parent, fake_proc_child],
+            ),
+        ):
+            result = system_mod._check_celery()
+
+        assert result["ok"] is True
+        assert result["method"] == "process_fallback"
+        assert result["worker_count"] == 1
+        assert result["process_count"] == 2
+        assert "skipped" in result["warning"]
+        mock_run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_overall_critical_when_disk_full(self):
@@ -360,6 +513,8 @@ class TestSchedulerEndpoint:
             "schedule": "",
             "last_run": "2026-03-28 16:30:00",
             "next_run": "2026-03-29 16:30:00",
+            "task_state": "Ready",
+            "enabled": True,
             "status": "success",
             "last_result_code": 0,
         }
@@ -368,8 +523,42 @@ class TestSchedulerEndpoint:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get("/api/system/scheduler")
         task = resp.json()["tasks"][0]
-        for field in ("task_name", "last_run", "next_run", "status"):
+        for field in ("task_name", "last_run", "next_run", "task_state", "enabled", "status"):
             assert field in task, f"任务项缺少字段: {field}"
+
+    def test_task_scheduler_status_disabled_overrides_stale_failure(self):
+        """Disabled tasks should not surface stale LastResult as active failure."""
+        from app.api.system import _task_scheduler_status
+
+        assert _task_scheduler_status("QM-SmokeTest", "Disabled", 3221225786) == "disabled"
+        assert _task_scheduler_status("QM-SmokeTest", "Ready", 3221225786) == "failed"
+        assert _task_scheduler_status("QM-SmokeTest", "Running", 267011) == "running"
+        assert _task_scheduler_status("QM-HealthCheck", "Ready", 267009) == "running"
+        assert _task_scheduler_status("QM-SmokeTest", "Ready", 267011) == "never_run"
+
+    def test_task_scheduler_status_ic_monitor_alert_is_not_infra_failure(self):
+        """QM-ICMonitor exit 1 is a factor-quality alert, not a scheduler crash."""
+        from app.api.system import _task_scheduler_status
+
+        assert _task_scheduler_status("QM-ICMonitor", "Ready", 1) == "alert"
+        assert _task_scheduler_status("QM-DailyBackup", "Ready", 1) == "failed"
+
+    def test_task_scheduler_ic_monitor_alert_has_operator_disposition(self):
+        """IC monitor alerts should point operators at the factor-quality view."""
+        from app.api.system import _task_scheduler_disposition
+
+        disposition = _task_scheduler_disposition("QM-ICMonitor", "alert")
+
+        assert disposition == {
+            "status_reason": "IC factor-quality alert from scripts/ic_monitor.py",
+            "operator_action_label": "Open IC monitoring",
+            "operator_action_path": "/factors/monitoring",
+        }
+        assert _task_scheduler_disposition("QM-DailyBackup", "failed") == {
+            "status_reason": None,
+            "operator_action_label": None,
+            "operator_action_path": None,
+        }
 
     @pytest.mark.asyncio
     async def test_empty_tasks_on_non_windows(self):

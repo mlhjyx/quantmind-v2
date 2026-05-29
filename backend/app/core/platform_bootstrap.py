@@ -24,10 +24,27 @@ Usage:
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _BOOTSTRAP_DONE = False
+
+
+def _ensure_import_roots() -> None:
+    """Ensure both project root and backend root are importable.
+
+    Runtime services commonly start from `backend/`, which makes `app.*` and
+    `engines.*` importable but leaves `backend.qm_platform.*` unresolved unless
+    the repository root is also on sys.path.
+    """
+    backend_dir = Path(__file__).resolve().parents[2]
+    project_root = backend_dir.parent
+    for path in (project_root, backend_dir):
+        path_str = str(path)
+        if path_str not in sys.path:
+            sys.path.append(path_str)
 
 
 def bootstrap_platform_deps(force: bool = False) -> bool:
@@ -44,6 +61,7 @@ def bootstrap_platform_deps(force: bool = False) -> bool:
     global _BOOTSTRAP_DONE
     if _BOOTSTRAP_DONE and not force:
         return True
+    _ensure_import_roots()
     try:
         # engines 在 sys.path (backend/ 已 insert), 与 signal_service 一致风格
         from engines.signal_engine import init_platform_dependencies

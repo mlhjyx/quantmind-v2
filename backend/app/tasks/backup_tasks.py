@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import UTC, datetime
 
 from app.tasks.celery_app import celery_app
+from app.tasks.daily_pipeline import _write_scheduler_log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,9 @@ def daily_backup_run_task(self) -> dict:
     Returns:
         dict — per-target summary {target, passed, bytes_written, duration_ms}.
     """
+    start_time = datetime.now(UTC)
+    status = "failed"
+    summary: dict = {}
     try:
         from backend.qm_platform.backup import (
             ConfigBackupOrchestrator,
@@ -67,11 +72,15 @@ def daily_backup_run_task(self) -> dict:
                 for r in results
             ],
         }
+        status = "success" if summary["passed"] else "failed"
         logger.info("[Backup] daily run summary: %s", summary)
         return summary
     except Exception as e:  # noqa: BLE001 — 铁律 33 tier-2 (Beat survival)
+        summary = {"error": str(e)}
         logger.error("[Backup] daily_backup_run_task failed: %s", e, exc_info=True)
-        return {"error": str(e)}
+        return summary
+    finally:
+        _write_scheduler_log_safe("daily_backup_run", start_time, status, summary)
 
 
 @celery_app.task(bind=True, name="app.tasks.backup_tasks.weekly_backup_verify_task")
@@ -83,6 +92,9 @@ def weekly_backup_verify_task(self) -> dict:
     Returns:
         dict — verification result + snapshot + alert_fired flag.
     """
+    start_time = datetime.now(UTC)
+    status = "failed"
+    summary: dict = {}
     try:
         from backend.qm_platform.backup import (
             DBBackupOrchestrator,
@@ -125,8 +137,18 @@ def weekly_backup_verify_task(self) -> dict:
             "total_duration_ms": total_elapsed_ms,
             "target": str(BackupTarget.DB.value),
         }
+        status = (
+            "success"
+            if verify_passed and not snapshot.rpo_breached and not snapshot.rto_breached
+            else "alert"
+            if verify_passed
+            else "failed"
+        )
         logger.info("[Backup] weekly verify summary: %s", summary)
         return summary
     except Exception as e:  # noqa: BLE001 — 铁律 33 tier-2 (Beat survival)
+        summary = {"error": str(e)}
         logger.error("[Backup] weekly_backup_verify_task failed: %s", e, exc_info=True)
-        return {"error": str(e)}
+        return summary
+    finally:
+        _write_scheduler_log_safe("weekly_backup_verify", start_time, status, summary)

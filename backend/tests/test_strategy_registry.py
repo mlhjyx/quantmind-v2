@@ -187,7 +187,9 @@ def test_get_live_empty_when_no_db_live_rows(mock_conn_factory_builder):
     assert reg.get_live() == []
 
 
-def test_get_live_raises_integrity_error_when_db_has_live_but_cache_missing(mock_conn_factory_builder):
+def test_get_live_raises_integrity_error_when_db_has_live_but_cache_missing(
+    mock_conn_factory_builder,
+):
     """DB 有 live UUID 但 in-memory cache 没 register → fail-loud 禁静默跳过."""
     sid = uuid4()
     factory = mock_conn_factory_builder()

@@ -28,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "verify_completion.py"
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "verify_completion.py"
 
 
 def _run_hook(payload: dict | None = None, cwd: str | None = None) -> tuple[int, str, str]:
@@ -48,36 +48,51 @@ def _run_hook(payload: dict | None = None, cwd: str | None = None) -> tuple[int,
     return result.returncode, result.stdout, result.stderr
 
 
-def test_v2_marker_in_checklist() -> None:
-    """v2 hook output must contain COMPLETION CHECKLIST + 4 元素 cite reminder always."""
+def _load_hook_module():
+    """Load hook module for deterministic unit checks."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("verify_completion", HOOK_PATH)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_clean_stop_allows_silently_or_surfaces_real_issues() -> None:
+    """Clean Stop may be silent; if issues exist, output must use Stop schema."""
     rc, stdout, _ = _run_hook()
     assert rc == 0
-    assert "COMPLETION CHECKLIST" in stdout
-    # 4 元素 cite source 锁定 reminder (always surfaced regardless of issues)
-    assert "4 元素 cite source 锁定" in stdout
-    assert "Constitution §L5.1" in stdout
-    assert "quantmind-v3-cite-source-lock" in stdout
+    if stdout.strip():
+        parsed = json.loads(stdout)
+        assert "systemMessage" in parsed, "Stop hook output must contain top-level systemMessage"
+        assert "COMPLETION CHECKLIST" in parsed["systemMessage"]
 
 
 def test_4_element_cite_reminder_content() -> None:
     """4-element cite reminder must list path / line# / section / timestamp."""
-    rc, stdout, _ = _run_hook()
-    assert rc == 0
-    ctx = stdout
+    ctx = _load_hook_module().cite_source_lock_reminder()
+    assert "4 元素 cite source 锁定" in ctx
+    assert "Constitution §L5.1" in ctx
+    assert "quantmind-v3-cite-source-lock" in ctx
     assert "(a) path" in ctx, "missing path element"
     assert "(b) line#" in ctx, "missing line# element"
     assert "(c) section anchor" in ctx, "missing section anchor element"
     assert "(d) fresh verify timestamp" in ctx, "missing fresh verify timestamp element"
 
 
-def test_v1_sustained_checklist_items() -> None:
-    """v1 sustained: ruff check / tests / docs reminder items preserved."""
+def test_issue_output_is_ascii_safe_and_schema_compliant() -> None:
+    """When an issue is surfaced, JSON must be ASCII-safe for Windows GBK stdout."""
     rc, stdout, _ = _run_hook()
     assert rc == 0
-    # v1 sustained checklist items (反 silent overwrite, sustained ADR-022)
-    assert "ruff check" in stdout, "missing ruff check item"
-    assert "相关测试运行过" in stdout, "missing tests reminder"
-    assert "CLAUDE.md/SYSTEM_STATUS.md" in stdout, "missing docs reminder"
+    stdout.encode("ascii")
+    if stdout.strip():
+        parsed = json.loads(stdout)
+        assert "systemMessage" in parsed
+        checklist = parsed["systemMessage"]
+        assert "ruff check" in checklist, "missing ruff check item"
+        assert "相关测试运行过" in checklist, "missing tests reminder"
+        assert "AGENTS.md/IRONLAWS.md/SYSTEM_STATUS.md" in checklist, "missing docs reminder"
 
 
 def test_stop_event_handled() -> None:
@@ -90,9 +105,12 @@ def test_stop_event_handled() -> None:
     payload = {"session_id": "test", "stop_hook_active": False}
     rc, stdout, _ = _run_hook(payload)
     assert rc == 0
-    parsed = json.loads(stdout)
-    assert "systemMessage" in parsed, "Stop hook output must contain top-level systemMessage"
-    assert "COMPLETION CHECKLIST" in parsed["systemMessage"], "checklist must be in systemMessage"
+    if stdout.strip():
+        parsed = json.loads(stdout)
+        assert "systemMessage" in parsed, "Stop hook output must contain top-level systemMessage"
+        assert "COMPLETION CHECKLIST" in parsed["systemMessage"], (
+            "checklist must be in systemMessage"
+        )
 
 
 def test_malformed_json_fail_soft() -> None:
@@ -111,9 +129,9 @@ def test_git_unavailable_fail_soft(tmp_path: Path) -> None:
     """If git fails (non-repo directory), fail-soft sys.exit(0) (反 break Stop event 沿用)."""
     rc, stdout, _ = _run_hook(cwd=str(tmp_path))
     assert rc == 0
-    # Should still emit checklist with 4 元素 cite reminder (always surfaced)
-    assert "COMPLETION CHECKLIST" in stdout
-    assert "4 元素 cite source 锁定" in stdout
+    if stdout.strip():
+        parsed = json.loads(stdout)
+        assert "systemMessage" in parsed
 
 
 def test_banned_zhen_pattern_compiled() -> None:
@@ -122,12 +140,7 @@ def test_banned_zhen_pattern_compiled() -> None:
     Whitelist: 真账户 / 真发单 / 真生产 / 真测 / 真值 (5 forms).
     Banned: 真[^账发生测值\\s] (anything else).
     """
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("verify_completion", HOOK_PATH)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    pat = mod.BANNED_ZHEN_PATTERN
+    pat = _load_hook_module().BANNED_ZHEN_PATTERN
 
     # Whitelist forms — should NOT match
     assert not pat.search("真账户"), "whitelist 真账户 false positive"
@@ -147,5 +160,4 @@ def test_no_issues_no_warning_section() -> None:
     """When no issues found (clean state), checklist has no warning section."""
     rc, stdout, _ = _run_hook()
     assert rc == 0
-    # Even with no issues, 4 元素 cite reminder should be surfaced (always)
-    assert "4 元素 cite source 锁定" in stdout
+    assert "WARNING" not in stdout

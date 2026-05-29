@@ -51,9 +51,7 @@ def test_compose_query_handles_none_north_flow():
     indicators = _make_indicators(north_flow_cny=None)
     query = _compose_regime_query(indicators)
 
-    assert "north_flow=null" in query, (
-        f"Null north_flow_cny must render as 'null'; got: {query!r}"
-    )
+    assert "north_flow=null" in query, f"Null north_flow_cny must render as 'null'; got: {query!r}"
     # Other fields still rendered normally
     assert "SSE=0.0185" in query
 

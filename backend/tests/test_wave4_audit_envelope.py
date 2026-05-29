@@ -17,9 +17,20 @@ Sibling pattern to test_factor_lifecycle_audit_envelope.py (iter 103 PR #479 LL-
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _backup_result(target: str, passed: bool = True):
+    return SimpleNamespace(
+        target=SimpleNamespace(value=target),
+        passed=passed,
+        bytes_written=1024 if passed else 0,
+        duration_ms=100,
+    )
+
 
 # ─────────────────────────────────────────────────────────────
 # §1: meta_monitor_tasks audit envelope coverage
@@ -152,12 +163,26 @@ class TestAttributionAuditEnvelope:
         fake_attribution_initial.alpha_vs_benchmark = 0.0
 
         fake_attribution_module.DailyAttribution.return_value = fake_attribution_initial
+        fake_attribution_module.compute_by_factor.return_value = {"bp_ratio": 0.001}
+        fake_attribution_module.compute_by_sector.return_value = {"银行": 0.0005}
+        fake_attribution_module.compute_by_cost.return_value = {
+            "commission": -0.0001,
+            "slippage": -0.00002,
+            "impact": 0.0,
+            "overnight_gap": 0.0,
+        }
         fake_attribution_module.compute_unexplained_residual.return_value = 0.001
         fake_attribution_module.persist_attribution.return_value = 999
         fake_attribution_module.fire_residual_alert.return_value = False
 
         fake_conn = MagicMock(name="fake_conn")
         fake_get_pg = MagicMock(return_value=fake_conn)
+        weights = {"000001.SZ": 1.0}
+        exposures = {"bp_ratio": {"000001.SZ": 0.5}}
+        factor_returns = {"bp_ratio": 0.002}
+        industry_map = {"000001.SZ": "银行"}
+        industry_returns = {"银行": 0.0005}
+        cost_trades = [{"commission": 10.0, "slippage": 2.0, "impact": 0.0, "overnight_gap": 0.0}]
 
         with (
             patch.dict(
@@ -167,13 +192,46 @@ class TestAttributionAuditEnvelope:
             # iter 132: patch canonical conn factory (`app.services.db.get_sync_conn`)
             # post W2-A F7 fix at attribution_tasks.py:193 (phantom `app.core.db` removed).
             patch("app.services.db.get_sync_conn", fake_get_pg),
+            patch.object(
+                task_mod,
+                "_fetch_nav_snapshot",
+                return_value=(0.0123, 1_000_000.0, 0.0002),
+            ),
+            patch.object(task_mod, "_get_pt_factor_names", return_value=["bp_ratio"]),
+            patch.object(task_mod, "_fetch_portfolio_weights", return_value=weights),
+            patch.object(task_mod, "_fetch_factor_exposures", return_value=exposures),
+            patch.object(task_mod, "_fetch_factor_returns", return_value=factor_returns),
+            patch.object(
+                task_mod,
+                "_fetch_sector_inputs",
+                return_value=(industry_map, industry_returns),
+            ),
+            patch.object(task_mod, "_fetch_cost_trades", return_value=cost_trades),
             patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
         ):
             result = task_mod.daily_attribution_compute_task.apply(args=[]).get()
 
         assert "trade_date" in result
-        assert result["strategy_id"] == "paper-strategy-default"
+        assert result["strategy_id"] == task_mod.settings.PAPER_STRATEGY_ID
         assert result["row_id"] == 999
+        assert result["residual_bps"] == pytest.approx(10.0)
+        assert result["factor_contributors"] == 1
+        assert result["sector_contributors"] == 1
+        assert result["cost_contributors"] == 2
+        fake_attribution_module.compute_by_factor.assert_called_once_with(
+            weights,
+            exposures,
+            factor_returns,
+        )
+        fake_attribution_module.compute_by_sector.assert_called_once_with(
+            weights,
+            industry_map,
+            industry_returns,
+        )
+        fake_attribution_module.compute_by_cost.assert_called_once_with(
+            cost_trades,
+            nav=1_000_000.0,
+        )
 
         # iter 132 PR #484 reviewer P2: single-conn lifecycle regression guard.
         # Production bug (W2-A F8 P0): factory `get_pg_connection` passed to
@@ -218,6 +276,7 @@ class TestAttributionAuditEnvelope:
         assert call_args[0][0] == "daily_attribution_compute"
         assert call_args[0][2] == "success"
         assert call_args[0][3]["row_id"] == 999
+        assert call_args[0][3]["factor_contributors"] == 1
 
     def test_writes_error_row_fail_soft_no_reraise(self) -> None:
         """Exception path → status='error' + RETURN error dict (NOT raise — fail-soft preserved)."""
@@ -259,6 +318,73 @@ class TestAttributionAuditEnvelope:
         assert hasattr(task_mod, "_write_scheduler_log_safe")
         assert callable(task_mod._write_scheduler_log_safe)
 
+    def test_fetch_nav_change_uses_exact_daily_return(self) -> None:
+        """Attribution input must come from performance_series, not the old 0.0 stub."""
+        from datetime import date
+
+        from app.tasks import attribution_tasks as task_mod  # noqa: PLC0415
+
+        fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.return_value = (1_000_000.0, 0.0125, 0.001)
+        fake_conn.cursor.return_value = fake_cur
+
+        nav_change = task_mod._fetch_nav_change(
+            fake_conn,
+            trade_date=date(2026, 5, 28),
+            strategy_id="paper-strategy-default",
+            execution_mode="paper",
+        )
+
+        assert nav_change == pytest.approx(0.0125)
+        assert fake_cur.execute.call_count == 1
+        assert "performance_series" in fake_cur.execute.call_args.args[0]
+
+    def test_fetch_nav_change_derives_from_nav_when_daily_return_missing(self) -> None:
+        """Older performance_series rows with nav but NULL daily_return remain usable."""
+        from datetime import date
+
+        from app.tasks import attribution_tasks as task_mod  # noqa: PLC0415
+
+        fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.side_effect = [
+            (1_010_000.0, None, 0.002),
+            (1_000_000.0,),
+        ]
+        fake_conn.cursor.return_value = fake_cur
+
+        nav_change = task_mod._fetch_nav_change(
+            fake_conn,
+            trade_date=date(2026, 5, 28),
+            strategy_id="paper-strategy-default",
+            execution_mode="paper",
+        )
+
+        assert nav_change == pytest.approx(0.01)
+        assert fake_cur.execute.call_count == 2
+
+    def test_fetch_nav_change_returns_zero_when_exact_nav_missing(self) -> None:
+        """Paused days or missing PT rows are attribution no-op, not fabricated returns."""
+        from datetime import date
+
+        from app.tasks import attribution_tasks as task_mod  # noqa: PLC0415
+
+        fake_conn = MagicMock(name="fake_conn")
+        fake_cur = MagicMock(name="fake_cursor")
+        fake_cur.fetchone.return_value = None
+        fake_conn.cursor.return_value = fake_cur
+
+        nav_change = task_mod._fetch_nav_change(
+            fake_conn,
+            trade_date=date(2026, 5, 28),
+            strategy_id="paper-strategy-default",
+            execution_mode="paper",
+        )
+
+        assert nav_change == 0.0
+        assert fake_cur.execute.call_count == 1
+
     def test_envelope_helper_silent_on_db_failure(self, caplog: pytest.LogCaptureFixture) -> None:
         """Helper signature: silent_ok 铁律 33(c) — DB write failure logs warning, no raise."""
         from datetime import UTC, datetime
@@ -280,7 +406,113 @@ class TestAttributionAuditEnvelope:
 
 
 # ─────────────────────────────────────────────────────────────
-# §3: cross-module canonical pattern parity (sibling consistency)
+# §3: backup_tasks audit envelope coverage (iter 133 gap closure)
+# ─────────────────────────────────────────────────────────────
+
+
+class TestBackupAuditEnvelope:
+    """Verify backup Beat tasks write scheduler_task_log rows on success and failure."""
+
+    def test_daily_backup_writes_success_row(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        fake_db = MagicMock()
+        fake_db.run_all.return_value = [_backup_result("db")]
+        fake_fs = MagicMock()
+        fake_fs.run_all.return_value = [_backup_result("filesystem")]
+        fake_cfg = MagicMock()
+        fake_cfg.run_all.return_value = [_backup_result("config")]
+
+        with (
+            patch("backend.qm_platform.backup.DBBackupOrchestrator", return_value=fake_db),
+            patch("backend.qm_platform.backup.FilesystemBackupOrchestrator", return_value=fake_fs),
+            patch("backend.qm_platform.backup.ConfigBackupOrchestrator", return_value=fake_cfg),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.daily_backup_run_task.apply(args=[]).get()
+
+        assert result["passed"] is True
+        mock_audit.assert_called_once()
+        assert mock_audit.call_args.args[0] == "daily_backup_run"
+        assert mock_audit.call_args.args[2] == "success"
+        assert mock_audit.call_args.args[3]["passed"] is True
+
+    def test_daily_backup_writes_failed_row_when_target_fails(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        fake_db = MagicMock()
+        fake_db.run_all.return_value = [_backup_result("db", passed=False)]
+        fake_fs = MagicMock()
+        fake_fs.run_all.return_value = [_backup_result("filesystem")]
+        fake_cfg = MagicMock()
+        fake_cfg.run_all.return_value = [_backup_result("config")]
+
+        with (
+            patch("backend.qm_platform.backup.DBBackupOrchestrator", return_value=fake_db),
+            patch("backend.qm_platform.backup.FilesystemBackupOrchestrator", return_value=fake_fs),
+            patch("backend.qm_platform.backup.ConfigBackupOrchestrator", return_value=fake_cfg),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.daily_backup_run_task.apply(args=[]).get()
+
+        assert result["passed"] is False
+        assert mock_audit.call_args.args[0] == "daily_backup_run"
+        assert mock_audit.call_args.args[2] == "failed"
+
+    def test_daily_backup_exception_writes_failed_row_without_reraising(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        with (
+            patch(
+                "backend.qm_platform.backup.DBBackupOrchestrator",
+                side_effect=RuntimeError("synthetic backup failure"),
+            ),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.daily_backup_run_task.apply(args=[]).get()
+
+        assert "synthetic backup failure" in result["error"]
+        assert mock_audit.call_args.args[0] == "daily_backup_run"
+        assert mock_audit.call_args.args[2] == "failed"
+        assert "synthetic backup failure" in mock_audit.call_args.args[3]["error"]
+
+    def test_weekly_backup_verify_rpo_breach_writes_alert_row(self) -> None:
+        from app.tasks import backup_tasks as task_mod  # noqa: PLC0415
+
+        fake_verifier = MagicMock()
+        fake_verifier.run_all.return_value = [_backup_result("db")]
+        fake_db = MagicMock()
+        fake_db.spec.artifact_dir = "backups/db"
+        snapshot = SimpleNamespace(
+            rpo_hours_actual=48.0,
+            rto_hours_actual=0.5,
+            rpo_breached=True,
+            rto_breached=False,
+        )
+
+        with (
+            patch(
+                "backend.qm_platform.backup.restore_verification.RestoreVerificationOrchestrator",
+                return_value=fake_verifier,
+            ),
+            patch("backend.qm_platform.backup.DBBackupOrchestrator", return_value=fake_db),
+            patch(
+                "backend.qm_platform.backup.rpo_rto.compute_rpo_rto_snapshot",
+                return_value=snapshot,
+            ),
+            patch("backend.qm_platform.backup.rpo_rto.fire_rpo_rto_alert", return_value=True),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.weekly_backup_verify_task.apply(args=[]).get()
+
+        assert result["verify_passed"] is True
+        assert result["rpo_breached"] is True
+        assert mock_audit.call_args.args[0] == "weekly_backup_verify"
+        assert mock_audit.call_args.args[2] == "alert"
+
+
+# ─────────────────────────────────────────────────────────────
+# §4: cross-module canonical pattern parity (sibling consistency)
 # ─────────────────────────────────────────────────────────────
 
 

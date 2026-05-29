@@ -3,11 +3,12 @@
 > Iter 12 Inner-loop-B step 3 design doc — L4+R loop. 铁律 24 (≤2 pages).
 > SSOT: docs/L4R_LOOP_SPEC.md §10. Predecessors: PN-001 (O8 automation-level),
 > PN-002 (O10 correlation prune).
+> **Status addendum 2026-05-28**: IMPLEMENTED. Backend `POST /api/pipeline/pause` + `/resume`, status surface, frontend wrappers, and pause tests are present. Mid-run cooperative abort remains explicitly deferred.
 
 ## §1 Scope & Intent
 
-**Problem**: Frontend `PipelineConsole.tsx:206` calls `pausePipeline()` →
-`POST /api/pipeline/pause` (no body). No backend endpoint → 404. Button shows
+**Design-time problem**: Frontend `PipelineConsole.tsx:206` calls `pausePipeline()` →
+`POST /api/pipeline/pause` (no body). At the time no backend endpoint existed → 404. Button shows
 "暂停操作失败" on every click. UI orphan (API_COVERAGE.md §6).
 
 **Minimum viable semantics**: **gate-at-entry** pause.

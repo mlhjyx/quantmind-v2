@@ -21,6 +21,8 @@ from typing import Any
 import pandas as pd
 import structlog
 
+from engines.ic_calculator import compute_daily_rank_ic, compute_ic_series
+
 logger = structlog.get_logger(__name__)
 
 
@@ -362,15 +364,20 @@ def run_full_gate(
                 logger.warning("因子值计算为空，跳过", expr=factor_expr)
                 continue
 
-            # 运行完整 Gate
-            report = gate.run(
+            ic_series = _compute_gate_ic_series(factor_values, forward_returns)
+            expected_direction = -1 if getattr(candidate, "direction", "") == "negative" else 1
+
+            # 运行完整 Gate. run_gates returns PARTIAL when G1-G5 pass and G6-G8
+            # await human review; those candidates are valid approval-queue inputs.
+            report = gate.run_gates(
                 factor_name=f"gp_{ast_hash[:8]}",
-                factor_values=factor_values,
-                forward_returns=forward_returns,
+                ic_series=ic_series,
+                neutral_ic_series=None,
+                expected_direction=expected_direction,
             )
 
-            gate_summary = {g: str(r.status) for g, r in report.gate_results.items()}
-            overall_pass = report.overall_passed
+            gate_summary = {g: str(r.status) for g, r in report.gates.items()}
+            overall_pass = report.overall_status in {"PASS", "PARTIAL"}
 
             logger.info(
                 "Gate G1-G8 结果",
@@ -410,6 +417,35 @@ def run_full_gate(
     return passed
 
 
+def _compute_gate_ic_series(factor_values: pd.Series, forward_returns: pd.Series) -> list[float]:
+    """Compute Gate IC series for mining candidates using the shared IC API."""
+    if factor_values is None or forward_returns is None:
+        return []
+
+    if isinstance(factor_values.index, pd.MultiIndex) and isinstance(
+        forward_returns.index, pd.MultiIndex
+    ):
+        factor_wide = _series_to_wide_frame(factor_values)
+        returns_wide = _series_to_wide_frame(forward_returns)
+        return [float(v) for v in compute_ic_series(factor_wide, returns_wide).dropna().tolist()]
+
+    if isinstance(factor_values.index, pd.MultiIndex):
+        latest_date = factor_values.index.get_level_values(0).max()
+        factor_slice = factor_values.xs(latest_date, level=0)
+        ic = compute_daily_rank_ic(factor_slice, forward_returns)
+        return [] if ic is None else [float(ic)]
+
+    ic = compute_daily_rank_ic(factor_values, forward_returns)
+    return [] if ic is None else [float(ic)]
+
+
+def _series_to_wide_frame(series: pd.Series) -> pd.DataFrame:
+    """Convert a MultiIndex(date, symbol) Series to date x symbol wide frame."""
+    names = list(series.index.names)
+    symbol_level = "symbol_id" if "symbol_id" in names else names[1]
+    return series.unstack(symbol_level).sort_index()
+
+
 def send_dingtalk_notification(
     webhook_url: str,
     secret: str | None,
@@ -435,13 +471,15 @@ def send_dingtalk_notification(
         logger.debug("未配置钉钉 Webhook，跳过通知")
         return
 
+    engine_label = "BruteForce" if stats.get("engine") == "bruteforce" else "GP"
+
     try:
         from app.services.dispatchers import dingtalk
 
         if error:
-            title = f"[P0] GP Pipeline 失败 — {run_id}"
+            title = f"[P0] {engine_label} Pipeline 失败 — {run_id}"
             content = (
-                f"## GP Pipeline 运行异常\n\n"
+                f"## {engine_label} Pipeline 运行异常\n\n"
                 f"**运行ID**: `{run_id}`\n\n"
                 f"**错误**: {error}\n\n"
                 f"**评估数量**: {stats.get('total_evaluated', 0)}\n\n"
@@ -453,7 +491,7 @@ def send_dingtalk_notification(
             best_fitness = stats.get("best_fitness", -999)
             elapsed_min = stats.get("elapsed_seconds", 0) / 60
 
-            title = f"GP本周产出 {n_passed} 个候选因子 — {run_id}"
+            title = f"{engine_label}本周产出 {n_passed} 个候选因子 — {run_id}"
 
             factor_lines = ""
             for i, f in enumerate(passed_factors[:5], 1):
@@ -464,7 +502,7 @@ def send_dingtalk_notification(
                 )
 
             content = (
-                f"## GP Pipeline 完成\n\n"
+                f"## {engine_label} Pipeline 完成\n\n"
                 f"**运行ID**: `{run_id}`\n\n"
                 f"| 指标 | 值 |\n"
                 f"|------|----|\n"

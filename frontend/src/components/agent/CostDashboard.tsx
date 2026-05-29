@@ -40,7 +40,7 @@ function BarRow({ label, cost, maxCost }: { label: string; cost: number; maxCost
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="w-16 text-right tabular-nums text-slate-300">¥{cost.toFixed(2)}</span>
+      <span className="w-16 text-right tabular-nums text-slate-300">${cost.toFixed(4)}</span>
     </div>
   );
 }
@@ -65,10 +65,10 @@ export function CostDashboard({ summary, loading }: CostDashboardProps) {
     );
   }
 
-  const agentEntries = Object.entries(summary.by_agent) as [string, { cost_cny: number; tokens: number }][];
-  const modelEntries = Object.entries(summary.by_model) as [string, { cost_cny: number; tokens: number }][];
-  const maxAgentCost = Math.max(...agentEntries.map(([, v]) => v.cost_cny), 0.01);
-  const maxModelCost = Math.max(...modelEntries.map(([, v]) => v.cost_cny), 0.01);
+  const agentEntries = Object.entries(summary.by_agent) as [string, { cost_usd: number; tokens: number }][];
+  const modelEntries = Object.entries(summary.by_model) as [string, { cost_usd: number; tokens: number }][];
+  const maxAgentCost = Math.max(...agentEntries.map(([, v]) => v.cost_usd), 0.0001);
+  const maxModelCost = Math.max(...modelEntries.map(([, v]) => v.cost_usd), 0.0001);
 
   return (
     <div className="space-y-4">
@@ -76,7 +76,7 @@ export function CostDashboard({ summary, loading }: CostDashboardProps) {
       <div className="grid grid-cols-3 gap-3">
         <GlassCard className="text-center">
           <p className="text-xs text-slate-500 mb-1">{summary.month} 总费用</p>
-          <p className="text-xl font-semibold text-white tabular-nums">¥{summary.total_cost_cny.toFixed(2)}</p>
+          <p className="text-xl font-semibold text-white tabular-nums">${summary.total_cost_usd.toFixed(4)}</p>
         </GlassCard>
         <GlassCard className="text-center">
           <p className="text-xs text-slate-500 mb-1">输入 Tokens</p>
@@ -96,7 +96,7 @@ export function CostDashboard({ summary, loading }: CostDashboardProps) {
             <BarRow
               key={key}
               label={AGENT_LABELS[key] ?? key}
-              cost={val.cost_cny}
+              cost={val.cost_usd}
               maxCost={maxAgentCost}
             />
           ))}
@@ -111,7 +111,7 @@ export function CostDashboard({ summary, loading }: CostDashboardProps) {
             <BarRow
               key={key}
               label={MODEL_LABELS[key] ?? key}
-              cost={val.cost_cny}
+              cost={val.cost_usd}
               maxCost={maxModelCost}
             />
           ))}

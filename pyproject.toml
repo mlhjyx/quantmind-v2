@@ -37,6 +37,7 @@ dependencies = [
 
     # === ML ===
     "lightgbm>=4.5.0",
+    "deap>=1.4.1",              # GP weekly mining engine (backend/engines/mining/gp_engine.py)
 
     # === LLM Router (V3 §5.5 + ADR-020 + ADR-031) ===
     # LiteLLM 是 V3 LLM 调用 only path (CI lint enforce, 详 docs/LLM_IMPORT_POLICY.md).

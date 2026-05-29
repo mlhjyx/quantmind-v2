@@ -4,6 +4,7 @@
 
 端点列表:
   GET  /api/pipeline/status                       — 当前Pipeline运行状态
+  GET  /api/pipeline/{run_id}/logs                — 决策日志HTTP回放
   GET  /api/pipeline/runs                         — 运行历史（分页）
   GET  /api/pipeline/runs/{run_id}                — 单次运行详情
   POST /api/pipeline/runs/{run_id}/approve/{id}   — 审批通过候选因子
@@ -20,8 +21,9 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -29,13 +31,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_db
 from app.services.mining_service import MiningService
+from app.services.pipeline_log import emit_pipeline_log, pipeline_log_key
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
 
 _LOCALHOST_IPS = {"127.0.0.1", "::1", "localhost"}
+_PIPELINE_STALE_DEFAULT_MINUTES = 24 * 60
+_PIPELINE_STALE_BUDGET_MULTIPLIER = 3
 
 
 def _require_local(request: Request) -> None:
@@ -107,6 +113,26 @@ class TriggerPipelineResponse(BaseModel):
     status: str
 
 
+class CancelPipelineResponse(BaseModel):
+    """取消 Pipeline 运行的响应。"""
+
+    task_id: str
+    run_id: str
+    cancelled: bool
+    message: str
+
+
+class PipelineLogEntry(BaseModel):
+    """Pipeline 决策日志条目 (PN-005 HTTP backfill contract)."""
+
+    id: str
+    run_id: str
+    timestamp: str
+    agent: str
+    level: Literal["info", "warning", "error", "decision"]
+    content: str
+
+
 # ---------------------------------------------------------------------------
 # D1 O8 — Automation-level persistence (PN-001 iter 10)
 # ---------------------------------------------------------------------------
@@ -165,6 +191,44 @@ class PauseStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _get_pipeline_log_redis() -> Any:
+    """Return a Redis client for pipeline log backfill.
+
+    Kept as a tiny helper so tests can monkeypatch it without opening a real
+    Redis connection.
+    """
+    import redis as redis_lib  # noqa: PLC0415
+
+    return redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def _coerce_pipeline_log_entry(
+    raw: str | bytes, *, run_id: str, fallback_id: str
+) -> PipelineLogEntry | None:
+    """Decode one Redis log line into the frontend contract."""
+    try:
+        payload = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+        timestamp = str(
+            payload.get("timestamp") or payload.get("ts") or datetime.now(UTC).isoformat()
+        )
+        level = str(payload.get("level") or "info").lower()
+        if level == "warn":
+            level = "warning"
+        if level not in {"info", "warning", "error", "decision"}:
+            level = "info"
+        return PipelineLogEntry(
+            id=str(payload.get("id") or fallback_id),
+            run_id=str(payload.get("run_id") or run_id),
+            timestamp=timestamp,
+            agent=str(payload.get("agent") or payload.get("source") or "pipeline"),
+            level=cast(Literal["info", "warning", "error", "decision"], level),
+            content=str(payload.get("content") or payload.get("message") or ""),
+        )
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("pipeline_log_decode_failed", run_id=run_id, error=str(exc))
+        return None
+
+
 @router.post(
     "/trigger",
     summary="手动触发 Pipeline (DEV_AI_EVOLUTION §12.2)",
@@ -200,12 +264,84 @@ async def trigger_pipeline(
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    emit_pipeline_log(
+        run_id=result["run_id"],
+        agent="orchestrator",
+        level="decision",
+        content=f"Pipeline submitted: engine={body.engine}, task_id={result['task_id']}",
+    )
+
     return TriggerPipelineResponse(
         run_id=result["run_id"],
         task_id=result["task_id"],
         engine=body.engine,
         status=result["status"],
     )
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    summary="取消 Pipeline 运行",
+    response_model=CancelPipelineResponse,
+)
+async def cancel_pipeline_run(
+    run_id: str,
+    session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
+) -> CancelPipelineResponse:
+    """Cancel a running Pipeline row via the existing MiningService path.
+
+    This is intentionally explicit and localhost-only. It lets operators close
+    stale `running` rows without hiding a DB mutation behind GET /status.
+    """
+    svc = MiningService(session)
+    try:
+        result = await svc.cancel_task(run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    emit_pipeline_log(
+        run_id=result["run_id"],
+        agent="orchestrator",
+        level="decision",
+        content=f"Pipeline cancelled: run_id={result['run_id']}",
+    )
+    return CancelPipelineResponse(**result)
+
+
+@router.get(
+    "/{run_id}/logs",
+    summary="Pipeline 决策日志 HTTP backfill (PN-005 O7)",
+    response_model=list[PipelineLogEntry],
+)
+async def get_pipeline_logs(
+    run_id: str,
+    limit: int = Query(default=200, ge=1, le=1000, description="最多返回日志条数"),
+) -> list[PipelineLogEntry]:
+    """Return recent pipeline decision logs from Redis.
+
+    PN-005 chose Redis list storage for the first closure step:
+    `pipeline:logs:{run_id}` contains JSON-encoded `PipelineLogEntry` rows,
+    newest first. Missing Redis key is a valid empty state for older runs.
+    Redis transport failure is fail-soft because logs are observability-only;
+    the endpoint logs a warning and returns an empty list instead of breaking
+    the Operator UI tab.
+    """
+    key = pipeline_log_key(run_id)
+    try:
+        raw_entries = _get_pipeline_log_redis().lrange(key, 0, limit - 1)
+    except Exception as exc:  # noqa: BLE001 — fail-soft observability path, warning emitted.
+        logger.warning("pipeline_log_redis_read_failed", run_id=run_id, key=key, error=str(exc))
+        return []
+
+    entries: list[PipelineLogEntry] = []
+    for idx, raw in enumerate(raw_entries):
+        entry = _coerce_pipeline_log_entry(raw, run_id=run_id, fallback_id=f"{run_id}:{idx}")
+        if entry is not None:
+            entries.append(entry)
+    return entries
 
 
 @router.get(
@@ -318,6 +454,59 @@ def _gp_weekly_schedule_next() -> tuple[str, str]:
     if target <= now_sh:
         target += timedelta(days=7)
     return ("0 22 * * 0", target.astimezone(UTC).isoformat())
+
+
+def _pipeline_stale_after_minutes(config: dict[str, Any]) -> int:
+    """Return stale-running threshold for a mining run.
+
+    The GP task has a hard Celery limit near 3h, but status is operator-facing.
+    A 24h floor avoids mislabeling unusually slow manual experiments while still
+    catching rows that would otherwise block the weekly pipeline indefinitely.
+    """
+    raw_budget = config.get("time_budget_minutes")
+    try:
+        budget_minutes = float(raw_budget)
+    except (TypeError, ValueError):
+        budget_minutes = 0.0
+    if budget_minutes <= 0:
+        return _PIPELINE_STALE_DEFAULT_MINUTES
+    return int(
+        max(
+            _PIPELINE_STALE_DEFAULT_MINUTES,
+            budget_minutes * _PIPELINE_STALE_BUDGET_MULTIPLIER,
+        )
+    )
+
+
+def _running_stale_info(
+    *,
+    status: str,
+    started_at: datetime | None,
+    config: dict[str, Any],
+    now: datetime | None = None,
+) -> tuple[bool, int | None, str | None]:
+    """Classify stale `running` rows without mutating DB state."""
+    if status != "running" or started_at is None:
+        return (False, None, None)
+
+    now_utc = now or datetime.now(UTC)
+    started_utc = started_at
+    if started_utc.tzinfo is None:
+        started_utc = started_utc.replace(tzinfo=UTC)
+    else:
+        started_utc = started_utc.astimezone(UTC)
+
+    stale_after_minutes = _pipeline_stale_after_minutes(config)
+    age = now_utc - started_utc
+    if age <= timedelta(minutes=stale_after_minutes):
+        return (False, stale_after_minutes, None)
+
+    age_hours = age.total_seconds() / 3600
+    reason = (
+        f"running for {age_hours:.1f}h exceeds stale threshold "
+        f"{stale_after_minutes}m; operator cancel/retry required"
+    )
+    return (True, stale_after_minutes, reason)
 
 
 @router.post(
@@ -444,6 +633,9 @@ async def get_pipeline_status(
             "schedule_cron": schedule_cron,
             "next_run_at": next_run_at,
             "last_run_at": None,
+            "is_stale_running": False,
+            "stale_after_minutes": None,
+            "stale_reason": None,
             "current_node": None,
             "paused_at": paused_at_iso,
             "paused_reason": paused_reason,
@@ -467,6 +659,12 @@ async def get_pipeline_status(
     last_run_dt = row["finished_at"] or row["started_at"]
     last_run_iso = last_run_dt.isoformat() if last_run_dt else None
     is_running = row["status"] == "running"
+    is_stale_running, stale_after_minutes, stale_reason = _running_stale_info(
+        status=row["status"],
+        started_at=row["started_at"],
+        config=config,
+    )
+    status_label = "stale_running" if is_stale_running else row["status"]
 
     return {
         # NEW frontend-aligned keys (PN-004)
@@ -479,12 +677,15 @@ async def get_pipeline_status(
         "schedule_cron": schedule_cron,
         "next_run_at": next_run_at,
         "last_run_at": last_run_iso,
+        "is_stale_running": is_stale_running,
+        "stale_after_minutes": stale_after_minutes,
+        "stale_reason": stale_reason,
         "paused_at": paused_at_iso,
         "paused_reason": paused_reason,
         # LEGACY aliases (deprecated, 1-sprint retention per PN-004 §2.2)
         "active_run_id": row["run_id"],
         "active_engine": row["engine"],
-        "status": row["status"],
+        "status": status_label,
         "node_statuses": node_statuses_dict,
         "progress": {
             "total_candidates": stats.get("total_evaluated", 0),
@@ -727,6 +928,12 @@ async def approve_factor(
         factor_id,
         row["factor_name"],
     )
+    emit_pipeline_log(
+        run_id=run_id,
+        agent="approval",
+        level="decision",
+        content=f"Approved factor {row['factor_name']} (id={factor_id})",
+    )
 
     # 触发因子入库 Celery 异步任务
     # factor_onboarding_task 接收 approval_queue.id，入库完成后更新 factor_registry
@@ -833,6 +1040,12 @@ async def reject_factor(
         factor_id,
         row["factor_name"],
         body.decision_reason,
+    )
+    emit_pipeline_log(
+        run_id=run_id,
+        agent="approval",
+        level="decision",
+        content=f"Rejected factor {row['factor_name']} (id={factor_id}): {body.decision_reason}",
     )
 
     return {

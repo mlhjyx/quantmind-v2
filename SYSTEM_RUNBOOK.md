@@ -105,8 +105,8 @@ D:\pgsql\bin\psql.exe -U xin -d quantmind_v2 -h 127.0.0.1
 
 | 时间 | 任务名 | 执行命令 | 用途 |
 |------|--------|---------|------|
-| 每小时 | QM-SmokeTest | `python scripts/smoke_test.py --auto-restart` | 62 个 GET 端点冒烟 + 自动重启 |
-| 02:00 | QM-DailyBackup | `python scripts/pg_backup.py` | pg_dump 全量备份 (7 天滚动 + 月永久) |
+| Disabled | QM-SmokeTest | `python scripts/smoke_test.py --auto-restart` | 一次性冒烟任务，已完成；旧 LastResult 不代表 active failure |
+| 02:00 | QM-DailyBackup | `python scripts/pg_backup.py` | pg_dump 全量备份 (7 天滚动 + 月永久；2026-05-28 起 temp-file + size gate + restore-list verify) |
 | 09:05 | QuantMind_CancelStaleOrders | `python scripts/cancel_stale_orders.py` | QMT 撤单 |
 | 09:31 | QuantMind_DailyExecute | `python scripts/run_paper_trading.py execute --execution-mode live` | QMT live 执行 |
 | 09:35 | QuantMind_IntradayMonitor | `python scripts/intraday_monitor.py` (每 5 分钟) | 盘中风控 |
@@ -361,6 +361,8 @@ python scripts/pg_backup.py
 # 每日 02:00 自动备份 (Task Scheduler QM-DailyBackup)
 # 7 天滚动 + 每月 1 日永久保留
 # 位置: D:/quantmind-v2/backups/daily/
+# 2026-05-28: 备份脚本写 .dump.tmp，通过大小门槛后原子替换最终 .dump；
+# 手动恢复跑 `python scripts/pg_backup.py --skip-parquet` 生成 14,480.2MB dump 并通过 pg_restore --list。
 ```
 
 ### 7.5 PT 恢复 (重构完成后)
@@ -410,7 +412,7 @@ python scripts/approve_l4.py            # L4 熔断人工审批恢复
 | 回测 12 年事件驱动 OOM | 中 | Phase A 向量化 OK (80s), Phase B 事件驱动模式仍 OOM, 需 DataHandler 模式 |
 | minute_bars 只 2021-2025 | 低 | 5 年数据, 如需 12 年对齐需扩拉 2014-2020 |
 | 两个 Tushare 客户端 | 低 | TushareClient + TushareFetcher, 重试/限流逻辑不一致 |
-| 两个备份任务重复 | 低 | QM-DailyBackup 与 QuantMind_DailyBackup 指向同一脚本 |
+| 两个备份任务重复 | 低 | 历史漂移；2026-05-28 exact probe 仅返回 `QM-DailyBackup`，以 `docs/SCHEDULING_LAYOUT.md` + live Task Scheduler 为准 |
 | 两个 notification_service.py | 低 | `backend/app/services/` 和 `backend/services/` 各一份, 后者可能是废弃 |
 | 24 张空表 | 低 | forex/AI/GP 预留表, 长期未使用 |
 

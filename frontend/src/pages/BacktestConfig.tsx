@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -16,7 +16,7 @@ import type { ExecutionConfig } from "@/components/backtest/TabExecution";
 import type { CostModelConfig } from "@/components/backtest/TabCostModel";
 import type { RiskAdvancedConfig } from "@/components/backtest/TabRiskAdvanced";
 import type { DynamicPositionConfig } from "@/components/backtest/TabDynamicPosition";
-import apiClient from "@/api/client";
+import { buildRunBacktestPayload, runBacktest } from "@/api/backtest";
 
 // ── Default config values ──────────────────────────────────────────────────
 
@@ -92,22 +92,6 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: "position", label: "动态仓位", icon: "📈" },
 ];
 
-// ── Backtest run API ────────────────────────────────────────────────────────
-
-interface BacktestRunPayload {
-  market: MarketConfig;
-  time_range: TimeRangeConfig;
-  execution: ExecutionConfig;
-  cost_model: CostModelConfig;
-  risk_advanced: RiskAdvancedConfig;
-  dynamic_position: DynamicPositionConfig;
-}
-
-async function runBacktest(payload: BacktestRunPayload) {
-  const res = await apiClient.post<{ run_id: string }>("/backtest/run", payload);
-  return res.data;
-}
-
 // ── Capital constraint check ────────────────────────────────────────────────
 
 function CapitalWarning({ holding: holdingCount, capital }: { holding: number; capital: number }) {
@@ -128,6 +112,8 @@ function CapitalWarning({ holding: holdingCount, capital }: { holding: number; c
 
 export default function BacktestConfig() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const strategyId = searchParams.get("strategy_id") || undefined;
   const [activeTab, setActiveTab] = useState<TabKey>("market");
 
   const [market, setMarket] = useState<MarketConfig>(DEFAULT_MARKET);
@@ -146,7 +132,17 @@ export default function BacktestConfig() {
 
   const runMutation = useMutation({
     mutationFn: () =>
-      runBacktest({ market, time_range: timeRange, execution, cost_model: costModel, risk_advanced: riskAdvanced, dynamic_position: dynamicPosition }),
+      runBacktest(
+        buildRunBacktestPayload({
+          strategy_id: strategyId,
+          market,
+          time_range: timeRange,
+          execution,
+          cost_model: costModel,
+          risk_advanced: riskAdvanced,
+          dynamic_position: dynamicPosition,
+        }),
+      ),
     onSuccess: (data) => {
       navigate(`/backtest/runner/${data.run_id}`);
     },

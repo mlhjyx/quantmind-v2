@@ -118,19 +118,19 @@ def find_commit_violations(file_path: Path) -> list[dict]:
                         receiver = node.func.value.id
                     elif isinstance(node.func.value, ast.Attribute):
                         if isinstance(node.func.value.value, ast.Name):
-                            receiver = (
-                                f"{node.func.value.value.id}.{node.func.value.attr}"
-                            )
+                            receiver = f"{node.func.value.value.id}.{node.func.value.attr}"
                         # Deeper chains: fall back to receiver = "?"
                 except AttributeError:
                     receiver = "?"
-                self.found.append({
-                    "line": node.lineno,
-                    "col": node.col_offset,
-                    "receiver": receiver,
-                    "method": method_ctx,
-                    "is_async": is_async,
-                })
+                self.found.append(
+                    {
+                        "line": node.lineno,
+                        "col": node.col_offset,
+                        "receiver": receiver,
+                        "method": method_ctx,
+                        "is_async": is_async,
+                    }
+                )
             self.generic_visit(node)
 
     visitor = CommitVisitor()
@@ -152,12 +152,14 @@ def audit() -> dict:
             continue
         rel_path = str(py_file.relative_to(PROJECT_ROOT)).replace("\\", "/")
         tier = classify_tier(rel_path)
-        files_data.append({
-            "file": rel_path,
-            "tier": tier,
-            "violation_count": len(violations),
-            "violations": violations,
-        })
+        files_data.append(
+            {
+                "file": rel_path,
+                "tier": tier,
+                "violation_count": len(violations),
+                "violations": violations,
+            }
+        )
         total_violations += len(violations)
         by_tier[tier] += len(violations)
 
@@ -200,8 +202,7 @@ def print_human_report(result: dict, tier_filter: int | None = None) -> None:
             # AI reviewer cycle 4 enhancement: surface async/sync context indicator
             async_tag = " [async]" if v.get("is_async") else ""
             print(
-                f"      line {v['line']:4d}: {v['receiver']}.commit() in "
-                f"{v['method']}(){async_tag}"
+                f"      line {v['line']:4d}: {v['receiver']}.commit() in {v['method']}(){async_tag}"
             )
 
 

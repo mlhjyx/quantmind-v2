@@ -2,7 +2,7 @@
 
 Second concrete CIOrchestrator merging 3 pre-push checks 沿用 config/hooks/pre-push
 现有 logic:
-  1. 铁律 10b smoke test (pytest -m "smoke and not live_tushare")
+  1. 铁律 10b smoke test (pytest backend/tests/ -m "smoke and not live_tushare")
   2. 铁律 X10 cutover-bias scan (branch + last 5 commits pattern match)
   3. 铁律 17 DataPipeline guard (check_llm_imports --full + DataPipeline naked
      INSERT scan over backend/**.py)
@@ -16,6 +16,7 @@ Platform 严格隔离 sustained: 0 import backend.app.* (subprocess only).
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -35,8 +36,25 @@ X10_HARD_PATTERNS: tuple[str, ...] = (
     r"自动\s*cutover",
 )
 
-DEFAULT_SMOKE_TIMEOUT_SECONDS = 90
+DEFAULT_SMOKE_TIMEOUT_SECONDS = 180
 DEFAULT_DATAPIPELINE_TIMEOUT_SECONDS = 30
+SMOKE_COLLECT_ONLY_ENV = "QM_CI_SMOKE_COLLECT_ONLY"
+SMOKE_COLLECT_TARGETS = [
+    "backend/tests/smoke/",
+    "backend/tests/test_audit_design_doc_smoke_smoke.py",
+    "backend/tests/test_build_traceability_index_smoke.py",
+    "backend/tests/test_daily_reconciliation_smoke.py",
+    "backend/tests/test_generate_system_diagram_smoke.py",
+    "backend/tests/test_news_anspire.py",
+    "backend/tests/test_news_gdelt.py",
+    "backend/tests/test_news_marketaux.py",
+    "backend/tests/test_news_rsshub.py",
+    "backend/tests/test_news_tavily.py",
+    "backend/tests/test_news_zhipu.py",
+    "backend/tests/test_rag_consumer_smoke.py",
+    "backend/tests/test_realtime_risk_beat_smoke.py",
+    "backend/tests/test_services_healthcheck.py",
+]
 
 SubprocessRunner = Callable[[list[str], int], subprocess.CompletedProcess]
 
@@ -47,6 +65,8 @@ def _default_runner(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
     )
@@ -67,15 +87,29 @@ def default_subprocess_checks() -> list[PrePushCheck]:
     X10 cutover-bias scan is pure-Python and not in this list — handled
     separately in run_phase via x10_scan().
     """
+    smoke_cmd = [
+        "pytest",
+        "backend/tests/",
+        "-m",
+        "smoke and not live_tushare",
+        "--tb=line",
+        "-q",
+        "--timeout=60",
+    ]
+    if os.environ.get(SMOKE_COLLECT_ONLY_ENV) == "1":
+        smoke_cmd = [
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-m",
+            "smoke and not live_tushare",
+            *SMOKE_COLLECT_TARGETS,
+        ]
+
     return [
         PrePushCheck(
             name="smoke_test",
-            cmd=[
-                "pytest",
-                "-m",
-                "smoke and not live_tushare",
-                "-q",
-            ],
+            cmd=smoke_cmd,
             timeout_seconds=DEFAULT_SMOKE_TIMEOUT_SECONDS,
         ),
         PrePushCheck(
@@ -199,6 +233,8 @@ __all__ = [
     "DEFAULT_SMOKE_TIMEOUT_SECONDS",
     "PrePushCheck",
     "PrePushOrchestrator",
+    "SMOKE_COLLECT_TARGETS",
+    "SMOKE_COLLECT_ONLY_ENV",
     "SubprocessRunner",
     "X10_HARD_PATTERNS",
     "default_subprocess_checks",

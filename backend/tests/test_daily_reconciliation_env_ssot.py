@@ -72,9 +72,7 @@ def test_empty_mode_triggers_fatal_exit_with_message(mock_qmt_config):
         dr_mod.query_qmt_positions()
 
     code = exc_info.value.code
-    assert isinstance(code, str), (
-        f"Expected string exit code (FATAL message), got {code!r}"
-    )
+    assert isinstance(code, str), f"Expected string exit code (FATAL message), got {code!r}"
     assert "[FATAL]" in code
     assert "EXECUTION_MODE=live" in code
 

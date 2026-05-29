@@ -10,7 +10,7 @@
 
 将 git pre-commit / pre-push hooks + GitHub Actions CI + 回归基线门 + reviewer 自动化整合到统一 orchestrator:
 
-- **pre-commit phase**: ruff check / format / pytest collection / check_llm_imports (S2 PR-219 allowlist)
+- **pre-commit phase**: ruff check / format / pytest collection / check_llm_imports (S2 PR-219 allowlist) / frontend API discipline raw-axios scanner
 - **pre-push phase**: smoke (铁律 10b) / X10 cutover-bias scan / DataPipeline-only guard (铁律 17)
 - **ci-matrix phase**: multi-version Python + PostgreSQL compat
 - **regression phase**: max_diff=0 baseline gate (铁律 15, 5yr + 12yr regression)
@@ -80,8 +80,12 @@ ALL NEGATIVE.
 **MVP 4.3 closeout (iter 72)**:
 - `.github/workflows/ci.yml` 4 jobs (pre_commit / pre_push / regression / ci_matrix)
 - `scripts/ci_run_phase.py` single CLI dispatcher (lazy-imports per phase)
-- regression + ci_matrix jobs marked `continue-on-error` until baseline files +
-  self-hosted runners ship (advisory mode for initial activation)
+- regression + ci_matrix jobs run `scripts/ci_run_phase.py --advisory` until baseline
+  files + self-hosted runners ship; structured failures log `ADVISORY_FAIL` while
+  process exceptions still fail the job.
+- `pre_commit` now includes `scripts/audit/check_frontend_api_discipline.py`, a
+  comment-aware raw axios scanner that keeps `frontend/src/api/client.ts` as the
+  production axios SSOT without flagging tests or prose.
 
 ## §7 关联
 

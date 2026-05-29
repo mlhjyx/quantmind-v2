@@ -37,9 +37,7 @@ def _install_fake_xtquant(connect_return_code: int) -> tuple[MagicMock, dict]:
     fake_xttrader = MagicMock()
     fake_xttrader.XtQuantTrader = MagicMock(return_value=mock_trader_instance)
     # XtQuantTraderCallback 必须是真实 class (broker_qmt 内 _Callback 继承它)
-    fake_xttrader.XtQuantTraderCallback = type(
-        "XtQuantTraderCallback", (), {}
-    )
+    fake_xttrader.XtQuantTraderCallback = type("XtQuantTraderCallback", (), {})
 
     fake_xttype = MagicMock()
     fake_xttype.StockAccount = MagicMock()
@@ -58,9 +56,7 @@ def test_connect_failure_calls_stop_to_release_xtquant_resources(tmp_path):
     这是阻止 38h 累积 8.4 GB 泄漏的关键守护. 修复前 `self._trader = None` 只丢 Python
     引用, xtquant C 层 thread/socket 持续累积. 修复后 try/except 兜底显式 stop().
     """
-    mock_trader_instance, fake_modules = _install_fake_xtquant(
-        connect_return_code=-1
-    )
+    mock_trader_instance, fake_modules = _install_fake_xtquant(connect_return_code=-1)
 
     with patch.dict(sys.modules, fake_modules):
         from engines.broker_qmt import MiniQMTBroker
@@ -84,9 +80,7 @@ def test_connect_failure_calls_stop_to_release_xtquant_resources(tmp_path):
 
 def test_connect_success_does_not_call_stop(tmp_path):
     """对照: connect() 成功路径不应调 stop() (回归保护防过度修复)."""
-    mock_trader_instance, fake_modules = _install_fake_xtquant(
-        connect_return_code=0
-    )
+    mock_trader_instance, fake_modules = _install_fake_xtquant(connect_return_code=0)
 
     with patch.dict(sys.modules, fake_modules):
         from engines.broker_qmt import MiniQMTBroker

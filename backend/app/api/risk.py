@@ -836,9 +836,7 @@ async def get_risk_events_rule_ids(
         return {"rule_ids": rule_ids, "total_count": len(rule_ids)}
     except Exception as exc:
         logger.exception("risk_events_rule_ids query failed")
-        raise HTTPException(
-            status_code=500, detail="rule_ids query failed"
-        ) from exc
+        raise HTTPException(status_code=500, detail="rule_ids query failed") from exc
 
 
 @router.get("/events")
@@ -891,9 +889,7 @@ async def get_risk_events(
             "ep.user_decision AS plan_user_decision, "
             "ep.broker_order_id AS plan_broker_order_id"
         )
-        chain_join = (
-            "LEFT JOIN execution_plans ep ON ep.triggered_by_event_id = rel.id"
-        )
+        chain_join = "LEFT JOIN execution_plans ep ON ep.triggered_by_event_id = rel.id"
 
     # noqa: S608 — where_clause built from named params + literal int(hours);
     # interpolated severity/rule_id values pass via :params binding only.
@@ -906,9 +902,7 @@ async def get_risk_events(
         f"FROM risk_event_log rel {chain_join} {where_clause} "
         f"ORDER BY rel.triggered_at DESC LIMIT :limit OFFSET :offset"
     )
-    count_sql = (
-        f"SELECT COUNT(*) FROM risk_event_log rel {where_clause}"  # noqa: S608
-    )
+    count_sql = f"SELECT COUNT(*) FROM risk_event_log rel {where_clause}"  # noqa: S608
 
     try:
         result = await session.execute(text(main_sql), params)
@@ -918,9 +912,7 @@ async def get_risk_events(
         total_count = int(count_result.scalar() or 0)
     except Exception as exc:
         logger.exception("risk_events query failed")
-        raise HTTPException(
-            status_code=500, detail="risk_events query failed"
-        ) from exc
+        raise HTTPException(status_code=500, detail="risk_events query failed") from exc
 
     events = []
     for row in rows:

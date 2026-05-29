@@ -66,9 +66,7 @@ class TestRealtimeRiskTickHappyPath:
 
         fake_engine = MagicMock(name="engine")
         fake_builder = MagicMock(name="builder")
-        fake_builder.build_context.side_effect = PositionSourceError(
-            "synthetic stale data error"
-        )
+        fake_builder.build_context.side_effect = PositionSourceError("synthetic stale data error")
 
         with (
             patch.object(task_mod, "_get_engine", return_value=fake_engine),

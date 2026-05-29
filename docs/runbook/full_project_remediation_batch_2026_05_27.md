@@ -1,0 +1,518 @@
+# Full Project Remediation Batch Runbook — 2026-05-27
+
+> Scope: follow-up to `docs/audit/FULL_PROJECT_CLOSURE_AND_GOVERNANCE_AUDIT_2026_05_27.md`.
+> This runbook started as a control document. On 2026-05-28 the user explicitly unlocked related remediation operations; DB migration, service restart, and backend-code remediation results are recorded below.
+
+## Guardrails
+
+- Keep the staged Codex governance package intact.
+- Keep the full audit report uncommitted unless the user asks to stage it.
+- DB mutation and Servy restart were unlocked by the user on 2026-05-28 for the findings in this batch.
+- Do not run broker mutation calls.
+- Because `python scripts/_verify_account_oneshot.py` stopped at miniQMT connect return code `-1`, backend production-code edits remain redline-gated in this batch.
+
+## Batch Map
+
+| Batch | Finding | Action type | Status |
+|---|---|---|---|
+| B0 | Missing `memory/project_sprint_state.md` | Doc governance | Completed: minimal handoff restored and updated. |
+| B1 | `pipeline_settings` missing | DB migration | Completed: migration applied, singleton row verified. |
+| B2 | Runtime route drift for `/api/system/beat-schedule` | Servy runtime ops | Completed: FastAPI/Worker/Beat restarted; route returns 200 and canonical alias join populates existing `last_fire_*`. |
+| B3 | `/api/system/health` timeout / session concurrency | Backend code | Completed: bounded health checks, sequential datasource reads, Windows Celery fallback, available-RAM memory threshold. |
+| B4 | `daily_attribution` 0 rows | Runtime/data evidence | Completed: task apply writes row for configured `PAPER_STRATEGY_ID`; API returns latest row. |
+| B5 | Scheduler failures | Ops triage | Partially closed: disabled-task false positive fixed, DailyBackup DR risk repaired, ICMonitor API/UI reclassified as alert signal. |
+| B6 | `.agents/skills` policy | Agent governance | Completed: active project skills are versioned; `.claude/skills` kept historical. |
+| B7 | Full-project governance objective | Governance control | Completed: objective and completion criteria captured in `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`. |
+| B8 | API/status document drift | Doc governance | Completed: `docs/API_COVERAGE.md` header now points to §9 current counts; `SYSTEM_STATUS.md` risk-design row now reflects redirect stub state. |
+| B9 | API O7 pipeline logs orphan | Backend/API closure | Completed: `GET /api/pipeline/{run_id}/logs` Redis HTTP backfill implemented and tested; PN-005 writer/WS remain enhancement backlog. |
+| B10 | GitHub Actions Node 20 runtime deprecation | CI governance | Completed: workflow uses Node 24-native action major versions. |
+| B11 | GitHub checkout submodule metadata warning | Git governance | Completed: `.gitmodules` restored for the existing mattpocock skills gitlink. |
+| B12 | Advisory CI red annotation noise | CI governance | Completed: `--advisory` mode logs structured failures as `ADVISORY_FAIL` with exit 0; runner exceptions still fail. |
+| B13 | Frontend raw axios scanner precision | Frontend governance | Completed: comment-aware scanner added and wired into local pre-commit + CI pre_commit. |
+| B14 | Attribution NAV input stub | Eval/Beat closure | Completed: Beat wrapper now reads exact-date `performance_series.daily_return` / NAV fallback instead of hardcoded `0.0`; regression tests cover daily_return, derived-NAV, and paused-day no-op paths. |
+| B15 | Agent cost/log read stubs | AI governance | Completed: `/api/agent/cost-summary` and `/api/agent/{name}/logs` now read `llm_call_log`; frontend cost dashboard now displays USD truth instead of synthetic CNY. |
+| B16 | Agent model-health static stub | AI governance | Completed: `/api/agent/model-health` now reports observed model health from recent `llm_call_log` rows; missing/stale/error states are explicit. |
+| B17 | CI pre-push smoke timeout drift | CI governance | Completed: pre-push orchestrator smoke subprocess timeout raised to 180s after the current smoke suite passed in 123s but the old 90s wrapper timed out. |
+| B18 | Attribution contributor empty-dict stub | Eval/Beat/UI closure | Completed: Beat wrapper now feeds existing factor/sector/cost attribution engines from read-only portfolio, factor, IC, price, industry, and trade-log inputs; frontend empty state no longer says wiring is unimplemented. |
+| B19 | BruteForce mining task placeholder | Factor mining closure | Completed: Celery task now runs the existing BruteForce engine, persists `bf_` quick-gate candidates, and BruteForce IC calculation uses the shared IC calculator API. |
+| B20 | Mining full-gate contract drift | Factor mining closure | Completed: `run_full_gate` now calls `FactorGatePipeline.run_gates` and handles `GateReport.gates` / `overall_status` instead of a non-existent `run` contract. |
+| B21 | GP cross-round feedback not wired in production runners | Factor mining closure | Completed: Celery GP task and CLI runner now load previous results plus reviewed approval/rejection decisions, inject approved seed / rejected blacklist feedback into `GPEngine`, and persist full-Gate rejects for the next run. |
+| B22 | Mining evaluate service + SessionStart memory drift | Factor mining / Codex governance | Completed: `/api/mining/evaluate` service now uses `FactorGatePipeline.run_gates`; SessionStart hook now prefers repo-local `memory/` before historical Claude memory. |
+| B23 | Backtest API worker bypasses Platform runner | Backtest platform closure | Completed: `run_backtest` Celery worker now delegates engine execution through `PlatformBacktestRunner` + `InMemoryBacktestRegistry`, then writes the existing API result tables. |
+| B24 | Backtest research-script bypass drift can silently regrow | Backtest governance | Completed: historical research bypasses are explicitly allowlisted, and pre-commit/CI blocks new untracked direct `run_hybrid_backtest` / `run_composite_backtest` callers. |
+| B25 | Task Scheduler 0x41301 false failure | Runtime observability | Completed: `/api/system/scheduler` now maps Windows LastResult `267009` (`0x41301`, currently running) to `running` instead of `failed`. |
+| B26 | Pipeline stale-running rows block operator view | Runtime/API/UI closure | Completed: stale GP rows are surfaced, cancellable from localhost/UI, and two stale rows were explicitly closed. |
+| B27 | `signal_phase` reports empty factors after missing T-day data | Runtime fail-loud closure | Completed: T-day `klines_daily` / `daily_basic` readiness is checked immediately after fetch so the scheduler log names the data outage before empty factor generation. |
+| B28 | Celery backup orchestrators depend on missing PG CLI PATH | Backup/DR runtime closure | Completed: Platform backup tasks now resolve `pg_dump.exe` / `pg_restore.exe` from `PG_BIN` or known Windows install paths and pass `PGPASSWORD` into subprocesses. |
+
+## B1 — Pipeline Settings Migration
+
+Evidence:
+- Migration exists: `backend/migrations/pipeline_settings.sql`.
+- Rollback exists: `backend/migrations/pipeline_settings_rollback.sql`.
+- Audit DB probe found the table missing.
+- `backend/app/api/pipeline.py` reads `pipeline_settings` in `/automation-level`, `/pause`, `/resume`, and `/status`.
+
+Result:
+- Applied `backend/migrations/pipeline_settings.sql` on 2026-05-28.
+- Verified singleton row: `id=1`, `automation_level='L0'`, `paused_at=NULL`, `paused_reason=NULL`.
+- Re-probed `GET /api/pipeline/status`: 200, active run `gp_2026w16_000147e8`, `automation_level='L0'`.
+
+Rollback boundary:
+- Use `backend/migrations/pipeline_settings_rollback.sql` only if the apply causes a runtime regression.
+- Capture before/after SQL output in a dated audit note.
+
+## B2 — Servy Runtime Route Refresh
+
+Evidence:
+- Working-tree code defines `GET /api/system/beat-schedule`.
+- Runtime returned 404 before service reload.
+
+Result:
+- Restarted FastAPI, Celery Worker, and Celery Beat through `scripts/service_manager.ps1`.
+- Left QMT Data Service stopped because it is manual and outside this remediation.
+- `GET /api/system/beat-schedule`: 200 with 27 Beat entries.
+- `GET /api/system/health`: 200 with `overall_status='ok'` after the Windows solo-worker fallback fix.
+- Follow-up fix: `/api/system/beat-schedule` now maps Celery dotted task names to canonical `scheduler_task_log` aliases, so existing rows populate `last_fire_*`.
+- Backup Beat tasks now write `scheduler_task_log` rows for `daily_backup_run` and `weekly_backup_verify`.
+
+## B3 — System API Health Fix Candidate
+
+Root-cause evidence gathered:
+- `backend/app/api/system.py` currently uses `asyncio.gather()` with one injected `AsyncSession` for datasource queries.
+- SQLAlchemy async sessions are not safe for concurrent operations on the same session.
+- Logs showed concurrent-operation errors in `system.py`.
+- `/api/system/health` also waits on Celery inspect and can consume most of the endpoint timeout budget.
+
+Result:
+- `/api/system/datasources` now queries sequentially on the request `AsyncSession`.
+- `/api/system/health` now bounds PG/Redis/Celery sub-checks and degrades instead of hanging.
+- Windows Celery solo-pool health now uses process fallback first and exposes a warning that `inspect` was skipped.
+- Memory health now follows the project resource floor: ok when `available_gb >= 8`, instead of false-critical around 16GB used on a 32GB host.
+- Added regression tests for Celery timeout behavior and Windows process fallback.
+
+## B4 — Attribution Evidence Policy
+
+Evidence:
+- `daily_attribution` table exists.
+- Audited row count was zero.
+- Beat schedule includes `daily-attribution-compute` in code.
+
+Result:
+- Fixed runtime import root setup so `backend.qm_platform.*` resolves from Celery/FastAPI/manual task contexts.
+- Changed attribution task `strategy_id` from a hard-coded placeholder to `settings.PAPER_STRATEGY_ID`, aligning write and read paths.
+- Replaced the Beat wrapper's hardcoded NAV-change stub with exact-date `performance_series` input. It prefers `daily_return`, derives from current/previous NAV when needed, and only returns `0.0` when no exact-date NAV row exists.
+- Manual task apply wrote `daily_attribution.id=2` for `28fc37e5-2d32-4ada-92e0-41c11a5103d0`.
+- `GET /api/attribution/latest`: 200 with that row.
+- Deleted the earlier manual-test noise row `daily_attribution.id=1` for `paper-strategy-default`; kept scheduler logs as audit trail.
+
+## B5 — Scheduler Failure Triage
+
+Evidence:
+- `QM-ICMonitor` had latest failure code `1`.
+- `QM-SmokeTest` had latest failure code `3221225786`.
+- Follow-up `GET /api/system/scheduler` found `QM-DailyBackup` active/Ready with latest failure code `3221225786`.
+- `logs/ic_monitor.log` shows the 2026-05-24 `QM-ICMonitor` code `1` corresponds to one P1 IC decay alert, not a traceback or scheduler infrastructure failure.
+- `docs/SCHEDULING_LAYOUT.md` and `SYSTEM_STATUS.md` already classify `QM-SmokeTest` as disabled/one-time completed.
+- `logs/backup.log` showed the 2026-05-28 backup started then stopped after writing only about 222MB; recent healthy dumps are 11-15GB.
+
+Result:
+- `backend/app/api/system.py` now maps disabled Windows tasks to `status='disabled'` and exposes `task_state` / `enabled`.
+- Frontend scheduler consumers now preserve disabled status and exclude disabled tasks from overdue counts.
+- `QM-ICMonitor` `alert` rows now include factor-quality disposition metadata and the System Settings scheduler row links operators to `/factors/monitoring`.
+- `scripts/pg_backup.py` now writes to `.dump.tmp`, rejects undersized dumps before final replacement, verifies file size before `pg_restore --list`, and updates Parquet snapshot SQL to current column names.
+- Controlled recovery run: `python scripts/pg_backup.py --skip-parquet` completed on 2026-05-28, produced `quantmind_v2_20260528.dump` at 14,480.2MB, and `pg_restore --list` passed with 712 tables / 2,359 objects.
+- FastAPI was restarted; `GET /api/system/scheduler` now reports `QM-SmokeTest` as `task_state='Disabled'`, `enabled=false`, `status='disabled'`.
+
+Remaining:
+- The next scheduled `QM-DailyBackup` first-fire result still needs observation because Task Scheduler LastResult remains the failed 02:00 run until the task fires again; the manual rerun restored today's DR artifact.
+
+## B6 — Skills Version Policy
+
+Evidence:
+- `.agents/skills` is the active Codex project skill layer.
+- Many `.agents/skills/...` files are untracked.
+- `.claude/skills` remains tracked historical state.
+
+Decision:
+- Track active `.agents/skills` files as project governance assets.
+- Keep `.claude/skills` historical and unchanged.
+- Add `.agents/skills/README.md` as the local policy file.
+- Remove the empty root `nul` file as runtime/generated noise.
+
+Audit artifact:
+- `docs/audit/SKILLS_GOVERNANCE_AUDIT_2026_05_28.md`.
+
+## B7 — Full-Project Governance Objective
+
+Evidence:
+- User clarified the durable objective: full project closure review, code/doc/module
+  inventory, drift remediation, hooks/skills/agents governance, CI/PR auditability,
+  and active fixing rather than passive backlog accumulation.
+
+Result:
+- Added `docs/audit/PROJECT_GOVERNANCE_OBJECTIVE_2026_05_28.md`.
+- The new artifact defines scope, working loop, redline boundary, and completion
+  evidence criteria for the continuing governance goal.
+
+## B8 — API/Status Document Drift
+
+Evidence:
+- `docs/API_COVERAGE.md` top summary still said 148 backend endpoints and 10
+  frontend-only orphans, while its own §9 fresh verify records 161 endpoints and
+  1 sustained orphan.
+- `SYSTEM_STATUS.md` §13 still described `RISK_CONTROL_SERVICE_DESIGN.md` as a
+  678-line partially deprecated document, while the current file is a redirect stub
+  to the archived historical body.
+
+Result:
+- Updated the API coverage header and executive summary to point readers to §9 as
+  the current count baseline and to keep the old matrix body as historical evidence.
+- Updated `SYSTEM_STATUS.md` §13 to describe the risk-control design file as a
+  retired redirect stub with the archive path.
+
+## B9 — Pipeline Logs HTTP Backfill
+
+Evidence:
+- `frontend/src/api/pipeline.ts::getPipelineLogs()` called
+  `GET /api/pipeline/{run_id}/logs`.
+- `docs/API_COVERAGE.md` and `docs/design/PN_005_pipeline_log_history_subsystem.md`
+  classified this as the last sustained frontend-only orphan.
+
+Result:
+- Added `PipelineLogEntry` response model and
+  `GET /api/pipeline/{run_id}/logs` in `backend/app/api/pipeline.py`.
+- The endpoint reads Redis list `pipeline:logs:{run_id}`, decodes JSON entries,
+  normalizes `warn` to `warning`, skips malformed rows with a warning, and returns
+  `[]` on Redis transport failure because this is observability-only UI.
+- Removed the stale frontend comment that said the backend endpoint did not exist.
+- Updated API coverage and PN-005 design notes to mark HTTP backfill closed.
+
+Remaining enhancement backlog:
+- Add writer instrumentation in pipeline tasks/services.
+- Add optional `/ws/pipeline/{run_id}` live tailing.
+- Decide whether durable DB history is needed beyond Redis recent logs.
+
+## B10 — GitHub Actions Node Runtime
+
+Evidence:
+- The PR CI run emitted GitHub's Node 20 JavaScript action runtime deprecation warning.
+- The warning recommended opting into Node 24 before the default switch.
+
+Result:
+- GitHub release probes verified `actions/checkout` latest tag `v6.0.2` and `actions/setup-python` latest tag `v6.2.0`.
+- `.github/workflows/ci.yml` now uses `actions/checkout@v6` and `actions/setup-python@v6`.
+
+## B11 — Gitlink Metadata
+
+Evidence:
+- CI checkout cleanup warned: `No url found for submodule path '.claude/external-skills/mattpocock-skills' in .gitmodules`.
+- `git ls-files -s` showed that path is already tracked as mode `160000`.
+- Local gitlink remote is `https://github.com/mattpocock/skills.git`.
+
+Result:
+- Added `.gitmodules` entry for the existing `.claude/external-skills/mattpocock-skills` gitlink.
+- Did not edit or migrate `.claude/` historical content.
+
+## B12 — Advisory CI Annotation Noise
+
+Evidence:
+- After B10/B11, the remaining PR annotations came from `regression` and `ci_matrix`
+  steps that intentionally failed internally under `continue-on-error: true`.
+- The jobs passed overall, but GitHub still displayed red `Process completed with
+  exit code 1` annotations.
+
+Result:
+- Added `scripts/ci_run_phase.py --advisory`.
+- Structured orchestrator failures now print `status=ADVISORY_FAIL`, include the
+  phase details, and exit 0.
+- Uncaught exceptions still exit 1, so broken runners are not hidden.
+- `.github/workflows/ci.yml` now uses `--advisory` for `regression` and `ci_matrix`
+  and no longer relies on `continue-on-error`.
+
+## B13 — Frontend Raw Axios Scanner Precision
+
+Evidence:
+- The audit backlog still had a P2 scanner precision item because naive grep found
+  `axios` in comments/prose, including the Zustand notification store note.
+- Production policy remains: only `frontend/src/api/client.ts` imports axios;
+  feature/page code should use `apiClient` via the `src/api` layer.
+
+Result:
+- Added `scripts/audit/check_frontend_api_discipline.py`.
+- The scanner strips TS/JS comments while preserving line numbers, detects real
+  `axios` import/require/dynamic import usage, excludes tests by default, and
+  allows only `frontend/src/api/client.ts` in production.
+- Wired the scanner into `config/hooks/pre-commit` and the CI `pre_commit`
+  orchestrator.
+- Added regression tests proving comment-only mentions do not fail while real
+  imports outside the allowlist do fail.
+
+## B15 — Agent LLM Observability Read Paths
+
+Evidence:
+- `backend/app/api/agent.py` still returned hardcoded zero values from
+  `/api/agent/cost-summary` and `[]` from `/api/agent/{name}/logs`.
+- The repository already has `llm_call_log` DDL, LLM audit insertion code, and
+  frontend AgentConfig cost/log panels.
+- The frontend cost dashboard labeled values as CNY even though the persisted
+  audit column is `cost_usd`.
+
+Result:
+- `/api/agent/cost-summary` now aggregates `llm_call_log` for the requested
+  month: total tokens, total `cost_usd`, by-agent task buckets, by-model buckets,
+  and daily usage rows.
+- `/api/agent/{name}/logs` now returns recent `llm_call_log` rows for the mapped
+  agent task family with severity derived from `error_class`, fallback, budget
+  state, and decision id.
+- Frontend `CostSummary` and `CostDashboard` now use/display USD fields.
+- Regression tests cover monthly aggregation, invalid month rejection, and
+  per-agent log rows.
+
+Follow-up:
+- Periodic live model ping remains a separate ops probe enhancement. The current
+  page-load endpoint is intentionally read-only and does not create hidden LLM
+  spend.
+
+## B16 — Agent Model Health Observed Status
+
+Evidence:
+- `/api/agent/model-health` still returned hardcoded online/offline rows after
+  `llm_call_log` audit logging landed.
+- The AgentConfig page already consumed model health, so the static values could
+  mislead operators after provider errors or long idle windows.
+
+Result:
+- `/api/agent/model-health` now reads recent `llm_call_log` rows and normalizes
+  provider strings into AgentConfig model buckets.
+- Latest successful observations younger than 24h are reported online.
+- Latest failed calls, stale observations, and missing observations are reported
+  offline with explicit reasons.
+- Frontend model-health typing/display handles `last_checked_at = null`.
+
+Verification:
+- `backend/tests/test_agent_api_llm_observability.py` covers recent success,
+  latest error, stale observation, and missing observation states.
+
+## B17 — CI Pre-Push Smoke Timeout Drift
+
+Evidence:
+- `scripts/ci_run_phase.py --phase pre_push` failed with
+  `smoke_test: TIMEOUT after 90s`.
+- The same smoke selection passed when run directly:
+  `91 passed, 4 skipped, 6819 deselected` in 123s.
+
+Result:
+- `backend/qm_platform/ci/prepush.py` now allows 180s for the whole smoke
+  subprocess while preserving per-test `--timeout=60`.
+- `backend/tests/test_qm_platform_ci_prepush.py` now asserts the 180s timeout
+  and timeout detail text.
+
+## B18 — Attribution Contributor Wiring
+
+Evidence:
+- `backend/qm_platform/eval/attribution.py` already had tested pure engines for
+  factor, sector, and cost contribution calculation.
+- `daily_attribution_compute_task` still persisted empty `by_factor`, `by_sector`,
+  and `by_cost` dictionaries, so the Dashboard showed the feature as an MVP 4.2
+  wiring stub even after attribution rows existed.
+
+Result:
+- `daily_attribution_compute_task` now loads component inputs from existing
+  read-only stores: `position_snapshot`, `factor_values`, `factor_ic_history`,
+  `symbols`, `klines_daily`, and `trade_log`.
+- The task calls `compute_by_factor`, `compute_by_sector`, and `compute_by_cost`
+  before residual calculation and persistence.
+- Scheduler audit result JSON now includes factor/sector/cost contributor counts.
+- Dashboard empty-state copy now describes a no-input latest row instead of an
+  unimplemented attribution path.
+
+Verification:
+- `ruff check backend/app/tasks/attribution_tasks.py backend/tests/test_wave4_audit_envelope.py`
+- `pytest backend/tests/test_wave4_audit_envelope.py -q`
+- `pytest backend/tests/test_qm_platform_attribution.py -q`
+- `npm run build -- --mode development`
+
+Follow-up:
+- Regime attribution still waits for a canonical RegimeInfo source; this is a
+  bounded enhancement rather than the factor/sector/cost closure blocker.
+
+## B19 — BruteForce Mining Task Closure
+
+Result:
+- `run_bruteforce_mining` now executes the existing BruteForce engine instead of
+  returning `not_implemented`.
+- The task persists `bf_` quick-gate candidates to `gp_approval_queue` with
+  explicit pending full-review metadata.
+- `BruteForceEngine._compute_ic_series` delegates to the shared IC calculator API.
+
+Verification:
+- `ruff check backend/app/tasks/mining_tasks.py backend/engines/mining/bruteforce_engine.py backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py`
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py backend/tests/test_mining_engine.py -q`
+
+## B23 — Backtest API Worker Platform Runner Closure
+
+Result:
+- `app.tasks.backtest_tasks.run_backtest` no longer imports or calls
+  `run_hybrid_backtest` directly.
+- The worker builds a Platform `BacktestConfig`, executes
+  `PlatformBacktestRunner` in `AD_HOC` mode with `InMemoryBacktestRegistry`,
+  and unwraps the `engine_result` artifact for the existing API persistence
+  path.
+- Factor directions stay fail-loud: missing directions are ignored with a
+  warning to match legacy engine semantics, but an all-missing direction map
+  raises before a misleading all-positive run can start.
+
+Verification:
+- `ruff check backend/app/tasks/backtest_tasks.py backend/tests/test_backtest_tasks.py`
+- `pytest backend/tests/test_backtest_tasks.py backend/tests/test_backtest_runner.py backend/tests/test_backtest_api.py -q`
+
+## B24 — Backtest Runner Bypass Guard
+
+Result:
+- Existing non-archive `scripts/research/` direct calls to
+  `run_hybrid_backtest` / `run_composite_backtest` are triaged as historical
+  one-off experiments and tracked in
+  `scripts/audit/backtest_runner_bypass_allowlist.txt`.
+- `scripts/audit/check_backtest_runner_bypass.py` scans `backend/` and
+  `scripts/`, ignores engine internals/tests/archive, and blocks any new
+  unallowlisted direct engine call.
+- The guard is wired into both local `config/hooks/pre-commit` and the CI
+  `PreCommitOrchestrator`.
+
+Verification:
+- `python scripts/audit/check_backtest_runner_bypass.py`
+- `pytest backend/tests/test_backtest_runner_bypass_audit.py backend/tests/test_qm_platform_ci_precommit.py -q`
+
+## B25 — Task Scheduler Running-State Classification
+
+Result:
+- Runtime probe on 2026-05-29 showed `QM-HealthCheck` with
+  `last_result_code=267009` but `/api/system/scheduler` classified it as
+  `failed`.
+- Windows Task Scheduler code `267009` (`0x41301`) means the task is currently
+  running; `scripts/health_audit_v2.py` already treated it as a known non-fail
+  state.
+- `_task_scheduler_status` now maps `267009` to `running`, preserving existing
+  `Disabled`, `Running`, `0`, `267011`, and `QM-ICMonitor` alert semantics.
+
+Verification:
+- `pytest backend/tests/test_system_api.py -q`
+
+## B20 — Mining Full-Gate Contract Drift
+
+Result:
+- `backend/engines/mining/pipeline_utils.py::run_full_gate` now calls
+  `FactorGatePipeline.run_gates` instead of the stale non-existent `run` method.
+- The wrapper consumes `GateReport.gates` and `overall_status`.
+- `PARTIAL` is accepted as valid approval-queue input because current G6-G8
+  semantics are human-review pending after machine gates pass.
+
+Verification:
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_factor_gate.py -q`
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py backend/tests/test_mining_engine.py -q`
+- `ruff check backend/app/tasks/mining_tasks.py backend/engines/mining/pipeline_utils.py backend/engines/mining/bruteforce_engine.py backend/tests/test_gp_pipeline.py backend/tests/test_mining_engines.py`
+- `python scripts/ci_run_phase.py --phase pre_commit`
+- `python scripts/ci_run_phase.py --phase pre_push`
+
+## B21 — GP Cross-Round Feedback
+
+Result:
+- `backend/app/tasks/mining_tasks.py` now resolves a GP result cache directory,
+  loads `PreviousRunData`, merges reviewed `gp_approval_queue` decisions,
+  passes approved seed / rejected blacklist feedback into `GPEngine`, supplies
+  the merged blacklist to full Gate, and appends full-Gate rejects to the saved
+  result JSON for the next run.
+- `scripts/run_gp_pipeline.py` now mirrors the same feedback semantics for
+  manual/CLI runs instead of only logging that previous results were loaded.
+- `gp_results/` is ignored as regeneratable runtime cache.
+
+Verification:
+- `ruff check backend/app/tasks/mining_tasks.py scripts/run_gp_pipeline.py backend/tests/test_gp_pipeline.py`
+- `pytest backend/tests/test_gp_pipeline.py backend/tests/test_gp_engine.py backend/tests/test_gp_cross_round.py -q`
+
+Remaining:
+- Capture a controlled end-to-end run or the next scheduled first-fire evidence
+  showing persisted previous-run and reviewed approval feedback is consumed by
+  the following run.
+
+## B26 — Pipeline Stale-Running Runtime Closure
+
+Result:
+- Runtime probe on 2026-05-29 found `/api/pipeline/status` blocked by old
+  `pipeline_runs.status='running'` rows (`gp_2026w16_000147e8`, then
+  `gp_2026w15_000147e8`) that had no live task and no terminal timestamp.
+- `/api/pipeline/status` now keeps `is_running=true` for DB truth but adds
+  `is_stale_running`, `stale_after_minutes`, and `stale_reason`; legacy
+  `status` is surfaced as `stale_running` for operator visibility.
+- Added localhost-only `POST /api/pipeline/runs/{run_id}/cancel`, wired to the
+  existing `MiningService.cancel_task`, and added a Pipeline Console cancel
+  button. The existing pause button now calls `resumePipeline()` when already
+  paused.
+- FastAPI was restarted and the two stale rows were explicitly cancelled via
+  the new endpoint. `/api/pipeline/status` now returns the latest terminal GP
+  run (`gp_2026w20_000147e8`, `status=failed`) instead of a stale active run.
+- The next visible failure was the pre-existing GP dependency gap:
+  `DEAP未安装`. `deap>=1.4.1` is now declared in `pyproject.toml` and installed
+  in the local `.venv` (`deap.__version__ == 1.4`).
+
+Redline / runtime notes:
+- `backend/.env` still shows `LIVE_TRADING_DISABLED=true`,
+  `EXECUTION_MODE=paper`, and `QMT_ACCOUNT_ID=81001102`.
+- Read-only account verification was attempted, but miniQMT connection returned
+  `-1` because QMT is not connected in this shell. No broker, `.env`, yaml, or
+  Task Scheduler mutation was performed; DB writes were limited to explicit
+  operator cancellation of stale `pipeline_runs` metadata rows.
+
+Verification:
+- `ruff check backend/app/api/pipeline.py backend/tests/test_pipeline_status_contract.py`
+- `pytest backend/tests/test_pipeline_status_contract.py -q`
+- `npm exec vitest -- --run src/__tests__/pipeline-api.test.ts src/__tests__/PipelineConsole.test.tsx`
+- `npm run build -- --mode development`
+- `pytest backend/tests/test_gp_engine.py backend/tests/test_gp_cross_round.py -q`
+- Runtime: `/api/pipeline/status` stale flag before cancellation; cancel endpoint
+  success for both stale rows; `/api/system/health` returned `overall_status=ok`.
+
+## B27 — Signal Phase Market-Data Readiness Guard
+
+Runtime finding:
+- `scheduler_task_log` showed `signal_phase` failed on 2026-05-29 16:31 with
+  `因子缺失` for the 4 PT factors.
+- Read-only DB probe showed `klines_daily`, `daily_basic`, and the 4 PT factors
+  all had latest `trade_date=2026-05-28`; 2026-05-29 had 0 rows.
+- `logs/paper_trading.log` showed the fetch step returned
+  `klines=0, basic=0, index=0` but the pipeline still continued to factor
+  calculation, making the final error look like a factor problem.
+
+Result:
+- `scripts/run_paper_trading.py` now checks same-day `klines_daily` and
+  `daily_basic` counts immediately after `fetch_daily_data()`.
+- If T-day market/base data are absent, the task raises a clear fail-loud
+  `RuntimeError` with DB counts and fetch row counts before generating empty
+  factors.
+- Zero fetch upsert counts still pass when same-day DB rows already exist,
+  preserving safe rerun / idempotent behavior.
+
+Verification:
+- `ruff check scripts/run_paper_trading.py backend/tests/test_pt_data_service_fail_loud.py`
+- `pytest backend/tests/test_pt_data_service_fail_loud.py -q`
+
+## B28 - Celery Backup PG Tool Resolution
+
+Evidence:
+- Runtime PATH probe on 2026-05-29 returned `pg_dump=None` and `pg_restore=None`, while `tar` was available.
+- `backend/qm_platform/backup/db_backup.py` called bare `pg_dump`; `restore_verification.py` called bare `pg_restore`.
+- The previously repaired Task Scheduler backup path already resolved PostgreSQL tools from `D:\pgsql\bin`, so the Celery backup chain had a Windows service-environment drift risk.
+
+Result:
+- Added `backend/qm_platform/backup/pg_tools.py` with shared PostgreSQL CLI resolution and subprocess env loading.
+- `DBBackupOrchestrator` now calls resolved `pg_dump.exe` and passes `PGPASSWORD` to subprocesses.
+- `RestoreVerificationOrchestrator` now calls resolved `pg_restore.exe` and passes `PGPASSWORD` to subprocesses.
+- Runtime resolution probe now returns `D:\pgsql\bin\pg_dump.exe`, `D:\pgsql\bin\pg_restore.exe`, and `has_pgpassword=True`.
+
+Verification:
+- `ruff check backend/qm_platform/backup/pg_tools.py backend/qm_platform/backup/db_backup.py backend/qm_platform/backup/restore_verification.py backend/tests/test_qm_platform_backup_concrete.py`
+- `pytest backend/tests/test_qm_platform_backup_concrete.py backend/tests/test_qm_platform_backup_verify_rpo.py backend/tests/test_wave4_audit_envelope.py -q` -> 71 passed.
+
+Remaining:
+- This closes the executable/env precondition for Celery backup tasks. Scheduled `daily-backup-run` and `weekly-backup-verify` still need next-window Beat first-fire evidence.

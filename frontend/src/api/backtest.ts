@@ -119,13 +119,106 @@ export interface BacktestHistoryItem {
 
 export interface RunBacktestPayload {
   strategy_id: string;
-  config: Record<string, unknown>;
+  start_date: string;
+  end_date: string;
+  initial_capital?: number;
+  benchmark?: string;
+  universe_preset?: string;
+  rebalance_freq?: "daily" | "weekly" | "biweekly" | "monthly";
+  slippage_model?: "fixed" | "volume_impact";
+  cost_multiplier?: number;
+  extra_config?: Record<string, unknown>;
+}
+
+export interface BacktestConfigFormPayload {
+  strategy_id?: string;
+  initial_capital?: number;
+  market: {
+    market: string;
+    universe: string;
+    industries: string[];
+    custom_stocks: string;
+  };
+  time_range: {
+    start_date: string;
+    end_date: string;
+    preset: string;
+    exclude_2015: boolean;
+    exclude_2020: boolean;
+    exclude_custom: string;
+    market_regime_analysis: boolean;
+    regime_method: string;
+  };
+  execution: {
+    fill_price: string;
+    rebalance_freq: "daily" | "weekly" | "monthly" | "custom";
+    signal_day: string;
+    holding_count: number;
+    weight_method: string;
+  };
+  cost_model: {
+    commission_rate: number;
+    stamp_tax: number;
+    transfer_fee: number;
+    slippage_model: "fixed" | "volume_impact" | "none";
+    slippage_bps: number;
+    volume_impact_coeff: number;
+    max_volume_pct: number;
+  };
+  risk_advanced: object;
+  dynamic_position: object;
+}
+
+export interface RunBacktestResponse {
+  run_id: string;
+  status: BacktestStatus;
+  message?: string;
+}
+
+export function buildRunBacktestPayload(form: BacktestConfigFormPayload): RunBacktestPayload {
+  const rebalanceFreq =
+    form.execution.rebalance_freq === "custom" ? "monthly" : form.execution.rebalance_freq;
+  const slippageModel =
+    form.cost_model.slippage_model === "none" ? "fixed" : form.cost_model.slippage_model;
+
+  return {
+    strategy_id: form.strategy_id || "manual_ui_backtest",
+    start_date: form.time_range.start_date,
+    end_date: form.time_range.end_date,
+    initial_capital: form.initial_capital ?? 1_000_000,
+    benchmark: "000300.SH",
+    universe_preset: form.market.universe,
+    rebalance_freq: rebalanceFreq,
+    slippage_model: slippageModel,
+    cost_multiplier: 1,
+    extra_config: {
+      market: form.market.market,
+      industries: form.market.industries,
+      custom_stocks: form.market.custom_stocks,
+      time_range: form.time_range,
+      fill_price: form.execution.fill_price,
+      holding_count: form.execution.holding_count,
+      top_n: form.execution.holding_count,
+      weight_method: form.execution.weight_method,
+      custom_rebalance_rule:
+        form.execution.rebalance_freq === "custom" ? form.execution.signal_day : undefined,
+      commission_rate: form.cost_model.commission_rate,
+      stamp_tax: form.cost_model.stamp_tax,
+      transfer_fee: form.cost_model.transfer_fee,
+      slippage_bps: form.cost_model.slippage_bps,
+      volume_impact_coeff: form.cost_model.volume_impact_coeff,
+      max_volume_pct: form.cost_model.max_volume_pct,
+      slippage_disabled: form.cost_model.slippage_model === "none",
+      risk_advanced: form.risk_advanced,
+      dynamic_position: form.dynamic_position,
+    },
+  };
 }
 
 // ---- API Functions ----
 
-export async function runBacktest(payload: RunBacktestPayload): Promise<{ run_id: string }> {
-  const res = await apiClient.post<{ run_id: string }>("/backtest/run", payload);
+export async function runBacktest(payload: RunBacktestPayload): Promise<RunBacktestResponse> {
+  const res = await apiClient.post<RunBacktestResponse>("/backtest/run", payload);
   return res.data;
 }
 

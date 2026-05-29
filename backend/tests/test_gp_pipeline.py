@@ -2,7 +2,7 @@
 
 覆盖 app/tasks/mining_tasks.py:
   - run_gp_mining: 任务结构正确，mock GP Engine可执行
-  - run_bruteforce_mining: 返回 not_implemented
+  - run_bruteforce_mining: 调用 BruteForce 异步执行路径
   - _mark_run_failed: 异常时不崩溃（mock asyncpg）
   - _run_gp_mining_async: 数据为空时提前返回 failed
   - 异常处理: 任何步骤失败不导致未捕获崩溃
@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
+from engines.mining.pipeline_utils import run_full_gate
 
 # F74/F18: Windows asyncio event loop hang — GP pipeline async tests freeze on IOCP.
 # Root cause: pytest-asyncio + Windows ProactorEventLoop. F18 async→sync 迁移后移除此 skip.
@@ -35,7 +39,12 @@ _SKIP_WIN_ASYNC = pytest.mark.skipif(
 
 try:
     from app.tasks.mining_tasks import (
+        _collect_full_gate_failed_hashes,
+        _gp_results_output_dir,
         _mark_run_failed,
+        _merge_blacklist_for_persist,
+        _merge_gp_feedback_payload,
+        _run_bruteforce_mining_async,
         _run_gp_mining_async,
         _write_results_to_db,
         run_bruteforce_mining,
@@ -50,6 +59,22 @@ pytestmark = pytest.mark.skipif(
     not _TASKS_AVAILABLE,
     reason="mining_tasks 导入失败（Celery未安装或导入错误）",
 )
+
+
+def _fake_asyncio_run(*results):
+    """Mock asyncio.run while closing coroutine objects created by task wrappers."""
+    iterator = iter(results)
+
+    def _run(coro):
+        close = getattr(coro, "close", None)
+        if close:
+            close()
+        result = next(iterator)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    return _run
 
 
 # ---------------------------------------------------------------------------
@@ -72,46 +97,215 @@ class TestTaskRegistration:
         """run_gp_mining 应是可调用对象。"""
         assert callable(run_gp_mining)
 
+
+# ---------------------------------------------------------------------------
+# 1b. GP cross-round state helpers
+# ---------------------------------------------------------------------------
+
+
+class TestGPCrossRoundTaskHelpers:
+    """Celery GP task should preserve engine-level cross-round learning state."""
+
+    def test_gp_results_output_dir_defaults_to_repo_cache_dir(self) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        assert _gp_results_output_dir({}) == project_root / "gp_results"
+
+    def test_gp_results_output_dir_accepts_config_override(self) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        assert _gp_results_output_dir({"output_dir": "tmp/gp-cache"}) == (
+            project_root / "tmp/gp-cache"
+        )
+
+    def test_collect_full_gate_failed_hashes_excludes_passed_and_existing_blacklist(self) -> None:
+        candidates = [
+            SimpleNamespace(ast_hash="pass_hash"),
+            SimpleNamespace(ast_hash="fail_hash"),
+            SimpleNamespace(ast_hash="already_blacklisted"),
+            SimpleNamespace(ast_hash="fail_hash"),
+            SimpleNamespace(ast_hash=""),
+        ]
+        passed = [{"ast_hash": "pass_hash"}]
+
+        failed = _collect_full_gate_failed_hashes(
+            candidates,
+            passed,
+            blacklist={"already_blacklisted"},
+        )
+
+        assert failed == ["fail_hash"]
+
+    def test_cli_collect_full_gate_failed_hashes_matches_task_semantics(self) -> None:
+        from scripts.run_gp_pipeline import (  # noqa: PLC0415
+            _collect_full_gate_failed_hashes as cli_collect,
+        )
+
+        candidates = [
+            SimpleNamespace(ast_hash="pass_hash"),
+            SimpleNamespace(ast_hash="fail_hash"),
+            SimpleNamespace(ast_hash="already_blacklisted"),
+        ]
+
+        assert cli_collect(
+            candidates,
+            [{"ast_hash": "pass_hash"}],
+            blacklist=["already_blacklisted"],
+        ) == ["fail_hash"]
+
+    def test_merge_gp_feedback_payload_adds_approved_and_blacklists_rejected(self) -> None:
+        previous = SimpleNamespace(
+            top_results=[
+                {"factor_expr": "old_expr", "ast_hash": "old_hash"},
+                {"factor_expr": "reject_expr", "ast_hash": "reject_hash"},
+            ],
+            blacklisted_hashes={"old_blacklist"},
+            rejection_reasons={"full_gate_rejected": 1},
+            run_id="gp_prev",
+        )
+
+        top_results, blacklist, reasons, run_id = _merge_gp_feedback_payload(
+            previous,
+            [{"factor_expr": "approved_expr", "ast_hash": "approved_hash"}],
+            {"reject_hash"},
+        )
+
+        assert [item["ast_hash"] for item in top_results] == ["old_hash", "approved_hash"]
+        assert blacklist == {"old_blacklist", "reject_hash"}
+        assert reasons == {"full_gate_rejected": 1, "human_rejected": 1}
+        assert run_id == "gp_prev+approval_feedback"
+
+    def test_merge_blacklist_for_persist_keeps_old_and_new_rejections(self) -> None:
+        assert _merge_blacklist_for_persist(
+            {"old_gate_reject", "human_reject"},
+            ["new_gate_reject", "old_gate_reject"],
+        ) == ["human_reject", "new_gate_reject", "old_gate_reject"]
+
+    def test_cli_merge_approval_feedback_matches_task_semantics(self) -> None:
+        from scripts.run_gp_pipeline import _merge_approval_feedback  # noqa: PLC0415
+
+        top, blacklist = _merge_approval_feedback(
+            [{"factor_expr": "old_expr", "ast_hash": "old_hash"}],
+            ["existing_blacklist"],
+            [
+                {"factor_expr": "approved_expr", "ast_hash": "approved_hash"},
+                {"factor_expr": "dupe_expr", "ast_hash": "old_hash"},
+            ],
+            ["rejected_hash"],
+        )
+
+        assert [item["ast_hash"] for item in top] == ["old_hash", "approved_hash"]
+        assert blacklist == ["existing_blacklist", "rejected_hash"]
+
     def test_bruteforce_mining_is_callable(self) -> None:
         """run_bruteforce_mining 应是可调用对象。"""
         assert callable(run_bruteforce_mining)
 
 
 # ---------------------------------------------------------------------------
-# 2. run_bruteforce_mining — not_implemented占位符
+# 2. run_bruteforce_mining — BruteForce 执行路径
 # ---------------------------------------------------------------------------
 
 
 class TestBruteforceMiningTask:
-    """run_bruteforce_mining 是Sprint 1.18占位符，应返回not_implemented。"""
+    """run_bruteforce_mining 应执行真实 BruteForce 路径。"""
 
-    def test_bruteforce_returns_not_implemented(self) -> None:
-        """run_bruteforce_mining 应返回 status=not_implemented。"""
-        with patch("app.tasks.mining_tasks._mark_run_failed") as mock_mark:
-            mock_mark.return_value = None
+    def test_bruteforce_returns_completed_result(self) -> None:
+        """run_bruteforce_mining 应返回异步执行结果。"""
+        expected = {
+            "run_id": "bf_test_001",
+            "status": "completed",
+            "passed_factors": 1,
+            "stats": {"engine": "bruteforce"},
+        }
+        with patch("asyncio.run", side_effect=_fake_asyncio_run(None, expected)):
+            result = run_bruteforce_mining.__wrapped__(
+                run_id="bf_test_001",
+                config={"max_combinations": 10},
+            )
 
-            # mock asyncio.run 避免真实 DB; return_value=None → pause gate 走 not-paused 分支
-            # (D1 O3 PN-003 iter 12 后 asyncio.run 被调 2 次: _is_pipeline_paused + _mark_run_failed)
-            with patch("asyncio.run", return_value=None):
-                # 直接调用底层函数（绕过Celery装饰器）
-                result = run_bruteforce_mining.__wrapped__(
-                    run_id="bf_test_001",
-                    config={"generations": 10},
-                )
-
-        assert result["status"] == "not_implemented"
+        assert result["status"] == "completed"
         assert result["run_id"] == "bf_test_001"
 
-    def test_bruteforce_calls_mark_failed(self) -> None:
-        """run_bruteforce_mining 应调用 _mark_run_failed 标记任务失败。"""
-        with patch("asyncio.run", return_value=None) as mock_run:
-            run_bruteforce_mining.__wrapped__(
-                run_id="bf_fail_001",
+    def test_bruteforce_calls_async_runner(self) -> None:
+        """run_bruteforce_mining 应先检查 pause gate 再执行异步 runner。"""
+        expected = {"run_id": "bf_run_001", "status": "completed", "passed_factors": 0}
+        with patch("asyncio.run", side_effect=_fake_asyncio_run(None, expected)) as mock_run:
+            result = run_bruteforce_mining.__wrapped__(
+                run_id="bf_run_001",
                 config={},
             )
-            # asyncio.run 被调 2 次: pause gate (_is_pipeline_paused) + _mark_run_failed
-            # (D1 O3 PN-003 iter 12 pause gate-at-entry sediment)
-            assert mock_run.call_count == 2
+
+        assert result is expected
+        assert mock_run.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_bruteforce_async_writes_bf_candidates(self) -> None:
+        """BruteForce async runner 应写入 bf_ 前缀候选并标记 quick_gate_only。"""
+        dates = pd.date_range("2024-01-01", periods=30, freq="B")
+        codes = [f"S{i:03d}" for i in range(25)]
+        rows = [
+            {
+                "trade_date": d,
+                "code": c,
+                "close": 10.0 + i * 0.01,
+                "volume": 1000.0 + i,
+                "amount": 10000.0 + i,
+                "turnover_rate": 0.01,
+            }
+            for i, (d, c) in enumerate((d, c) for d in dates for c in codes)
+        ]
+        market_data = pd.DataFrame(rows)
+        candidate = SimpleNamespace(
+            name="close_mean_5",
+            category="price_volume",
+            direction="positive",
+            expression="ts_mean(close, 5)",
+            window=5,
+            economic_rationale="price persistence quick gate candidate",
+            academic_support=3,
+            ic_mean=0.03,
+            t_stat=2.8,
+            max_corr_with_active=0.0,
+            passed_g1=True,
+            passed_g2=True,
+            passed_g3=True,
+        )
+
+        with (
+            patch(
+                "engines.mining.pipeline_utils.load_market_data",
+                new_callable=AsyncMock,
+                return_value=market_data,
+            ),
+            patch(
+                "engines.mining.bruteforce_engine.BruteForceEngine.enumerate_candidates",
+                return_value=[candidate],
+            ),
+            patch(
+                "engines.mining.bruteforce_engine.BruteForceEngine.run",
+                return_value=[candidate],
+            ),
+            patch(
+                "app.tasks.mining_tasks._write_results_to_db", new_callable=AsyncMock
+            ) as write_db,
+            patch("engines.mining.pipeline_utils.send_dingtalk_notification"),
+        ):
+            result = await _run_bruteforce_mining_async(
+                "bf_unit_001",
+                {
+                    "fields": ["close"],
+                    "windows": [5],
+                    "functions": ["ts_mean"],
+                    "forward_days": 1,
+                    "min_ic_periods": 1,
+                },
+            )
+
+        assert result["status"] == "completed"
+        assert result["passed_factors"] == 1
+        write_db.assert_awaited_once()
+        assert write_db.await_args.kwargs["factor_prefix"] == "bf"
+        written_factors = write_db.await_args.args[3]
+        assert written_factors[0]["gate_result"]["quick_gate_only"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +438,70 @@ class TestWriteResultsToDB:
 
 
 # ---------------------------------------------------------------------------
-# 5. _run_gp_mining_async — 空数据提前返回
+# 5. run_full_gate — FactorGatePipeline contract
+# ---------------------------------------------------------------------------
+
+
+class TestRunFullGateContract:
+    """run_full_gate 应调用真实 run_gates 合约，而不是旧 run() 方法。"""
+
+    def test_run_full_gate_uses_run_gates_and_accepts_partial(self) -> None:
+        class FakeTree:
+            def evaluate(self, _market_data):
+                return pd.Series(
+                    [float(i) for i in range(25)], index=[f"S{i:03d}" for i in range(25)]
+                )
+
+        class FakeDSL:
+            def from_string(self, _expr):
+                return FakeTree()
+
+        class FakeReport:
+            overall_status = "PARTIAL"
+            gates = {
+                "G1": SimpleNamespace(status="PASS"),
+                "G2": SimpleNamespace(status="PASS"),
+                "G3": SimpleNamespace(status="PASS"),
+            }
+
+        fake_gate = MagicMock()
+        fake_gate.run_gates.return_value = FakeReport()
+        candidate = SimpleNamespace(
+            factor_expr="ts_mean(close, 5)",
+            ast_hash="abc123def456",
+            fitness=0.8,
+            ic_mean=0.03,
+            t_stat=2.8,
+            complexity=0.2,
+            novelty=0.7,
+            parent_seed="seed",
+            generation=1,
+            island_id=0,
+            param_slots={"window": 5},
+        )
+        forward_returns = pd.Series(
+            [float(i) / 100.0 for i in range(25)],
+            index=[f"S{i:03d}" for i in range(25)],
+        )
+
+        with (
+            patch("engines.mining.factor_dsl.FactorDSL", return_value=FakeDSL()),
+            patch("engines.factor_gate.FactorGatePipeline", return_value=fake_gate),
+        ):
+            result = run_full_gate(
+                candidates=[candidate],
+                market_data=pd.DataFrame({"close": [1.0]}),
+                forward_returns=forward_returns,
+                blacklist=set(),
+            )
+
+        assert len(result) == 1
+        assert result[0]["gate_result"] == {"G1": "PASS", "G2": "PASS", "G3": "PASS"}
+        fake_gate.run_gates.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 6. _run_gp_mining_async — 空数据提前返回
 # ---------------------------------------------------------------------------
 
 
@@ -472,7 +729,7 @@ class TestRunGPMiningTask:
         with (
             patch(
                 "asyncio.run",
-                side_effect=[RuntimeError("GP内部错误"), None],
+                side_effect=_fake_asyncio_run(RuntimeError("GP内部错误"), None),
             ),
             pytest.raises(RuntimeError, match="GP内部错误"),
         ):

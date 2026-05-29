@@ -115,7 +115,7 @@ Rollback time: ~150 chunks × decompression time per chunk (estimated 2-5 minute
 3. Verify post-migration: `hypertable_size('factor_values')` decreased by ≥80% (10x compression target)
 4. Smoke test: 1-week backtest still runs cleanly post-compression (`pytest -m smoke`)
 5. IC query latency benchmark: cold-read on compressed chunk <500ms (acceptable degradation)
-6. ADR promote from DRAFT → ADR-NNN (per REGISTRY assign next sparse ID, likely ADR-096 since ADR-095 already exists per Pattern B pivot)
+6. ADR promote from DRAFT → ADR-NNN (per REGISTRY assign next sparse ID; ADR-096 is now used by the strategy signal production boundary decision)
 
 ---
 

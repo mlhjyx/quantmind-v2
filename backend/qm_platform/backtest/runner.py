@@ -53,10 +53,12 @@ _MODE_TO_YEARS: dict[BacktestMode, int | None] = {
 
 # Modes that bypass config_hash cache (force re-run每次). LIVE_PT 实盘需 fresh 信号,
 # AD_HOC 探索分析需 fresh 计算 (避免 cache 污染分析结果). iter 25 PR codified.
-_CACHE_BYPASS_MODES: frozenset[BacktestMode] = frozenset({
-    BacktestMode.LIVE_PT,
-    BacktestMode.AD_HOC,
-})
+_CACHE_BYPASS_MODES: frozenset[BacktestMode] = frozenset(
+    {
+        BacktestMode.LIVE_PT,
+        BacktestMode.AD_HOC,
+    }
+)
 
 
 class PlatformBacktestRunner(BacktestRunner):

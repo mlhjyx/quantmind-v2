@@ -24,6 +24,7 @@ from app.main import app  # noqa: E402
 def _override_get_db(mock_session: Any):
     async def _dep():
         yield mock_session
+
     return _dep
 
 
@@ -120,9 +121,15 @@ class TestIcMonitoringEndpoint:
             # Verify 9 schema fields on first row
             r0 = data["decay_heatmap"][0]
             for field in (
-                "name", "status", "pool", "category",
-                "ic_decay_ratio", "ic_ma20", "ic_ma60",
-                "decay_level", "latest_trade_date",
+                "name",
+                "status",
+                "pool",
+                "category",
+                "ic_decay_ratio",
+                "ic_ma20",
+                "ic_ma60",
+                "decay_level",
+                "latest_trade_date",
             ):
                 assert field in r0, f"missing field: {field}"
             assert r0["name"] == "turnover_mean_20"

@@ -102,9 +102,7 @@ def mock_bear_response():
 @pytest.fixture
 def mock_judge_response():
     return LLMResponse(
-        content=json.dumps(
-            {"regime": "Bull", "confidence": 0.78, "reasoning": "综合判断看涨"}
-        ),
+        content=json.dumps({"regime": "Bull", "confidence": 0.78, "reasoning": "综合判断看涨"}),
         model="deepseek-v4-pro",
         tokens_in=300,
         tokens_out=80,
@@ -151,8 +149,7 @@ def tmp_yamls_with_rag_placeholder(tmp_path):
                 "description": "judge test",
                 "system_prompt": "You are the regime judge.",
                 "user_template": (
-                    indicator_block
-                    + "\nBull args: {bull_arguments}\nBear args: {bear_arguments}\n"
+                    indicator_block + "\nBull args: {bull_arguments}\nBear args: {bear_arguments}\n"
                     "Decide regime as JSON."
                 ),
             }
@@ -285,7 +282,11 @@ def test_market_regime_service_passes_rag_context_to_all_3_agents(
     bear = BearAgent(router=mock_router, prompt_path=bear_yaml)
     judge = RegimeJudge(router=mock_router, prompt_path=judge_yaml)
     service = MarketRegimeService(
-        router=mock_router, bull_agent=bull, bear_agent=bear, judge=judge, rag=mock_rag,
+        router=mock_router,
+        bull_agent=bull,
+        bear_agent=bear,
+        judge=judge,
+        rag=mock_rag,
     )
 
     service.classify(sample_indicators, decision_id="iter177-test")
@@ -312,7 +313,10 @@ def test_market_regime_service_backward_compat_rag_none(
     bear = BearAgent(router=mock_router, prompt_path=bear_yaml)
     judge = RegimeJudge(router=mock_router, prompt_path=judge_yaml)
     service = MarketRegimeService(
-        router=mock_router, bull_agent=bull, bear_agent=bear, judge=judge,
+        router=mock_router,
+        bull_agent=bull,
+        bear_agent=bear,
+        judge=judge,
         # rag=None implicit
     )
 
@@ -344,7 +348,11 @@ def test_market_regime_service_fail_soft_on_rag_exception(
     bear = BearAgent(router=mock_router, prompt_path=bear_yaml)
     judge = RegimeJudge(router=mock_router, prompt_path=judge_yaml)
     service = MarketRegimeService(
-        router=mock_router, bull_agent=bull, bear_agent=bear, judge=judge, rag=failing_rag,
+        router=mock_router,
+        bull_agent=bull,
+        bear_agent=bear,
+        judge=judge,
+        rag=failing_rag,
     )
 
     # Should NOT raise — fail-soft via build_rag_context internal try/except

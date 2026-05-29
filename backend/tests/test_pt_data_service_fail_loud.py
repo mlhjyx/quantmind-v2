@@ -24,6 +24,33 @@ import pytest  # noqa: F401
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import health_check as hc  # noqa: E402
+import run_paper_trading as rpt  # noqa: E402
+
+
+class _Cursor:
+    def __init__(self, counts):
+        self._counts = counts
+        self._current = None
+        self.closed = False
+
+    def execute(self, sql, params):
+        table = "klines_daily" if "klines_daily" in sql else "daily_basic"
+        self._current = self._counts[table]
+
+    def fetchone(self):
+        return (self._current,)
+
+    def close(self):
+        self.closed = True
+
+
+class _Conn:
+    def __init__(self, counts):
+        self.cursor_obj = _Cursor(counts)
+
+    def cursor(self):
+        return self.cursor_obj
+
 
 # ═══════════════════════════════════════════════════════════════
 # Bug A: pt_data_service fetch_daily_data fail-loud on status failure
@@ -62,6 +89,37 @@ def test_update_stock_status_daily_exists_and_callable():
     params = list(sig.parameters)
     assert "trade_date" in params
     assert "conn" in params
+
+
+def test_signal_phase_market_data_guard_raises_before_empty_factor_generation():
+    """signal_phase must fail at data readiness when T-day fetch produced no rows."""
+    conn = _Conn({"klines_daily": 0, "daily_basic": 0})
+
+    with pytest.raises(RuntimeError, match="T日信号输入数据缺失") as exc:
+        rpt._assert_signal_market_data_ready(
+            conn,
+            date(2026, 5, 29),
+            {"klines_rows": 0, "basic_rows": 0, "index_rows": 0},
+        )
+
+    msg = str(exc.value)
+    assert "klines_daily" in msg
+    assert "daily_basic" in msg
+    assert "不允许用空截面继续生成信号" in msg
+    assert conn.cursor_obj.closed is True
+
+
+def test_signal_phase_market_data_guard_allows_existing_db_rows_after_zero_upsert():
+    """Zero fetch rows are acceptable only when same-day DB rows already exist."""
+    conn = _Conn({"klines_daily": 5478, "daily_basic": 5478})
+
+    rpt._assert_signal_market_data_ready(
+        conn,
+        date(2026, 5, 28),
+        {"klines_rows": 0, "basic_rows": 0, "index_rows": 0},
+    )
+
+    assert conn.cursor_obj.closed is True
 
 
 # ═══════════════════════════════════════════════════════════════

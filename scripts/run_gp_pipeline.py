@@ -202,6 +202,97 @@ def _save_run_result(
     logger.info("运行结果已保存", latest=str(latest_file), archive=str(archive_file))
 
 
+def _collect_full_gate_failed_hashes(
+    candidates: list[Any],
+    passed_factors: list[dict[str, Any]],
+    blacklist: list[str],
+) -> list[str]:
+    """Collect full-Gate rejects for next-run blacklist feedback."""
+    passed_hashes = {
+        str(factor.get("ast_hash")) for factor in passed_factors if factor.get("ast_hash")
+    }
+    existing_blacklist = set(blacklist)
+    failed: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        ast_hash = getattr(candidate, "ast_hash", "")
+        if not ast_hash or ast_hash in seen or ast_hash in existing_blacklist:
+            continue
+        seen.add(ast_hash)
+        if ast_hash not in passed_hashes:
+            failed.append(ast_hash)
+    return failed
+
+
+def _merge_approval_feedback(
+    top_factors: list[dict[str, Any]],
+    blacklist: list[str],
+    approved_feedback: list[dict[str, Any]],
+    rejected_hashes: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Merge human approval decisions into next-run seeds and blacklist."""
+    merged_blacklist = sorted(set(blacklist).union(rejected_hashes))
+    blacklist_set = set(merged_blacklist)
+    merged_top: list[dict[str, Any]] = []
+    seen_hashes: set[str] = set()
+    for source in (top_factors, approved_feedback):
+        for item in source:
+            ast_hash = str(item.get("ast_hash", ""))
+            if not ast_hash or ast_hash in seen_hashes or ast_hash in blacklist_set:
+                continue
+            merged_top.append(dict(item))
+            seen_hashes.add(ast_hash)
+    return merged_top, merged_blacklist
+
+
+async def _load_approval_feedback(
+    db_url: str,
+    limit: int = 200,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Load reviewed gp_approval_queue decisions for cross-round learning."""
+    import asyncpg
+
+    try:
+        conn = await asyncpg.connect(db_url)
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT factor_name, factor_expr, ast_hash, gate_report, status, reviewed_at
+                FROM gp_approval_queue
+                WHERE status IN ('approved', 'rejected')
+                  AND ast_hash IS NOT NULL
+                  AND ast_hash <> ''
+                ORDER BY reviewed_at DESC NULLS LAST, created_at DESC
+                LIMIT $1
+                """,
+                limit,
+            )
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.warning("审批反馈加载失败，跳过人工反馈注入", error=str(exc))
+        return [], []
+
+    approved: list[dict[str, Any]] = []
+    rejected: list[str] = []
+    for row in rows:
+        ast_hash = str(row["ast_hash"])
+        if row["status"] == "rejected":
+            rejected.append(ast_hash)
+            continue
+        approved.append(
+            {
+                "factor_expr": row["factor_expr"],
+                "ast_hash": ast_hash,
+                "factor_name": row["factor_name"],
+                "source": "gp_approval_queue",
+                "reviewed_at": row["reviewed_at"].isoformat() if row["reviewed_at"] else None,
+                "gate_report": row["gate_report"] or {},
+            }
+        )
+    return approved, rejected
+
+
 # ---------------------------------------------------------------------------
 # Gate 筛选
 # 已迁移至 engines/mining/pipeline_utils.py（Sprint 1.32），通过顶部 import 导入
@@ -344,11 +435,20 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
     prev_result = _load_previous_run_result(args.output_dir)
     blacklist = list(prev_result.get("blacklist", []))
     prev_top = prev_result.get("top_factors", [])
+    approved_feedback, rejected_feedback = await _load_approval_feedback(db_url)
+    prev_top, blacklist = _merge_approval_feedback(
+        prev_top,
+        blacklist,
+        approved_feedback,
+        rejected_feedback,
+    )
     logger.info(
         "上轮结果注入",
         prev_run_id=prev_result.get("run_id"),
         extra_seeds=len(prev_top),
         blacklist_size=len(blacklist),
+        approval_feedback_approved=len(approved_feedback),
+        approval_feedback_rejected=len(rejected_feedback),
     )
 
     # ------------------------------------------------------------------
@@ -383,7 +483,7 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
     gp_stats_obj = None
 
     try:
-        from engines.mining.gp_engine import GPConfig, GPEngine
+        from engines.mining.gp_engine import GPConfig, GPEngine, PreviousRunData
 
         gp_config = GPConfig(
             n_islands=args.islands,
@@ -397,9 +497,18 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
             random_ratio=0.2,
         )
 
+        previous_run = None
+        if prev_top or blacklist:
+            previous_run = PreviousRunData(
+                top_results=prev_top,
+                blacklisted_hashes=set(blacklist),
+                run_id=str(prev_result.get("run_id") or ""),
+            )
+
         engine = GPEngine(
             config=gp_config,
             existing_factor_data=existing_factors,
+            previous_run=previous_run,
         )
 
         logger.info(
@@ -426,6 +535,8 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
                 "n_generations_completed": gp_stats_obj.n_generations_completed,
                 "timeout": gp_stats_obj.timeout,
                 "per_island_best": gp_stats_obj.per_island_best,
+                "approval_feedback_approved": len(approved_feedback),
+                "approval_feedback_rejected": len(rejected_feedback),
             }
         )
 
@@ -467,11 +578,20 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
             blacklist=set(blacklist),
         )
         stats["passed_gate_full"] = len(passed_factors)
+        new_rejections = _collect_full_gate_failed_hashes(
+            top_candidates,
+            passed_factors,
+            blacklist,
+        )
+        if new_rejections:
+            blacklist = sorted(set(blacklist).union(new_rejections))
+        stats["new_full_gate_rejections"] = len(new_rejections)
 
     except Exception as exc:
         logger.error("完整 Gate 异常，跳过", error=str(exc), exc_info=True)
         passed_factors = []
         stats["passed_gate_full"] = 0
+        stats["new_full_gate_rejections"] = 0
 
     # ------------------------------------------------------------------
     # Step 5: 写入 DB（fallback 到 JSON）
@@ -518,7 +638,7 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
         output_dir=args.output_dir,
         run_id=run_id,
         top_factors=passed_factors,
-        blacklist=blacklist,  # 本轮未新增 reject，blacklist 不变
+        blacklist=blacklist,
         stats=stats,
     )
 

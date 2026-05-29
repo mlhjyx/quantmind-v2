@@ -31,7 +31,7 @@ export interface ModelHealth {
   model: ModelId;
   is_online: boolean;
   latency_ms: number | null;
-  last_checked_at: string;
+  last_checked_at: string | null;
   error?: string;
 }
 
@@ -41,16 +41,17 @@ export interface TokenUsage {
   model: ModelId;
   input_tokens: number;
   output_tokens: number;
-  cost_cny: number;
+  cost_usd: number;
 }
 
 export interface CostSummary {
   month: string;
-  total_cost_cny: number;
+  currency: "USD";
+  total_cost_usd: number;
   total_input_tokens: number;
   total_output_tokens: number;
-  by_agent: Record<AgentName, { cost_cny: number; tokens: number }>;
-  by_model: Record<ModelId, { cost_cny: number; tokens: number }>;
+  by_agent: Record<AgentName, { cost_usd: number; tokens: number }>;
+  by_model: Record<ModelId, { cost_usd: number; tokens: number }>;
   daily_usage: TokenUsage[];
 }
 

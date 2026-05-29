@@ -78,6 +78,8 @@ def test_mvp_3_2_batch_4_multi_strategy_wiring_imports() -> None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
         cwd=str(project_root),
     )

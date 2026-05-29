@@ -19,6 +19,7 @@ export function statusBadgeClasses(
       return "bg-green-500/20 text-green-400 border border-green-500/30";
     case "warn":
     case "skipped":
+    case "alert":
       return "bg-amber-500/20 text-amber-400 border border-amber-500/30";
     case "fail":
     case "failed":
@@ -27,6 +28,7 @@ export function statusBadgeClasses(
     case "running":
       return "bg-sky-500/20 text-sky-400 border border-sky-500/30";
     case "never":
+    case "disabled":
       return "bg-slate-700/40 text-slate-500 border border-slate-700";
     default:
       // Reviewer pattern (sibling iter 211): exhaustive-default guard prevents

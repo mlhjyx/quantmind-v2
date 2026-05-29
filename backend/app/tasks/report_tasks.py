@@ -361,9 +361,7 @@ def list_reports_for(
     if limit < 1:
         raise ValueError(f"limit must be >= 1, got {limit}")
     if execution_mode is not None and execution_mode not in ("paper", "live"):
-        raise ValueError(
-            f"execution_mode must be None or 'paper'/'live', got {execution_mode!r}"
-        )
+        raise ValueError(f"execution_mode must be None or 'paper'/'live', got {execution_mode!r}")
 
     if not REPORTS_DIR.exists():
         return []
@@ -422,9 +420,7 @@ def list_reports_for(
             # 反 silent skip — include with corruption marker so caller sees the issue
             entry["_corrupt"] = True
             entry["_corrupt_reason"] = f"{type(e).__name__}: {e}"
-            logger.warning(
-                "[list_reports_for] corrupt artifact: path=%s err=%s", path, e
-            )
+            logger.warning("[list_reports_for] corrupt artifact: path=%s err=%s", path, e)
         out.append(entry)
 
     return out
@@ -546,9 +542,7 @@ def cleanup_old_reports(
     # P2-2 reviewer fix: hoist `set(skipped)` out of the generator so it's not
     # rebuilt per iteration (~10k×100 = 1M ops avoided at upper-bound scale).
     _skipped_set = set(skipped)
-    total_artifacts = sum(
-        1 for p in REPORTS_DIR.iterdir() if p.is_file() and p not in _skipped_set
-    )
+    total_artifacts = sum(1 for p in REPORTS_DIR.iterdir() if p.is_file() and p not in _skipped_set)
 
     if not deletes:
         logger.info(

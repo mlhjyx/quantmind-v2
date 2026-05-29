@@ -500,7 +500,9 @@ def _persist_mismatch_audit(
             psycopg2.extras.Json(context_snapshot),
             alert_outcome[:50],
             psycopg2.extras.Json(action_result),
-            "daily"[:10],  # canonical per migrations/2026_05_11_risk_event_log_realtime.sql:6 (tick/5min/15min/daily)
+            "daily"[
+                :10
+            ],  # canonical per migrations/2026_05_11_risk_event_log_realtime.sql:6 (tick/5min/15min/daily)
             severity.upper()[:4],
         ),
     )

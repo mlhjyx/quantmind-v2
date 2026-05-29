@@ -8,6 +8,10 @@
 > PR #65 STALE WARNING 中标注的 "可疑停用 3 个" (QM-RollingWF/QM-ICMonitor/QM-PTDailySummary)
 > 实测全部 Ready/Active, WARNING 已撤销并在 "已知问题" 区记录真实的 2 项活漂移.
 >
+> 2026-05-28 Codex reconcile: `QM-SmokeTest` is disabled/one-time and stale LastResult must not be
+> treated as active scheduler failure. `QM-DailyBackup` had a 2026-05-28 truncated dump; script guardrails
+> were fixed and a controlled rerun produced a verified 14,480.2MB dump.
+>
 > **Canonical Source of Truth 优先级**:
 > 1. Windows Task Scheduler live state (实测 `Get-ScheduledTaskInfo` 是最终事实)
 > 2. `scripts/setup_task_scheduler.ps1` (register script, 漂移时以 live 为准)
@@ -61,7 +65,7 @@ Logon 触发
 
 | 任务名 | 时间 | 频率 | 脚本 | 用途 | 依赖 |
 |--------|------|------|------|------|------|
-| QM-DailyBackup | 02:00 | Daily | `scripts/pg_backup.py` | PG数据库备份 | PostgreSQL |
+| QM-DailyBackup | 02:00 | Daily | `scripts/pg_backup.py` | PG数据库备份 (temp-file + size gate + verify) | PostgreSQL |
 | QM-RollingWF | 02:00 | Daily | `scripts/rolling_wf.py` | 滚动Walk-Forward验证 | PostgreSQL |
 | QM-LogRotate | 06:00 | Daily | `scripts/log_rotate.py` | 日志轮转 | 无 |
 | QuantMind_IntradayMonitor | 09:35 | Daily (每5min 09:35-15:00) | `scripts/intraday_monitor.py` | 盘中监控 (ps1 层, 与 MVP 3.1 批 2 Celery Beat 并存) | QMT, Redis |

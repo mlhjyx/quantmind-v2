@@ -93,10 +93,14 @@ def mock_rag():
     # Default: returns 2 hits (with retrieve() interface)
     hit1 = MagicMock()
     hit1.cosine_similarity = 0.92
-    hit1.memory = MagicMock(event_type="LimitDown", symbol_id="600519", lesson="茅台跌停 lesson one")
+    hit1.memory = MagicMock(
+        event_type="LimitDown", symbol_id="600519", lesson="茅台跌停 lesson one"
+    )
     hit2 = MagicMock()
     hit2.cosine_similarity = 0.85
-    hit2.memory = MagicMock(event_type="RapidDrop", symbol_id="000001", lesson="平安跌停 lesson two")
+    hit2.memory = MagicMock(
+        event_type="RapidDrop", symbol_id="000001", lesson="平安跌停 lesson two"
+    )
 
     rag.retrieve.return_value = [hit1, hit2]
     return rag

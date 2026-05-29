@@ -136,6 +136,34 @@ def _write_heartbeat(trade_date: date, phase: str) -> None:
         logger.warning("[Heartbeat] 写入失败: %s", e)
 
 
+def _assert_signal_market_data_ready(conn, trade_date: date, fetch_result: dict) -> None:
+    """Fail loud when T-day signal inputs are absent after the fetch step."""
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM klines_daily WHERE trade_date = %s", (trade_date,))
+        klines_count = int(cur.fetchone()[0])
+        cur.execute("SELECT COUNT(*) FROM daily_basic WHERE trade_date = %s", (trade_date,))
+        basic_count = int(cur.fetchone()[0])
+    finally:
+        cur.close()
+
+    missing = []
+    if klines_count <= 0:
+        missing.append("klines_daily")
+    if basic_count <= 0:
+        missing.append("daily_basic")
+    if missing:
+        raise RuntimeError(
+            "T日信号输入数据缺失: "
+            f"trade_date={trade_date}, missing={missing}, "
+            f"db_counts={{'klines_daily': {klines_count}, 'daily_basic': {basic_count}}}, "
+            f"fetch_rows={{'klines': {fetch_result.get('klines_rows', 0)}, "
+            f"'basic': {fetch_result.get('basic_rows', 0)}, "
+            f"'index': {fetch_result.get('index_rows', 0)}}}. "
+            "不允许用空截面继续生成信号。"
+        )
+
+
 # ════════════════════════════════════════════════════════════
 # Signal Phase — T日盘后 16:30
 # ════════════════════════════════════════════════════════════
@@ -228,6 +256,7 @@ def run_signal_phase(
             fetch_result["basic_rows"],
             fetch_result["elapsed"],
         )
+        _assert_signal_market_data_ready(conn, trade_date, fetch_result)
 
         # Step 1.5: NAV更新(QMT→DB)
         try:

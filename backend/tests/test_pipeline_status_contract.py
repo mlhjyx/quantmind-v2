@@ -25,6 +25,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.pipeline import _gp_weekly_schedule_next
 from app.db import get_db
 from app.main import app
+from app.services.mining_service import MiningService
 
 _SH = timezone(timedelta(hours=8))
 
@@ -134,7 +135,7 @@ async def test_status_no_run_not_paused(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_status_active_running_run(client: AsyncClient) -> None:
     """Active running run → is_running=True, run_id populated, last_run_at = started_at."""
-    started_at = datetime(2026, 5, 24, 1, 0, 0, tzinfo=UTC)
+    started_at = datetime.now(UTC) - timedelta(hours=1)
     run_row = {
         "run_id": "gp_2026w21_abc123",
         "engine": "gp",
@@ -168,6 +169,38 @@ async def test_status_active_running_run(client: AsyncClient) -> None:
         # Legacy aliases
         assert body["active_run_id"] == "gp_2026w21_abc123"
         assert body["active_engine"] == "gp"
+        assert body["is_stale_running"] is False
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_status_stale_running_run_surfaces_operator_state(client: AsyncClient) -> None:
+    """Old running rows stay explicit: running=True plus stale-running warning fields."""
+    started_at = datetime.now(UTC) - timedelta(days=3)
+    run_row = {
+        "run_id": "gp_2026w16_stale",
+        "engine": "gp",
+        "status": "running",
+        "stats": {},
+        "config": {"time_budget_minutes": 120},
+        "started_at": started_at,
+        "finished_at": None,
+        "error_message": None,
+    }
+    session = _make_session_for_status(automation_level="L0", run_row=run_row)
+    app.dependency_overrides[get_db] = lambda: session
+    try:
+        response = await client.get("/api/pipeline/status")
+        assert response.status_code == 200, response.text
+        body = response.json()
+
+        assert body["run_id"] == "gp_2026w16_stale"
+        assert body["is_running"] is True
+        assert body["is_stale_running"] is True
+        assert body["status"] == "stale_running"
+        assert body["stale_after_minutes"] == 1440
+        assert "operator cancel/retry required" in body["stale_reason"]
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -213,3 +246,32 @@ def test_gp_weekly_schedule_next_unit() -> None:
     assert next_sh.hour == 22 and next_sh.minute == 0, (
         f"expected 22:00 SH, got {next_sh.hour}:{next_sh.minute:02d}"
     )
+
+
+@pytest.mark.asyncio
+async def test_cancel_pipeline_run_endpoint_uses_existing_service(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """POST /runs/{run_id}/cancel exposes MiningService.cancel_task as localhost-only API."""
+    session = AsyncMock()
+    app.dependency_overrides[get_db] = lambda: session
+
+    async def fake_cancel_task(self: MiningService, task_id: str) -> dict[str, Any]:
+        assert task_id == "gp_2026w16_stale"
+        return {
+            "task_id": task_id,
+            "run_id": task_id,
+            "cancelled": True,
+            "message": "取消信号已发送",
+        }
+
+    monkeypatch.setattr(MiningService, "cancel_task", fake_cancel_task)
+    try:
+        response = await client.post("/api/pipeline/runs/gp_2026w16_stale/cancel")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["run_id"] == "gp_2026w16_stale"
+        assert body["cancelled"] is True
+    finally:
+        app.dependency_overrides.pop(get_db, None)

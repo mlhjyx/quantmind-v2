@@ -33,6 +33,8 @@ vi.mock("@/api/dashboard", () => ({
   fetchPositions: vi.fn().mockResolvedValue([]),
   fetchCircuitBreakerState: vi.fn().mockResolvedValue(null),
   fetchPendingActions: vi.fn().mockResolvedValue([]),
+  fetchDashboardStrategies: vi.fn().mockResolvedValue([]),
+  fetchPaperTrades: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/api/factors", () => ({
@@ -49,6 +51,13 @@ vi.mock("@/api/factors", () => ({
 }));
 
 vi.mock("@/api/backtest", () => ({
+  buildRunBacktestPayload: vi.fn((payload) => ({
+    strategy_id: payload.strategy_id ?? "manual_ui_backtest",
+    start_date: payload.time_range.start_date,
+    end_date: payload.time_range.end_date,
+    extra_config: {},
+  })),
+  runBacktest: vi.fn().mockResolvedValue({ run_id: "run-1", status: "running" }),
   getBacktestRuns: vi.fn().mockResolvedValue([]),
   getStrategies: vi.fn().mockResolvedValue([]),
 }));
@@ -70,12 +79,16 @@ vi.mock("echarts-for-react", () => ({
 vi.mock("recharts", () => ({
   LineChart: () => null,
   Line: () => null,
+  CartesianGrid: () => null,
   XAxis: () => null,
   YAxis: () => null,
   Tooltip: () => null,
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => children,
   AreaChart: () => null,
   Area: () => null,
+  BarChart: () => null,
+  Bar: () => null,
+  Cell: () => null,
 }));
 
 // Mock 子组件（防止深层依赖报错）
@@ -118,19 +131,19 @@ describe("Dashboard 页面", () => {
     expect(() => renderWithRouter(<Dashboard />)).not.toThrow();
   });
 
-  it("渲染 KPICards 子组件", () => {
+  it("渲染驾驶舱标题", () => {
     renderWithRouter(<Dashboard />);
-    expect(screen.getByTestId("kpi-cards")).toBeInTheDocument();
+    expect(screen.getByText("驾驶舱")).toBeInTheDocument();
   });
 
-  it("渲染 NAVChart 子组件", () => {
+  it("渲染净值曲线区域", () => {
     renderWithRouter(<Dashboard />);
-    expect(screen.getByTestId("nav-chart")).toBeInTheDocument();
+    expect(screen.getByText("净值曲线")).toBeInTheDocument();
   });
 
-  it("渲染 PositionTable 子组件", () => {
+  it("渲染策略入口", () => {
     renderWithRouter(<Dashboard />);
-    expect(screen.getByTestId("position-table")).toBeInTheDocument();
+    expect(screen.getByText("A股策略 v1.1")).toBeInTheDocument();
   });
 });
 

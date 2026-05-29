@@ -2,6 +2,13 @@
 
 > 所有脚本为一次性研究用途，不在生产调度链路中。
 > 按 Step 编号分组，最新在前。
+>
+> Backtest runner governance: historical scripts that still call
+> `run_hybrid_backtest` / `run_composite_backtest` directly are tracked in
+> `scripts/audit/backtest_runner_bypass_allowlist.txt` to preserve old
+> experiment reproducibility. New research/backtest callers should use
+> `PlatformBacktestRunner`; `scripts/audit/check_backtest_runner_bypass.py`
+> blocks untracked bypasses in pre-commit/CI.
 
 ---
 

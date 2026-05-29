@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.qm_platform.backup.orchestrator import BackupTarget, BackupTargetResult
+from backend.qm_platform.backup.pg_tools import pg_subprocess_env, resolve_pg_binary
 
 DEFAULT_PG_DUMP_TIMEOUT_SECONDS = 3600  # 1h for 165GB worst case
 
@@ -31,6 +32,7 @@ def _default_runner(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
     return subprocess.run(  # noqa: S603 — internal-controlled cmd list
         cmd,
         capture_output=True,
+        env=pg_subprocess_env(),
         text=True,
         timeout=timeout,
         check=False,
@@ -108,7 +110,7 @@ class DBBackupOrchestrator:
     def _build_pg_dump_cmd(self, artifact_path: Path) -> list[str]:
         """Construct pg_dump invocation (custom format -Fc for parallel restore)."""
         return [
-            "pg_dump",
+            resolve_pg_binary("pg_dump"),
             "-h",
             self.spec.host,
             "-p",

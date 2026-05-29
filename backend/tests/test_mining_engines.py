@@ -61,14 +61,14 @@ def simple_series() -> pd.Series:
 
 @pytest.fixture()
 def panel_data() -> pd.DataFrame:
-    """小型面板数据: 10只股票 × 60个交易日"""
+    """小型面板数据: 25只股票 × 60个交易日"""
     np.random.seed(42)
     dates = pd.date_range("2022-01-01", periods=60, freq="B")
-    symbols = [f"stock_{i:02d}" for i in range(10)]
+    symbols = [f"stock_{i:02d}" for i in range(25)]
     idx = pd.MultiIndex.from_product([dates, symbols], names=["date", "symbol_id"])
     n = len(idx)
 
-    close = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01).reshape(60, 10)).flatten()
+    close = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01).reshape(60, 25)).flatten()
     volume = np.abs(np.random.randn(n) * 1e6 + 1e7)
     amount = close * volume / 100
     turnover_rate = np.abs(np.random.randn(n) * 0.02 + 0.03)

@@ -7,6 +7,7 @@ import asyncio
 import os
 import platform
 import subprocess
+from collections.abc import Callable
 from typing import Any
 
 import psutil
@@ -21,6 +22,9 @@ from app.db import get_db
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+
+_HEALTH_DB_TIMEOUT_SEC = 3.0
+_HEALTH_SYNC_TIMEOUT_SEC = 6.0
 
 # ---------------------------------------------------------------------------
 # 数据源状态配置（表名 → 显示名 + 日期字段）
@@ -108,6 +112,15 @@ def _check_celery() -> dict[str, Any]:
     Returns:
         包含 ok 布尔值、worker_count 和可选 error 字符串的字典。
     """
+    process_fallback = _check_celery_worker_processes()
+    if platform.system() == "Windows" and process_fallback["worker_count"] > 0:
+        return {
+            "ok": True,
+            **process_fallback,
+            "method": "process_fallback",
+            "warning": "celery inspect skipped for Windows solo worker",
+        }
+
     try:
         result = subprocess.run(
             [
@@ -122,7 +135,7 @@ def _check_celery() -> dict[str, Any]:
             ],
             capture_output=True,
             text=True,
-            timeout=8,
+            timeout=4,
             cwd=str(_backend_dir()),
         )
         output = result.stdout + result.stderr
@@ -130,13 +143,102 @@ def _check_celery() -> dict[str, Any]:
         if "pong" in output.lower():
             # 统计存活 worker 数
             worker_count = output.lower().count("pong")
-            return {"ok": True, "worker_count": worker_count}
+            return {"ok": True, "worker_count": worker_count, "method": "inspect"}
+        if process_fallback["worker_count"] > 0:
+            return {
+                "ok": True,
+                **process_fallback,
+                "method": "process_fallback",
+                "warning": "celery inspect returned no workers",
+            }
         return {"ok": False, "worker_count": 0, "error": "No workers responded"}
     except subprocess.TimeoutExpired:
+        if process_fallback["worker_count"] > 0:
+            return {
+                "ok": True,
+                **process_fallback,
+                "method": "process_fallback",
+                "warning": "celery inspect timeout",
+            }
         return {"ok": False, "worker_count": 0, "error": "inspect timeout"}
     except Exception as exc:
         logger.exception("Celery worker检查失败")
         return {"ok": False, "worker_count": 0, "error": str(exc)}
+
+
+def _check_celery_worker_processes() -> dict[str, Any]:
+    """Fallback worker liveness check for Windows solo-pool deployments.
+
+    Celery remote control may fail to answer while the Servy-managed solo worker
+    process is present. Count unique worker hostnames from running commands so
+    the health endpoint exposes that distinction instead of collapsing it into
+    "no worker".
+    """
+    workers: dict[str, dict[str, Any]] = {}
+    process_count = 0
+    for proc in psutil.process_iter(["pid", "cmdline"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            continue
+        cmd = " ".join(str(part) for part in cmdline)
+        cmd_lower = cmd.lower()
+        if " -m celery " not in f" {cmd_lower} ":
+            continue
+        if "app.tasks.celery_app" not in cmd_lower or " worker " not in f" {cmd_lower} ":
+            continue
+        if " inspect " in f" {cmd_lower} " or " status " in f" {cmd_lower} ":
+            continue
+
+        process_count += 1
+        worker_name = _extract_celery_worker_name(cmdline) or f"pid:{proc.info['pid']}"
+        workers.setdefault(worker_name, {"name": worker_name, "pid": proc.info["pid"]})
+
+    return {
+        "worker_count": len(workers),
+        "process_count": process_count,
+        "workers": list(workers.values()),
+    }
+
+
+def _extract_celery_worker_name(cmdline: list[str]) -> str | None:
+    """Extract `-n worker@host` or `--hostname worker@host` from a Celery cmdline."""
+    for idx, token in enumerate(cmdline):
+        if token in {"-n", "--hostname"} and idx + 1 < len(cmdline):
+            return cmdline[idx + 1]
+        if token.startswith("--hostname="):
+            return token.split("=", 1)[1]
+    return None
+
+
+async def _with_timeout(
+    label: str,
+    awaitable: Any,
+    timeout_sec: float,
+) -> dict[str, Any]:
+    """Run a health sub-check with a bounded timeout."""
+    try:
+        return await asyncio.wait_for(awaitable, timeout=timeout_sec)
+    except TimeoutError:
+        logger.warning("system_health_check_timeout", check=label, timeout_sec=timeout_sec)
+        return {"ok": False, "error": f"{label} check timeout"}
+
+
+async def _run_sync_check(
+    label: str,
+    func: Callable[[], dict[str, Any]],
+    timeout_sec: float | None = None,
+) -> dict[str, Any]:
+    """Run a synchronous health check in the executor with a bounded timeout."""
+    loop = asyncio.get_running_loop()
+    result = await _with_timeout(
+        label,
+        loop.run_in_executor(None, func),
+        _HEALTH_SYNC_TIMEOUT_SEC if timeout_sec is None else timeout_sec,
+    )
+    if not isinstance(result, dict):
+        return {"ok": False, "error": f"{label} check returned invalid result"}
+    return result
 
 
 def _check_disk() -> dict[str, Any]:
@@ -163,15 +265,18 @@ def _check_memory() -> dict[str, Any]:
     """检查系统内存使用情况。
 
     Returns:
-        包含 ok、used_gb、total_gb、percent 的字典。CLAUDE.md 要求总占用 <16GB。
+        包含 ok、used_gb、available_gb、total_gb、percent 的字典。
+        AGENTS.md 资源规则: RAM 可用 <8GB 时不启动重型任务。
     """
     try:
         vm = psutil.virtual_memory()
         used_gb = vm.used / (1024**3)
+        available_gb = vm.available / (1024**3)
         total_gb = vm.total / (1024**3)
         return {
-            "ok": used_gb < 16,
+            "ok": available_gb >= 8,
             "used_gb": round(used_gb, 1),
+            "available_gb": round(available_gb, 1),
             "total_gb": round(total_gb, 1),
             "percent": vm.percent,
         }
@@ -191,7 +296,7 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
     R6 §3.3: Task Scheduler 是主调度器，任务名前缀为 QM-。
 
     Returns:
-        任务状态列表，每项包含 task_name、schedule、last_run、next_run、status。
+        任务状态列表，每项包含 task_name、task_state、enabled、last_run、next_run、status。
     """
     if platform.system() != "Windows":
         return []
@@ -225,29 +330,87 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
             raw = [raw]
         tasks = []
         for item in raw:
+            task_name = str(item.get("Name") or "")
             last_result = item.get("LastResult", 0)
-            # Windows Task Scheduler: 0=成功, 267011=还未运行
-            status = (
-                "success"
-                if last_result == 0
-                else "never_run"
-                if last_result == 267011
-                else "failed"
-            )
+            task_state = str(item.get("State") or "Unknown")
+            status = _task_scheduler_status(task_name, task_state, last_result)
             tasks.append(
                 {
-                    "task_name": item.get("Name", ""),
+                    "task_name": task_name,
                     "schedule": "",  # 简化：不解析 trigger 配置
                     "last_run": item.get("LastRun", ""),
                     "next_run": item.get("NextRun", ""),
+                    "task_state": task_state,
+                    "enabled": task_state.lower() != "disabled",
                     "status": status,
                     "last_result_code": last_result,
+                    **_task_scheduler_disposition(task_name, status),
                 }
             )
         return tasks
     except Exception:
         logger.exception("查询Windows Task Scheduler任务失败")
         return []
+
+
+def _task_scheduler_status(task_name: str, task_state: str, last_result: int | None) -> str:
+    """Map Windows task state and last result into operator-facing status."""
+    normalized_state = task_state.lower()
+    if normalized_state == "disabled":
+        return "disabled"
+    if normalized_state == "running":
+        return "running"
+    # Windows Task Scheduler: 0=成功, 267009=当前运行, 267011=还未运行
+    if last_result == 0:
+        return "success"
+    if last_result == 267009:
+        return "running"
+    if last_result == 267011:
+        return "never_run"
+    if task_name == "QM-ICMonitor" and last_result == 1:
+        return "alert"
+    return "failed"
+
+
+def _task_scheduler_disposition(task_name: str, status: str) -> dict[str, str | None]:
+    """Return operator-facing next step metadata for non-infrastructure alerts."""
+    if task_name == "QM-ICMonitor" and status == "alert":
+        return {
+            "status_reason": "IC factor-quality alert from scripts/ic_monitor.py",
+            "operator_action_label": "Open IC monitoring",
+            "operator_action_path": "/factors/monitoring",
+        }
+    return {
+        "status_reason": None,
+        "operator_action_label": None,
+        "operator_action_path": None,
+    }
+
+
+def _beat_log_aliases(beat_key: str, task_name: str) -> set[str]:
+    """Return scheduler_task_log names that can represent a Beat entry."""
+    aliases = {task_name}
+    if task_name:
+        tail = task_name.rsplit(".", 1)[-1]
+        aliases.add(tail)
+        if tail.endswith("_task"):
+            aliases.add(tail.removesuffix("_task"))
+
+    key_alias = beat_key.replace("-", "_")
+    aliases.add(key_alias)
+    for suffix in ("_tick", "_run", "_weekly"):
+        if key_alias.endswith(suffix):
+            aliases.add(key_alias.removesuffix(suffix))
+
+    explicit_alias = {
+        "daily-attribution-compute": "daily_attribution_compute",
+        "daily-backup-run": "daily_backup_run",
+        "meta-monitor-tick": "meta_monitor",
+        "weekly-backup-verify": "weekly_backup_verify",
+    }.get(beat_key)
+    if explicit_alias:
+        aliases.add(explicit_alias)
+    return {alias for alias in aliases if alias}
 
 
 # ---------------------------------------------------------------------------
@@ -266,11 +429,11 @@ async def get_datasources(
     Returns:
         数据源状态列表，每项包含 name、table、latest_date、row_count、status。
     """
-    tasks = [
-        _query_datasource(session, cfg["table"], cfg["date_col"])
-        for cfg in _DATASOURCE_TABLE_CONFIG
-    ]
-    results = await asyncio.gather(*tasks)
+    # AsyncSession is not concurrency-safe; run DB reads sequentially on the
+    # request session to avoid "concurrent operations are not permitted".
+    results = []
+    for cfg in _DATASOURCE_TABLE_CONFIG:
+        results.append(await _query_datasource(session, cfg["table"], cfg["date_col"]))
 
     output = []
     for cfg, res in zip(_DATASOURCE_TABLE_CONFIG, results, strict=True):
@@ -306,12 +469,14 @@ async def get_system_health(
     Returns:
         包含 pg、redis、celery、disk、memory、overall_status 的健康报告。
     """
-    # PG/Redis 并发检查
-    pg_result, redis_result = await asyncio.gather(
-        _check_pg(session),
-        asyncio.get_event_loop().run_in_executor(None, _check_redis),
+    # The DB session must not be used concurrently. Run PG first, then execute
+    # blocking external checks with bounded timeouts so this endpoint degrades
+    # instead of hanging behind Celery/Redis probes.
+    pg_result = await _with_timeout("postgresql", _check_pg(session), _HEALTH_DB_TIMEOUT_SEC)
+    redis_result, celery_result = await asyncio.gather(
+        _run_sync_check("redis", _check_redis),
+        _run_sync_check("celery", _check_celery),
     )
-    celery_result = await asyncio.get_event_loop().run_in_executor(None, _check_celery)
     disk_result = _check_disk()
     memory_result = _check_memory()
 
@@ -374,17 +539,21 @@ async def get_beat_schedule(
         # (ModuleNotFoundError vs AttributeError vs ImportError) for upstream
         # async middleware / Sentry __cause__ inspection.
         logger.exception("CELERY_BEAT_SCHEDULE import failed")
-        raise HTTPException(
-            status_code=500, detail="Beat schedule config unavailable"
-        ) from exc
+        raise HTTPException(status_code=500, detail="Beat schedule config unavailable") from exc
 
     if not CELERY_BEAT_SCHEDULE:
         return {"entries": [], "total_count": 0}
 
-    # Collect all task_names referenced in Beat schedule for LATERAL JOIN
-    task_names = sorted(
-        {str(entry.get("task", "")) for entry in CELERY_BEAT_SCHEDULE.values() if entry.get("task")}
-    )
+    # Collect all task_names and canonical scheduler_task_log aliases referenced
+    # by Beat schedule. Celery uses dotted task names, while audit rows use
+    # short names such as `meta_monitor` and `daily_attribution_compute`.
+    aliases_by_beat_key: dict[str, set[str]] = {}
+    task_names: set[str] = set()
+    for beat_key, entry in CELERY_BEAT_SCHEDULE.items():
+        task_name = str(entry.get("task", ""))
+        aliases = _beat_log_aliases(str(beat_key), task_name)
+        aliases_by_beat_key[str(beat_key)] = aliases
+        task_names.update(aliases)
 
     # Fetch last_fire per task_name from scheduler_task_log (single query, index-optimized)
     last_fires: dict[str, dict[str, Any]] = {}
@@ -398,7 +567,7 @@ async def get_beat_schedule(
                 WHERE task_name = ANY(:names)
                 ORDER BY task_name, start_time DESC
             """
-            result = await session.execute(text(sql), {"names": task_names})
+            result = await session.execute(text(sql), {"names": sorted(task_names)})
             for row in result.fetchall():
                 last_fires[row.task_name] = {
                     "last_fire_time": row.start_time,
@@ -417,7 +586,15 @@ async def get_beat_schedule(
         # gives "X seconds". repr() is best-effort display string.
         schedule_display = repr(schedule_obj) if schedule_obj is not None else ""
         options = entry.get("options", {}) or {}
-        fire = last_fires.get(task_name, {})
+        fire = {}
+        for alias in aliases_by_beat_key.get(str(beat_key), {task_name}):
+            candidate = last_fires.get(alias)
+            if candidate and (
+                not fire
+                or str(candidate.get("last_fire_time") or "")
+                > str(fire.get("last_fire_time") or "")
+            ):
+                fire = candidate
         entries.append(
             {
                 "beat_key": beat_key,
@@ -500,9 +677,7 @@ async def get_scheduler_task_log(
         # fail-loud per 铁律 33 — return empty + 200 OK is silent; raise 500.
         # iter 199 reviewer P2 cleanup: `from None` drops `noqa: B904` suppression —
         # logger.exception already captured chain at line above, intentionally break here.
-        raise HTTPException(
-            status_code=500, detail="scheduler_task_log query failed"
-        ) from None
+        raise HTTPException(status_code=500, detail="scheduler_task_log query failed") from None
 
 
 @router.get("/scheduler")

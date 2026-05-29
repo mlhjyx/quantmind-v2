@@ -90,8 +90,13 @@ def test_migration_idempotent_rerun():
     # 若 DB 不可用 / lock 长时被持 → skip (本地 dev 容许; CI 须 DB clean + 0 持锁旧 backend)
     if "could not connect" in result.stderr or "authentication failed" in result.stderr:
         pytest.skip(f"DB unavailable: {result.stderr[:200]}")
-    if "lock_timeout" in result.stderr or "canceling statement due to lock timeout" in result.stderr:
-        pytest.skip(f"DDL lock held by other connection >5s (likely concurrent dev process): {result.stderr[:200]}")
+    if (
+        "lock_timeout" in result.stderr
+        or "canceling statement due to lock timeout" in result.stderr
+    ):
+        pytest.skip(
+            f"DDL lock held by other connection >5s (likely concurrent dev process): {result.stderr[:200]}"
+        )
     assert result.returncode == 0, (
         f"Migration idempotent rerun failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )

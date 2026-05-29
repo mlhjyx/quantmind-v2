@@ -84,6 +84,7 @@ def _compose_regime_query(indicators: MarketIndicators) -> str:
         formatted with appropriate precision (sse/hs300/iv .4f; north_flow .2f;
         breadth_up/breadth_down as int str).
     """
+
     def _fmt_f4(x: float | None) -> str:
         return "null" if x is None else f"{x:.4f}"
 

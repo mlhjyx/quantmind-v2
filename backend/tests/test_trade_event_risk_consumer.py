@@ -84,9 +84,7 @@ def test_consume_fill_events_raises_on_non_busygroup_redis_error():
     from app.services.risk.trade_event_consumer import consume_fill_events
 
     r = MagicMock()
-    r.xgroup_create.side_effect = redis_module.exceptions.ResponseError(
-        "ERR some other error"
-    )
+    r.xgroup_create.side_effect = redis_module.exceptions.ResponseError("ERR some other error")
 
     with pytest.raises(redis_module.exceptions.ResponseError) as exc_info:
         consume_fill_events(r)
@@ -124,8 +122,16 @@ def test_task_processes_fill_events_via_engine():
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
     events = [
-        {"event_id": "1-0", "data": {"strategy_id": "s1", "mode": "paper"}, "stream": "qm:fill:executed"},
-        {"event_id": "2-0", "data": {"strategy_id": "s2", "mode": "paper"}, "stream": "qm:fill:executed"},
+        {
+            "event_id": "1-0",
+            "data": {"strategy_id": "s1", "mode": "paper"},
+            "stream": "qm:fill:executed",
+        },
+        {
+            "event_id": "2-0",
+            "data": {"strategy_id": "s2", "mode": "paper"},
+            "stream": "qm:fill:executed",
+        },
     ]
 
     with (
@@ -174,7 +180,8 @@ def test_task_writes_scheduler_task_log_audit_row():
 
     # Verify scheduler_task_log INSERT
     insert_calls = [
-        c for c in mock_cur.execute.call_args_list
+        c
+        for c in mock_cur.execute.call_args_list
         if c.args and "INSERT INTO scheduler_task_log" in c.args[0]
     ]
     assert len(insert_calls) == 1

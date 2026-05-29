@@ -23,13 +23,16 @@ import apiClient from "@/api/client";
 import {
   triggerPipeline,
   getAutomationLevel,
+  setAutomationLevel,
   pausePipeline,
   resumePipeline,
+  cancelPipeline,
   type TriggerPipelineResult,
 } from "@/api/pipeline";
 
 const post = apiClient.post as unknown as Mock;
 const get = apiClient.get as unknown as Mock;
+const put = apiClient.put as unknown as Mock;
 
 const sampleResult: TriggerPipelineResult = {
   run_id: "gp_2026w21_abc123",
@@ -98,6 +101,26 @@ describe("getAutomationLevel (D1 O8 GET consumer)", () => {
     const res = await getAutomationLevel();
     expect(res.level).toBe("L0");
   });
+
+  it("accepts backend-supported L4 automation level", async () => {
+    get.mockResolvedValue({ data: { level: "L4" } });
+    const res = await getAutomationLevel();
+    expect(res.level).toBe("L4");
+  });
+});
+
+describe("setAutomationLevel (D1 O8 PUT consumer)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("PUTs backend-supported L4 automation level", async () => {
+    put.mockResolvedValue({ data: { level: "L4" } });
+    await setAutomationLevel("L4");
+
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(put).toHaveBeenCalledWith("/pipeline/automation-level", { level: "L4" });
+  });
 });
 
 describe("pausePipeline (D1 O3 PN-003)", () => {
@@ -145,5 +168,27 @@ describe("resumePipeline (D1 O3 PN-003)", () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith("/pipeline/resume");
     expect(res).toEqual({ paused_at: null, paused_reason: null });
+  });
+});
+
+describe("cancelPipeline", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("POSTs /pipeline/runs/{runId}/cancel and returns res.data", async () => {
+    post.mockResolvedValue({
+      data: {
+        task_id: "gp_2026w21_abc123",
+        run_id: "gp_2026w21_abc123",
+        cancelled: true,
+        message: "取消信号已发送",
+      },
+    });
+
+    const res = await cancelPipeline("gp_2026w21_abc123");
+
+    expect(post).toHaveBeenCalledWith("/pipeline/runs/gp_2026w21_abc123/cancel");
+    expect(res.cancelled).toBe(true);
   });
 });
