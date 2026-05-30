@@ -104,7 +104,7 @@ def trade_event_risk_consumer_tick() -> dict[str, Any]:
     start_time = datetime.now(UTC)
     t0 = time.time()
     r = _get_redis()
-    events = consume_fill_events(r, count=100, block_ms=0)
+    events = consume_fill_events(r, count=100)
 
     processed: list[dict[str, Any]] = []
     failures: list[str] = []

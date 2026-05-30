@@ -44,6 +44,7 @@
 | B26 | Pipeline stale-running rows block operator view | Runtime/API/UI closure | Completed: stale GP rows are surfaced, cancellable from localhost/UI, and two stale rows were explicitly closed. |
 | B27 | `signal_phase` reports empty factors after missing T-day data | Runtime fail-loud closure | Completed: T-day `klines_daily` / `daily_basic` readiness is checked immediately after fetch so the scheduler log names the data outage before empty factor generation. |
 | B28 | Celery backup orchestrators depend on missing PG CLI PATH | Backup/DR runtime closure | Completed: Platform backup tasks now resolve `pg_dump.exe` / `pg_restore.exe` from `PG_BIN` or known Windows install paths and pass `PGPASSWORD` into subprocesses. |
+| B29 | Celery Running but queues stalled | Runtime/Servy closure | Completed: health now checks queue backlog, expired queue cleanup is scripted, Windows workers disable gossip/mingle/heartbeat, slow tasks are split from core `default`, and Redis `BLOCK 0` infinite wait is fixed. |
 
 ## B1 — Pipeline Settings Migration
 
@@ -516,3 +517,28 @@ Verification:
 
 Remaining:
 - This closes the executable/env precondition for Celery backup tasks. Scheduled `daily-backup-run` and `weekly-backup-verify` still need next-window Beat first-fire evidence.
+
+## B29 - Celery Queue Stall Runtime Closure
+
+Runtime finding:
+- On 2026-05-29, Servy showed `QuantMind-Celery` and `QuantMind-CeleryBeat` as Running while Redis `default` queue had accumulated more than 15k messages.
+- `celery inspect ping` returned no nodes, and `/api/system/health` still reported Celery ok because it used process fallback without queue-depth validation.
+- Foreground Worker with `--without-gossip --without-mingle --without-heartbeat` consumed messages; the Servy Worker without those flags reached a banner but not a usable ready/consume state.
+- After that fix, `news_ingest_*` LLM/network tasks and then `trade_event_consumer_tick` exposed two additional solo-worker starvation paths: slow tasks shared `default`, and `consume_fill_events(block_ms=0)` passed Redis `BLOCK 0`, which means wait forever.
+
+Result:
+- `scripts/ops/celery_queue_hygiene.py` now dry-runs by default and only removes Celery Redis list messages whose `headers.expires` timestamp is already past.
+- `/api/system/health` checks Redis queue backlog for `default`, `factor_calc`, and `data_fetch` before trusting process fallback; queue backlog now flips Celery health to warning/critical instead of hiding a fake-alive Worker.
+- `QuantMind-Celery` now consumes only `default`; new `QuantMind-CelerySlow` consumes `data_fetch,factor_calc`; `QuantMind-CeleryBeat` depends on both.
+- Beat routing now keeps outbox/risk/meta-monitor high-frequency tasks on `default` and routes LLM/network/backup/report/factor jobs to `data_fetch` or `factor_calc`.
+- Windows Celery workers now use `--without-gossip --without-mingle --without-heartbeat --loglevel=INFO`.
+- `consume_fill_events` treats `None` or `<=0` as a non-blocking read and no longer sends Redis `BLOCK 0`.
+- Runtime Servy configs were imported, `QuantMind-CelerySlow` was installed, Worker/Slow/Beat/FastAPI were restarted, and stale expired queue messages were cleaned.
+
+Verification:
+- RED test reproduced the old topology and missing slow worker; GREEN test passed after queue split.
+- RED test reproduced Redis `BLOCK 0` default blocking semantics; GREEN test passed after helper normalization.
+- `pytest backend/tests/test_trade_event_risk_consumer.py -q` -> 10 passed.
+- `pytest backend/tests/test_celery_queue_topology.py ... test_llm_cost_audit_tasks.py -q` -> 139 passed.
+- Runtime 125s Beat observation after all fixes: `default=0`, `data_fetch=0`, `factor_calc=0` at every sample.
+- `GET /api/system/health`: `overall_status='ok'`, `celery.worker_count=2`, `queue_status.max_depth=0`.

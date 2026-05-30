@@ -63,7 +63,7 @@ CELERY_BEAT_SCHEDULE: dict = {
             },
         },
         "options": {
-            "queue": "default",
+            "queue": "factor_calc",
             "expires": 7200,  # 2小时内未执行则过期（避免错过周日后积压）
         },
     },
@@ -127,7 +127,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "schedule": crontab(hour="*/6", minute=15),  # 00:15 / 06:15 / 12:15 / 18:15
         "kwargs": {"batch_size": 100},
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h expiry — next fire will retry if missed
         },
     },
@@ -136,7 +136,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "daily_pipeline.data_quality_report",
         "schedule": crontab(hour=17, minute=40, day_of_week="1-5"),
         "options": {
-            "queue": "default",
+            "queue": "factor_calc",
             "expires": 1200,  # 20min 内未执行则过期
         },
     },
@@ -147,7 +147,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "daily_pipeline.factor_lifecycle",
         "schedule": crontab(hour=19, minute=0, day_of_week="5"),  # 5=周五
         "options": {
-            "queue": "default",
+            "queue": "factor_calc",
             "expires": 3600,
         },
     },
@@ -163,7 +163,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.news_ingest_tasks.news_ingest_5_sources",
         "schedule": crontab(hour="3,7,11,15,19,23", minute=0),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h within next 4h cron window
         },
     },
@@ -180,7 +180,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "schedule": crontab(hour="3,7,11,15,19,23", minute=0),
         "kwargs": {"route_path": "/jin10/news"},  # explicit intent (沿用 LL-115)
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,
         },
     },
@@ -200,7 +200,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "schedule": crontab(hour="9,11,13,15,17", minute=15),
         "kwargs": {"symbol_id": "600519", "source": "cninfo"},  # explicit intent (沿用 LL-115)
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h within next 2h cron window
         },
     },
@@ -218,7 +218,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "schedule": crontab(hour=16, minute=0),
         "kwargs": {"symbol_id": "600519"},  # explicit intent (沿用 LL-115)
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h within next 2h window
         },
     },
@@ -339,7 +339,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.market_regime_tasks.classify_market_regime",
         "schedule": crontab(hour=9, minute=0, day_of_week="1-5"),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 1800,  # 30min within next 5h window (14:30 cycle)
         },
     },
@@ -347,7 +347,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.market_regime_tasks.classify_market_regime",
         "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 1800,  # 30min within next 1.5h window (16:00 cycle)
         },
     },
@@ -355,7 +355,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.market_regime_tasks.classify_market_regime",
         "schedule": crontab(hour=16, minute=0, day_of_week="1-5"),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 1800,  # 30min within next 17h window (next day 09:00)
         },
     },
@@ -380,7 +380,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.risk_reflector_tasks.weekly_reflection",
         "schedule": crontab(hour=19, minute=0, day_of_week="0"),  # 0=Sunday
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h window — weekly cadence has ample slack
         },
     },
@@ -388,7 +388,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.risk_reflector_tasks.monthly_reflection",
         "schedule": crontab(hour=9, minute=0, day_of_month="1"),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h window — monthly cadence has ample slack
         },
     },
@@ -439,7 +439,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.llm_cost_audit_tasks.monthly_audit",  # implemented Plan v10 (subprocess wrapper)
         "schedule": crontab(hour=8, minute=0, day_of_month="1"),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h within next month cycle
         },
     },
@@ -464,7 +464,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.slippage_calibration_tasks.quarterly_recalibrate",  # implemented Plan v10 (subprocess wrapper)
         "schedule": crontab(hour=2, minute=0, day_of_month="1", month_of_year="1,4,7,10"),
         "options": {
-            "queue": "default",
+            "queue": "factor_calc",
             "expires": 7200,  # 2h within next quarter cycle
         },
     },
@@ -491,7 +491,7 @@ CELERY_BEAT_SCHEDULE: dict = {
             "keep_per_tuple": 20,
         },
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 3600,  # 1h within next 23h cycle
         },
     },
@@ -508,7 +508,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.attribution_tasks.daily_attribution_compute_task",
         "schedule": crontab(hour=16, minute=30, day_of_week="1-5"),
         "options": {
-            "queue": "default",
+            "queue": "factor_calc",
             "expires": 3600,  # 1h within next trading day cycle
         },
     },
@@ -521,7 +521,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.backup_tasks.daily_backup_run_task",
         "schedule": crontab(hour=2, minute=30),
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 14400,  # 4h: pg_dump can run up to 1h + tar up to 30min + buffer
         },
     },
@@ -532,7 +532,7 @@ CELERY_BEAT_SCHEDULE: dict = {
         "task": "app.tasks.backup_tasks.weekly_backup_verify_task",
         "schedule": crontab(hour=4, minute=0, day_of_week="0"),  # 0=Sunday
         "options": {
-            "queue": "default",
+            "queue": "data_fetch",
             "expires": 7200,  # 2h within next weekly cycle
         },
     },

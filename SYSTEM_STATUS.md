@@ -829,8 +829,9 @@ Deferred (5 项 DOC-CLOSED): #3 双轨样式 (50h) / #7 cron hardcoded / #12 PMS
 | 服务名 | 状态 | 说明 |
 |--------|------|------|
 | QuantMind-FastAPI | ✅ Running | uvicorn --workers 2, port 8000 |
-| QuantMind-Celery | ✅ Running | celery worker --pool=solo |
-| QuantMind-CeleryBeat | ✅ Running | 定时调度器 (PMS 14:30 + GP 周日22:00), 自04-03 Servy迁移后持续运行 |
+| QuantMind-Celery | ✅ Running | celery core worker `-Q default` |
+| QuantMind-CelerySlow | ✅ Running | celery slow worker `-Q data_fetch,factor_calc` |
+| QuantMind-CeleryBeat | ✅ Running | 定时调度器, 依赖核心/慢 Worker, 自04-03 Servy迁移后持续运行 |
 | QuantMind-QMTData | 🔴 **Stopped** | PT暂停期间已停止 (2026-04-10) |
 | Redis | ✅ Running | port 6379, uptime 2天 |
 | PostgreSQL | ✅ Running | port 5432 |

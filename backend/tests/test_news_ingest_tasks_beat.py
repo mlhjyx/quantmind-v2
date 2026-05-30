@@ -41,7 +41,7 @@ def test_news_5_source_beat_entry_registered() -> None:
     assert "news-ingest-5-source-cadence" in CELERY_BEAT_SCHEDULE
     entry = CELERY_BEAT_SCHEDULE["news-ingest-5-source-cadence"]
     assert entry["task"] == "app.tasks.news_ingest_tasks.news_ingest_5_sources"
-    assert entry["options"]["queue"] == "default"
+    assert entry["options"]["queue"] == "data_fetch"
     assert entry["options"]["expires"] == 3600
 
 
@@ -50,7 +50,7 @@ def test_news_rsshub_beat_entry_registered() -> None:
     assert "news-ingest-rsshub-cadence" in CELERY_BEAT_SCHEDULE
     entry = CELERY_BEAT_SCHEDULE["news-ingest-rsshub-cadence"]
     assert entry["task"] == "app.tasks.news_ingest_tasks.news_ingest_rsshub"
-    assert entry["options"]["queue"] == "default"
+    assert entry["options"]["queue"] == "data_fetch"
     assert entry["options"]["expires"] == 3600
 
 

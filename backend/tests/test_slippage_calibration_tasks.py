@@ -68,7 +68,7 @@ def test_beat_schedule_entry_task_matches_registered() -> None:
     entry = CELERY_BEAT_SCHEDULE["slippage-calibration-quarterly"]
     assert entry["task"] == _TASK_NAME
     assert entry["task"] in celery_app.tasks
-    assert entry["options"]["queue"] == "default"
+    assert entry["options"]["queue"] == "factor_calc"
     assert entry["options"]["expires"] == 7200
 
 

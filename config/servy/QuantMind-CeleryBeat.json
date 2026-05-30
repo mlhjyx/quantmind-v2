@@ -19,7 +19,7 @@
   "MaxFailedChecks": 3,
   "RecoveryAction": 1,
   "MaxRestartAttempts": 5,
-  "ServiceDependencies": "Redis; QuantMind-Celery",
+  "ServiceDependencies": "Redis; QuantMind-Celery; QuantMind-CelerySlow",
   "RunAsLocalSystem": true,
   "PreLaunchTimeoutSeconds": 30,
   "PreLaunchRetryAttempts": 0,

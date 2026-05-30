@@ -229,8 +229,9 @@ quantmind-v2/
 | 服务名 | 描述 | 依赖 | 日志 |
 |--------|------|------|------|
 | QuantMind-FastAPI | uvicorn --workers 2, port 8000 | Redis, PostgreSQL 16.8 | logs/fastapi-std{out,err}.log |
-| QuantMind-Celery | celery worker --pool=solo | Redis | logs/celery-std{out,err}.log |
-| QuantMind-CeleryBeat | celery beat scheduler | Redis, QuantMind-Celery | logs/celery-beat-std{out,err}.log |
+| QuantMind-Celery | celery core worker `-Q default` | Redis | logs/celery-std{out,err}.log |
+| QuantMind-CelerySlow | celery slow worker `-Q data_fetch,factor_calc` | Redis | logs/celery-slow-std{out,err}.log |
+| QuantMind-CeleryBeat | celery beat scheduler | Redis, QuantMind-Celery, QuantMind-CelerySlow | logs/celery-beat-std{out,err}.log |
 | QuantMind-QMTData | QMT数据同步→Redis缓存(60s) | Redis | logs/qmt-data-std{out,err}.log |
 
 #### QMT数据架构（A-lite方案, 2026-04-04）

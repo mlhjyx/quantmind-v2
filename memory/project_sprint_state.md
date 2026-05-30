@@ -49,6 +49,8 @@ Closed in this batch:
 - Closed 2026-05-29 `signal_phase` data-gap runtime failure: Tushare later had same-day data; controlled fetch wrote 5,477 `klines_daily` / 5,477 `daily_basic` / 5,477 `stock_status_daily` rows, rerun wrote 131,448 `factor_values` rows and 5 paper `signals`, and latest `scheduler_task_log.signal_phase` is `success`.
 - Added a T-day data readiness guard in `scripts/run_paper_trading.py` so future same-day data outages fail at `klines_daily` / `daily_basic` readiness instead of misleadingly surfacing as empty factor generation.
 - Closed Celery backup PG CLI precondition drift: Platform backup tasks now resolve `pg_dump.exe` / `pg_restore.exe` from `PG_BIN` or known Windows install paths, pass `PGPASSWORD` into subprocesses, and runtime probe resolves both tools under `D:\pgsql\bin`.
+- Closed Celery fake-alive / queue-stall runtime defect: `/api/system/health` now checks Redis queue backlog, `scripts/ops/celery_queue_hygiene.py` safely purges expired Redis Celery messages, Windows Workers disable gossip/mingle/heartbeat, `QuantMind-Celery` consumes only `default`, new `QuantMind-CelerySlow` consumes `data_fetch,factor_calc`, slow Beat entries are routed off core queue, and `consume_fill_events` no longer sends Redis `BLOCK 0`.
+- Runtime recovery applied on 2026-05-29: installed/imported `QuantMind-CelerySlow`, imported updated Worker/Beat Servy configs, restarted Worker/Slow/Beat/FastAPI, and verified 125s of Beat operation with `default=0`, `data_fetch=0`, `factor_calc=0`; `/api/system/health` reports `worker_count=2` and `queue_status.max_depth=0`.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -65,6 +67,7 @@ Still open:
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope; the PG binary/env precondition is now closed.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 - 2026-05-29 Tushare `daily_basic` had high `pe_ttm` / `dv_ttm` null-ratio warnings during controlled fetch; DataPipeline logged the warning and still upserted valid rows. Treat as data-quality signal, not a signal-chain blocker after successful factor/signal rerun.
+- `/api/system/health` process fallback now reports the new 2-worker topology, but `celery inspect ping` remains skipped on Windows solo Worker by design.
 
 Next safe step:
 - Observe the next scheduled backup first-fire evidence, a controlled GP next-run feedback consumption proof after DEAP installation, and a controlled Backtest API worker first-fire; otherwise continue design-doc implementation-gap audit, now focusing on runtime first-fire evidence and optional batched migration of allowlisted historical research scripts with reproducibility checks.

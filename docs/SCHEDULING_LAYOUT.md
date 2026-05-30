@@ -117,7 +117,8 @@ Logon 触发
 | 服务名 | 描述 | 日志 |
 |--------|------|------|
 | QuantMind-FastAPI | uvicorn --workers 2, port 8000 | logs/fastapi-std{out,err}.log |
-| QuantMind-Celery | celery worker --pool=solo | logs/celery-std{out,err}.log |
+| QuantMind-Celery | celery core worker `-Q default` | logs/celery-std{out,err}.log |
+| QuantMind-CelerySlow | celery slow worker `-Q data_fetch,factor_calc` | logs/celery-slow-std{out,err}.log |
 | QuantMind-CeleryBeat | celery beat scheduler | logs/celery-beat-std{out,err}.log |
 | QuantMind-QMTData | QMT数据同步 (60s interval) | logs/qmt-data-std{out,err}.log |
 

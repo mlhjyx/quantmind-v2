@@ -17,7 +17,7 @@ param(
     [string]$Action,
 
     [Parameter(Position=1)]
-    [ValidateSet("all", "fastapi", "worker", "beat")]
+    [ValidateSet("all", "fastapi", "worker", "slow-worker", "beat")]
     [string]$Service = "all"
 )
 
@@ -26,9 +26,10 @@ $ServyCli = "D:\tools\Servy\servy-cli.exe"
 # 服务定义（启动顺序）
 $Services = [ordered]@{
     fastapi = "QuantMind-FastAPI"
-    worker  = "QuantMind-Celery"
-    beat    = "QuantMind-CeleryBeat"
-    qmt     = "QuantMind-QMTData"
+    worker        = "QuantMind-Celery"
+    "slow-worker" = "QuantMind-CelerySlow"
+    beat          = "QuantMind-CeleryBeat"
+    qmt           = "QuantMind-QMTData"
 }
 
 # 原生服务（只查状态，不管理）
@@ -107,11 +108,11 @@ function Invoke-ServiceAction {
     param([string]$ActionName, [string]$ServiceKey)
 
     if ($ServiceKey -eq "all") {
-        # 停止时反序: qmt -> beat -> worker -> fastapi
+        # 停止时反序: qmt -> beat -> slow-worker -> worker -> fastapi
         $orderedKeys = if ($ActionName -eq "stop") {
-            @("qmt", "beat", "worker", "fastapi")
+            @("qmt", "beat", "slow-worker", "worker", "fastapi")
         } else {
-            @("fastapi", "worker", "beat", "qmt")
+            @("fastapi", "worker", "slow-worker", "beat", "qmt")
         }
 
         foreach ($key in $orderedKeys) {
