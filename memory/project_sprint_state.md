@@ -1,13 +1,83 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 36.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 37.
 date: 2026-06-01 +08:00
-status: governance_batch_36_params_admin_gate_blocked_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_36.md
+status: governance_batch_37_mutating_api_auth_inventory_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_37.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 36
+## Current Handoff - 2026-06-01 Batch 37
+
+Mode: full-project closure/governance remediation, batch 37 docs-only
+mutating API admin-gate inventory.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `7ea8c259` (`record params admin gate
+  blocker`), and PR #523 checks were clean after Batch 36.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 36 params blocker is a representative case, not the full auth backlog.
+- Fresh AST scan over `backend/app/api/*.py` found 58 mutating routes:
+  20 with admin-token dependency and 38 without function-level admin-token
+  dependency.
+- P0 route groups for the next fix waves: params, pipeline, strategies,
+  factors, mining, news ingest, and backtest resource-cost mutations.
+- P1/decision route groups: notification state/test send, system test
+  notification, report generation, and DingTalk inbound webhook control model.
+
+Closed in this batch:
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_37.md` with
+  route inventory, triage, proposed fix batches, acceptance criteria, and the
+  active-discovery finding.
+- No production code was edited while the Batch 36 redline precondition remains
+  blocked.
+
+Verification:
+- `git status --short` before edits showed only unrelated
+  `reports/28fc37e5-2d32-4ada-92e0-41c11a5103d0_2026-06-01_paper.json`.
+- Inline AST scan over `backend/app/api/*.py` completed:
+  `total_mutating=58`, `admin_gated=20`, `no_admin_dependency=38`.
+- Pending: banned-word scan, commit, push, PR body append, and PR #523 check
+  watch.
+
+Still open:
+- Params admin-gate security fix remains blocked by
+  `python scripts/_verify_account_oneshot.py` failing with
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Stage/commit/push the Batch 37 inventory report and handoff, then continue a
+  non-redline audit surface or retry params admin-gate only after read-only
+  account verification is available or explicitly waived.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 36
 
 Mode: full-project closure/governance remediation, batch 36 params admin-gate
 security follow-up blocked by redline precondition.
