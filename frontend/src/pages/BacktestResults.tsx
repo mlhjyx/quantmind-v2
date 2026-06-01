@@ -5,7 +5,25 @@ import ReactECharts from "echarts-for-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
-import { getBacktestResult, type BacktestResult, type NavPoint, type MonthlyReturn } from "@/api/backtest";
+import {
+  getBacktestAnnualRiskMetrics,
+  getBacktestAttribution,
+  getBacktestCostSensitivity,
+  getBacktestLatestHoldings,
+  getBacktestLiveCompare,
+  getBacktestMarketState,
+  getBacktestMonthlyReturns,
+  getBacktestReportUrl,
+  getBacktestResult,
+  getBacktestTradesForResult,
+  type BacktestAttributionResponse,
+  type BacktestCostSensitivityResponse,
+  type BacktestLiveCompareResponse,
+  type BacktestMarketStateResponse,
+  type BacktestResult,
+  type MonthlyReturn,
+  type NavPoint,
+} from "@/api/backtest";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { STALE } from "@/api/QueryProvider";
 
@@ -486,6 +504,159 @@ function TabFactorContributions({ contributions }: { contributions: BacktestResu
   );
 }
 
+// ---- Tab: Industry Attribution ----
+
+function TabAttribution({ data }: { data: BacktestAttributionResponse | undefined }) {
+  const industries = data?.industries ?? [];
+  if (industries.length === 0) return <EmptyState title="行业归因数据不可用" />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs text-slate-300">
+        <thead>
+          <tr className="border-b border-slate-700/60">
+            <th className="py-2 px-3 text-left text-slate-400 font-medium">行业</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">股票数</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">权重</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">平均PnL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {industries.map((row) => (
+            <tr key={row.industry} className="border-b border-slate-700/30 hover:bg-white/5">
+              <td className="py-1.5 px-3 font-medium text-blue-300">{row.industry}</td>
+              <td className="py-1.5 px-3 text-right">{row.stock_count}</td>
+              <td className="py-1.5 px-3 text-right">{fmtPct(row.total_weight)}</td>
+              <td className={`py-1.5 px-3 text-right ${(row.avg_pnl ?? 0) >= 0 ? "text-red-400" : "text-green-400"}`}>
+                {fmtNum(row.avg_pnl, 2)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---- Tab: Cost Sensitivity ----
+
+function TabCostSensitivity({ data }: { data: BacktestCostSensitivityResponse | undefined }) {
+  const rows = data?.rows ?? [];
+  if (rows.length === 0) return <EmptyState title="成本敏感性数据不可用" />;
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs text-slate-300">
+          <thead>
+            <tr className="border-b border-slate-700/60">
+              <th className="py-2 px-3 text-left text-slate-400 font-medium">成本倍数</th>
+              <th className="py-2 px-3 text-right text-slate-400 font-medium">年化收益</th>
+              <th className="py-2 px-3 text-right text-slate-400 font-medium">Sharpe</th>
+              <th className="py-2 px-3 text-right text-slate-400 font-medium">MDD</th>
+              <th className="py-2 px-3 text-right text-slate-400 font-medium">Calmar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.cost_multiplier} className="border-b border-slate-700/30 hover:bg-white/5">
+                <td className="py-1.5 px-3 font-medium text-blue-300">{row.label ?? `${row.cost_multiplier}x`}</td>
+                <td className="py-1.5 px-3 text-right">{fmtPct(row.annual_return)}</td>
+                <td className="py-1.5 px-3 text-right">{fmtNum(row.sharpe_ratio, 3)}</td>
+                <td className="py-1.5 px-3 text-right">{fmtPct(row.max_drawdown)}</td>
+                <td className="py-1.5 px-3 text-right">{fmtNum(row.calmar_ratio, 3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data?.warning && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+          {data.warning}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Tab: Market State ----
+
+function TabMarketState({ data }: { data: BacktestMarketStateResponse | undefined }) {
+  const states = data?.states ?? [];
+  if (states.length === 0) return <EmptyState title="市场状态数据不可用" />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs text-slate-300">
+        <thead>
+          <tr className="border-b border-slate-700/60">
+            <th className="py-2 px-3 text-left text-slate-400 font-medium">状态</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">交易日</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">累计收益</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">Sharpe估计</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">最差单日</th>
+            <th className="py-2 px-3 text-right text-slate-400 font-medium">最佳单日</th>
+          </tr>
+        </thead>
+        <tbody>
+          {states.map((row) => (
+            <tr key={row.market_state} className="border-b border-slate-700/30 hover:bg-white/5">
+              <td className="py-1.5 px-3 font-medium text-blue-300">{row.market_state}</td>
+              <td className="py-1.5 px-3 text-right">{row.trading_days}</td>
+              <td className="py-1.5 px-3 text-right">{fmtPct(row.cumulative_return)}</td>
+              <td className="py-1.5 px-3 text-right">{fmtNum(row.sharpe_estimate, 3)}</td>
+              <td className="py-1.5 px-3 text-right">{fmtPct(row.worst_day)}</td>
+              <td className="py-1.5 px-3 text-right">{fmtPct(row.best_day)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---- Tab: Live Compare ----
+
+function TabLiveCompare({ data }: { data: BacktestLiveCompareResponse | undefined }) {
+  if (!data) return <EmptyState title="实盘对比数据不可用" />;
+
+  const rows = [
+    { label: "年化收益", backtest: data.backtest.annual_return, live: data.live?.annual_return, fmt: fmtPct },
+    { label: "Sharpe", backtest: data.backtest.sharpe_ratio, live: data.live?.sharpe_ratio, fmt: (v: number | null | undefined) => fmtNum(v, 3) },
+    { label: "MDD", backtest: data.backtest.max_drawdown, live: data.live?.max_drawdown, fmt: fmtPct },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs text-slate-300">
+          <thead>
+            <tr className="border-b border-slate-700/60">
+              <th className="py-2 px-3 text-left text-slate-400 font-medium">指标</th>
+              <th className="py-2 px-3 text-right text-slate-400 font-medium">回测</th>
+              <th className="py-2 px-3 text-right text-slate-400 font-medium">实盘/模拟</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label} className="border-b border-slate-700/30 hover:bg-white/5">
+                <td className="py-1.5 px-3 font-medium text-blue-300">{row.label}</td>
+                <td className="py-1.5 px-3 text-right">{row.fmt(row.backtest)}</td>
+                <td className="py-1.5 px-3 text-right">{row.fmt(row.live)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!data.live && data.note && (
+        <div className="rounded-lg border border-slate-700/60 bg-slate-800/35 px-3 py-2 text-xs text-slate-300">
+          {data.note}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Tab: WF Analysis ----
 
 function TabWFAnalysis({ windows }: { windows: BacktestResult["wf_windows"] }) {
@@ -634,6 +805,10 @@ const TABS = [
   { key: "wf", label: "WF分析" },
   { key: "risk", label: "风险指标" },
   { key: "factors", label: "因子贡献" },
+  { key: "attribution", label: "行业归因" },
+  { key: "cost", label: "成本敏感性" },
+  { key: "market", label: "市场状态" },
+  { key: "live", label: "实盘对比" },
   { key: "compare", label: "对比模式" },
 ];
 
@@ -679,6 +854,66 @@ export default function BacktestResults() {
     staleTime: STALE.factor,
   });
 
+  const detailEnabled = !!runId && !!result;
+  const { data: monthlyReturns } = useQuery({
+    queryKey: ["backtest-monthly", runId],
+    queryFn: () => getBacktestMonthlyReturns(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: latestHoldings } = useQuery({
+    queryKey: ["backtest-holdings-latest", runId],
+    queryFn: () => getBacktestLatestHoldings(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: tradesForResult } = useQuery({
+    queryKey: ["backtest-trades-result", runId],
+    queryFn: () => getBacktestTradesForResult(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: annualRiskMetrics } = useQuery({
+    queryKey: ["backtest-annual-risk", runId],
+    queryFn: () => getBacktestAnnualRiskMetrics(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: attribution } = useQuery({
+    queryKey: ["backtest-attribution", runId],
+    queryFn: () => getBacktestAttribution(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: costSensitivity } = useQuery({
+    queryKey: ["backtest-cost-sensitivity", runId],
+    queryFn: () => getBacktestCostSensitivity(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: marketState } = useQuery({
+    queryKey: ["backtest-market-state", runId],
+    queryFn: () => getBacktestMarketState(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+  const { data: liveCompare } = useQuery({
+    queryKey: ["backtest-live-compare", runId],
+    queryFn: () => getBacktestLiveCompare(runId!),
+    enabled: detailEnabled,
+    staleTime: STALE.factor,
+  });
+
+  const viewResult: BacktestResult | undefined = result
+    ? {
+        ...result,
+        monthly_returns: monthlyReturns ?? result.monthly_returns,
+        holdings: latestHoldings ?? result.holdings,
+        trades: tradesForResult ?? result.trades,
+        risk_metrics: annualRiskMetrics ?? result.risk_metrics,
+      }
+    : undefined;
+
   return (
     <div>
       <Breadcrumb
@@ -693,13 +928,20 @@ export default function BacktestResults() {
         <div>
           <h1 className="text-2xl font-bold text-white">回测结果分析</h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            {result ? `${result.strategy_name} · 完成于 ${result.completed_at?.slice(0, 10) ?? "—"}` : `Run ID: ${runId ?? "—"}`}
+            {viewResult ? `${viewResult.strategy_name} · 完成于 ${viewResult.completed_at?.slice(0, 10) ?? "—"}` : `Run ID: ${runId ?? "—"}`}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => navigate("/backtest/config")}>修改重跑</Button>
           <Button variant="secondary" size="sm">复制策略</Button>
-          <Button variant="secondary" size="sm">导出PDF</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!runId}
+            onClick={() => runId && window.open(getBacktestReportUrl(runId), "_blank", "noopener,noreferrer")}
+          >
+            导出报告
+          </Button>
           <Button size="sm" onClick={() => navigate("/dashboard")}>部署到模拟盘</Button>
         </div>
       </div>
@@ -719,15 +961,15 @@ export default function BacktestResults() {
         </GlassCard>
       )}
 
-      {result && (
+      {viewResult && (
         <>
           {/* OOS heterogeneity warning (Frontend Design v3 §3.3.1) — 提醒不同回测窗口 Sharpe 差异大 */}
-          <OOSHeterogeneityBanner sharpe={typeof result.metrics.sharpe === "number" ? result.metrics.sharpe : null} />
+          <OOSHeterogeneityBanner sharpe={typeof viewResult.metrics.sharpe === "number" ? viewResult.metrics.sharpe : null} />
 
           {/* Top metric cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
             {METRICS_CONFIG.map((m) => {
-              const raw = result.metrics[m.key];
+              const raw = viewResult.metrics[m.key];
               const value = typeof raw === "number" ? raw : null;
               const color = m.thresholdKey ? metricColor(m.thresholdKey, value) : "text-slate-300";
               return (
@@ -758,13 +1000,17 @@ export default function BacktestResults() {
             </div>
 
             <div className="min-h-64">
-              {activeTab === "nav" && <TabNavCurve nav={result.nav} />}
-              {activeTab === "monthly" && <TabMonthlyAttribution monthly={result.monthly_returns} />}
-              {activeTab === "holdings" && <TabHoldings holdings={result.holdings} />}
-              {activeTab === "trades" && <TabTrades trades={result.trades} />}
-              {activeTab === "wf" && <TabWFAnalysis windows={result.wf_windows} />}
-              {activeTab === "risk" && <TabRisk riskMetrics={result.risk_metrics} />}
-              {activeTab === "factors" && <TabFactorContributions contributions={result.factor_contributions} />}
+              {activeTab === "nav" && <TabNavCurve nav={viewResult.nav} />}
+              {activeTab === "monthly" && <TabMonthlyAttribution monthly={viewResult.monthly_returns} />}
+              {activeTab === "holdings" && <TabHoldings holdings={viewResult.holdings} />}
+              {activeTab === "trades" && <TabTrades trades={viewResult.trades} />}
+              {activeTab === "wf" && <TabWFAnalysis windows={viewResult.wf_windows} />}
+              {activeTab === "risk" && <TabRisk riskMetrics={viewResult.risk_metrics} />}
+              {activeTab === "factors" && <TabFactorContributions contributions={viewResult.factor_contributions} />}
+              {activeTab === "attribution" && <TabAttribution data={attribution} />}
+              {activeTab === "cost" && <TabCostSensitivity data={costSensitivity} />}
+              {activeTab === "market" && <TabMarketState data={marketState} />}
+              {activeTab === "live" && <TabLiveCompare data={liveCompare} />}
               {activeTab === "compare" && <TabCompare currentRunId={runId!} />}
             </div>
           </GlassCard>

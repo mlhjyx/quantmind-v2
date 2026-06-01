@@ -353,15 +353,26 @@ Frontend base URL: `apiClient` configured in `frontend/src/api/client.ts:28` (ax
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| backtest.ts:128 | POST | `/backtest/run` |
-| backtest.ts:135 | GET | `/backtest/{runId}` |
-| backtest.ts:150 | GET | `/backtest/{runId}/result` |
-| backtest.ts:183 | POST | `/backtest/{runId}/cancel` |
-| backtest.ts:189 | GET | `/backtest/history` |
-| backtest.ts:207 | POST | `/backtest/compare` |
+| backtest.ts:234 | POST | `/backtest/run` |
+| backtest.ts:239 | GET | `/backtest/{runId}` |
+| backtest.ts:255 | GET | `/backtest/{runId}/result` |
+| backtest.ts:289 | POST | `/backtest/{runId}/cancel` |
+| backtest.ts:293 | GET | `/backtest/history` |
+| backtest.ts:348 | POST | `/backtest/compare` |
+| backtest.ts:515 | GET | `/backtest/{runId}/nav` |
+| backtest.ts:523 | GET | `/backtest/{runId}/trades` |
+| backtest.ts:541 | GET | `/backtest/{runId}/monthly` |
+| backtest.ts:553/567 | GET | `/backtest/{runId}/holdings` |
+| backtest.ts:636 | GET | `/backtest/{runId}/annual` |
+| backtest.ts:660 | GET | `/backtest/{runId}/attribution` |
+| backtest.ts:682 | GET | `/backtest/{runId}/cost-sensitivity` |
+| backtest.ts:707 | GET | `/backtest/{runId}/market-state` |
+| backtest.ts:742 | GET | `/backtest/{runId}/live-compare` |
+| backtest.ts:759 | URL helper | `/backtest/{runId}/report` |
 
-**6 calls → 6 consumed (#20, #20a, #22, #23, #21, #33)**. Historical O1 cancel
-orphan is resolved by `backend/app/api/backtest.py:243`.
+**15 HTTP calls + 1 report URL helper → 16 consumed (#20, #20a, #21-33, #35)**.
+Historical O1 cancel orphan is resolved by `backend/app/api/backtest.py:243`;
+backtest deep-dive rows 26-32 and 35 are closed in §23.
 
 ### 3.3 client.ts (`frontend/src/api/client.ts`)
 
@@ -512,22 +523,22 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 17 | `/api/auth/admin-token` | POST | execution.ts:164 | ✅ |
 | 18 | `/api/auth/admin-token/clear` | POST | execution.ts:186 | ✅ |
 | 19 | `/api/auth/admin-token/status` | GET | execution.ts:204 | ✅ |
-| 20 | `/api/backtest/run` | POST | backtest.ts:128 | ✅ |
-| 21 | `/api/backtest/history` | GET | backtest.ts:189 | ✅ |
-| 22 | `/api/backtest/{run_id}` | GET | backtest.ts:135 | ✅ |
-| 23 | `/api/backtest/{run_id}/result` | GET | backtest.ts:150 | ✅ |
-| 24 | `/api/backtest/{run_id}/nav` | GET | backtest.ts:386 | ✅ |
-| 25 | `/api/backtest/{run_id}/trades` | GET | backtest.ts:394 | ✅ |
-| 26 | `/api/backtest/{run_id}/holdings` | GET | — | ❌ |
-| 27 | `/api/backtest/{run_id}/annual` | GET | — | ❌ |
-| 28 | `/api/backtest/{run_id}/monthly` | GET | — | ❌ |
-| 29 | `/api/backtest/{run_id}/attribution` | GET | — | ❌ |
-| 30 | `/api/backtest/{run_id}/market-state` | GET | — | ❌ |
-| 31 | `/api/backtest/{run_id}/cost-sensitivity` | GET | — | ❌ |
-| 32 | `/api/backtest/{run_id}/report` | GET | — | ❌ |
-| 33 | `/api/backtest/compare` | POST | backtest.ts:207 | ✅ |
+| 20 | `/api/backtest/run` | POST | backtest.ts:234 | ✅ |
+| 21 | `/api/backtest/history` | GET | backtest.ts:293 | ✅ |
+| 22 | `/api/backtest/{run_id}` | GET | backtest.ts:239 | ✅ |
+| 23 | `/api/backtest/{run_id}/result` | GET | backtest.ts:255 | ✅ |
+| 24 | `/api/backtest/{run_id}/nav` | GET | backtest.ts:515 | ✅ |
+| 25 | `/api/backtest/{run_id}/trades` | GET | backtest.ts:523 | ✅ |
+| 26 | `/api/backtest/{run_id}/holdings` | GET | backtest.ts:553/567/591 | ✅ |
+| 27 | `/api/backtest/{run_id}/annual` | GET | backtest.ts:636/650 | ✅ |
+| 28 | `/api/backtest/{run_id}/monthly` | GET | backtest.ts:541 | ✅ |
+| 29 | `/api/backtest/{run_id}/attribution` | GET | backtest.ts:660 | ✅ |
+| 30 | `/api/backtest/{run_id}/market-state` | GET | backtest.ts:707 | ✅ |
+| 31 | `/api/backtest/{run_id}/cost-sensitivity` | GET | backtest.ts:682 | ✅ |
+| 32 | `/api/backtest/{run_id}/report` | GET | backtest.ts:759 | ✅ |
+| 33 | `/api/backtest/compare` | POST | backtest.ts:348 | ✅ |
 | 34 | `/api/backtest/{run_id}/sensitivity` | POST | — | ❌ |
-| 35 | `/api/backtest/{run_id}/live-compare` | GET | — | ❌ |
+| 35 | `/api/backtest/{run_id}/live-compare` | GET | backtest.ts:742 | ✅ |
 | 36 | `/api/dashboard/summary` | GET | — | ❌ |
 | 37 | `/api/dashboard/nav-series` | GET | — | ❌ |
 | 38 | `/api/dashboard/pending-actions` | GET | — | ❌ |
@@ -679,7 +690,7 @@ snapshot.
 
 | # | Endpoint | Priority |
 |---|----------|----------|
-| 26–32, 34–35 | `/api/backtest/{run_id}/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest deep-dive views not yet connected; rows 26-32 + 35 backend runtime contract hardened in §22 |
+| 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
@@ -1588,9 +1599,8 @@ Fresh evidence:
 
 ### §21.4 Remaining API Governance Backlog
 
-- Backtest rows 26-32 and 34-35 remain backend-only until dedicated deep-dive
-  views need holdings, annual/monthly slices, attribution, market state,
-  cost sensitivity, report, sensitivity, or live-compare endpoints.
+- Backtest rows 26-32 and 35 are now consumed by BacktestResults (§23).
+  Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog.
 
 ## §22 Fresh verify — 2026-06-01 (Backtest detail endpoint schema/runtime hardening)
 
@@ -1662,10 +1672,9 @@ Fresh evidence:
 
 ### §22.4 Remaining API Governance Backlog
 
-- Rows 26-32 and 35 are now backend-runtime-hardened, but they remain
-  frontend-unwired in this coverage matrix until `BacktestResults.tsx` or a
-  successor deep-dive page consumes them through `frontend/src/api/backtest.ts`
-  wrappers.
+- Rows 26-32 and 35 were backend-runtime-hardened here and are now
+  frontend-wired in §23 through `frontend/src/api/backtest.ts` wrappers and
+  `BacktestResults.tsx`.
 - Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog by
   design.
 
@@ -1692,3 +1701,77 @@ row-level matrix audit, which remains future work for non-backtest domains.
 Backlog: run a dedicated API coverage refresh to update every non-backtest
 row-level mapping and stale count paragraph rather than silently editing only
 the headline numbers.
+
+## §23 Fresh verify — 2026-06-01 (BacktestResults deep-dive wiring)
+
+### §23.1 Finding
+
+After §22 hardened the backtest detail endpoints, rows 26-32 and 35 still had a
+frontend integration gap: `BacktestResults.tsx` read only sparse
+`/backtest/{run_id}/result` data, while the dedicated detail endpoints for
+holdings, annual/monthly slices, Brinson attribution, market-state,
+cost-sensitivity, report download, and live-compare were left unused.
+
+Fresh evidence:
+- `frontend/src/pages/BacktestResults.tsx:860`, `:884`, and `:1010-1013` /
+  §BacktestResults queries and tabs — page now calls the detail wrappers and
+  renders attribution/cost/market/live tabs; fresh verify 2026-06-01 17:18 +08.
+- `frontend/src/api/backtest.ts:541`, `:553`, `:567`, `:591`, `:636`, `:650`,
+  `:660`, `:682`, `:707`, `:742`, and `:759` / §Backtest detail wrappers —
+  monthly, holdings, annual risk, attribution, cost, market-state,
+  live-compare, and report URL are normalized in the API layer; fresh verify
+  2026-06-01 17:18 +08.
+- `frontend/src/__tests__/backtest-results-detail-contract.test.ts` and
+  `frontend/src/__tests__/backtest-results-page-render.test.tsx` /
+  §frontend contracts — wrappers and rendered tabs are locked by tests; fresh
+  verify 2026-06-01 17:18 +08.
+
+### §23.2 Closure
+
+- Added typed backtest detail wrappers in `frontend/src/api/backtest.ts`.
+- Updated `BacktestResults.tsx` so `/result` remains the summary source while
+  monthly returns, latest holdings, trades, annual risk metrics, attribution,
+  cost sensitivity, market-state, and live-compare load from dedicated detail
+  endpoints.
+- Added tabs for industry attribution, cost sensitivity, market-state, and
+  live-compare, and changed report export to use `/backtest/{run_id}/report`.
+- Updated the coverage matrix rows 26-32 and 35 to consumed.
+- Kept row 34 `/api/backtest/{run_id}/sensitivity` in backlog; the existing
+  backend endpoint remains intentionally deferred from the deep-dive page.
+
+### §23.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/backtest-results-detail-contract.test.ts`
+  first failed because the wrappers and page wiring were absent.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/backtest-results-page-render.test.tsx src/__tests__/backtest-results-detail-contract.test.ts`
+  -> 7 passed.
+- Frontend regression:
+  `npx tsc -b --pretty false` -> exit 0;
+  `python scripts/audit/check_frontend_api_discipline.py` -> PASS;
+  `npx vitest --run` -> 142 passed;
+  `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size
+  warning.
+- Backend compatibility:
+  `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7
+  passed.
+- Backend smoke/pre-push:
+  `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected; `bash config/hooks/pre-push` -> X10 clean, LLM import guard
+  clean, smoke 91 passed, 2 skipped, 6976 deselected.
+- Runtime proof against current source:
+  temporary uvicorn on `127.0.0.1:8011` served run
+  `2c91bd92-ee0f-4f52-9244-795365cc1037`; monthly=4, holdings_summary=0,
+  holdings_detail=0, annual=1, attribution_industries=0, market_states=0,
+  cost_rows=4, live_compare_has_backtest=true. The temporary process was
+  stopped after verification.
+
+### §23.4 Runtime Ops Note
+
+The existing Servy FastAPI listener on `127.0.0.1:8000` still emitted old SQL
+errors during verification (`AVG(pnl)`, `benchmark_return`, and Decimal/float
+cost arithmetic), which indicates the service process had not loaded the §22
+backend changes yet. This batch did not restart Servy. Ops backlog: reload the
+FastAPI service in a separate runtime step, then re-run the same detail endpoint
+probe against port 8000 before declaring deployed runtime parity.

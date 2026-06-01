@@ -1,13 +1,89 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 21.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 22.
 date: 2026-06-01 +08:00
-status: governance_batch_21_backtest_detail_runtime_local_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_21.md
+status: governance_batch_22_backtest_results_deep_dive_frontend_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_22.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 21
+## Current Handoff - 2026-06-01 Batch 22
+
+Mode: full-project closure/governance remediation, batch 22 BacktestResults
+deep-dive frontend wiring locally verified before final commit/push.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `844a101a` (`harden backtest detail endpoints`), and PR #523 checks were clean before Batch 22 edits.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 21 hardened rows 26-32 and 35 at the backend/runtime-contract layer,
+  but `BacktestResults.tsx` still consumed only sparse
+  `/backtest/{run_id}/result` data.
+- Runtime check against the existing 8000 FastAPI listener showed old loaded
+  SQL still running (`AVG(pnl)`, `benchmark_return`, and Decimal/float cost
+  arithmetic). A temporary uvicorn on 8011 with current source passed the same
+  detail endpoint probe. Treat port 8000 as needing a separate FastAPI reload
+  step before deployed runtime parity is claimed.
+
+Closed in this batch:
+- Added typed detail wrappers to `frontend/src/api/backtest.ts` for monthly,
+  holdings, trades-for-result, annual risk metrics, Brinson attribution, cost
+  sensitivity, market-state, live-compare, and report URL.
+- Updated `frontend/src/pages/BacktestResults.tsx` so the page overlays detail
+  data onto the summary result and adds industry attribution, cost sensitivity,
+  market-state, and live-compare tabs.
+- Added `frontend/src/__tests__/backtest-results-detail-contract.test.ts` and
+  `frontend/src/__tests__/backtest-results-page-render.test.tsx`.
+- Updated `docs/API_COVERAGE.md` §3.2, rows 26-32/35, §5D, and new §23; added
+  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_22.md`.
+
+Verification:
+- RED: `npx vitest --run src/__tests__/backtest-results-detail-contract.test.ts`
+  first failed because wrappers/page wiring were absent.
+- Targeted: detail contract + BacktestCompare trade contract -> 9 passed.
+- Render: page render + detail contract -> 7 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- `npx vitest --run` -> 142 passed.
+- `npm run build` -> exit 0 with existing Vite vendor-echarts chunk warning.
+- `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7
+  passed.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected.
+- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
+  passed, 2 skipped, 6976 deselected.
+- Temporary current-source runtime probe on `127.0.0.1:8011` returned
+  monthly=4, holdings_summary=0, holdings_detail=0, annual=1,
+  attribution_industries=0, market_states=0, cost_rows=4, and
+  live_compare_has_backtest=true for run
+  `2c91bd92-ee0f-4f52-9244-795365cc1037`; the process was stopped.
+
+Still open:
+- Stage/commit/push Batch 22, then wait for GitHub checks.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog.
+- API coverage row-level mappings outside backtest need a dedicated refresh
+  against the 170-route / 18-module aggregate count.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Stage/commit/push Batch 22, then wait for GitHub checks before continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 21
 
 Mode: full-project closure/governance remediation, batch 21 backtest detail
 endpoint schema/runtime contract locally verified before final commit/push.
