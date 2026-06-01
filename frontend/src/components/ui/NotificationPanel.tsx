@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { fetchNotificationDetail } from "@/api/notifications";
 import {
   useNotifications,
   type Notification,
@@ -55,13 +56,23 @@ function groupByDay(notifications: Notification[]): { label: string; items: Noti
   return Array.from(map.entries()).map(([label, items]) => ({ label, items }));
 }
 
-function NotificationItem({ n }: { n: Notification }) {
+function NotificationItem({
+  n,
+  onOpenDetail,
+}: {
+  n: Notification;
+  onOpenDetail: (id: string) => void;
+}) {
   const { markRead } = useNotifications();
   const navigate = useNavigate();
 
   function handleClick() {
     markRead(n.id);
-    if (n.link) navigate(n.link);
+    if (n.link) {
+      navigate(n.link);
+      return;
+    }
+    onOpenDetail(n.id);
   }
 
   return (
@@ -96,7 +107,16 @@ function NotificationItem({ n }: { n: Notification }) {
 export function NotificationPanel() {
   const { notifications, unreadCount, isLoading, error, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<Notification | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const closeDetail = () => {
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  };
 
   // Close on outside click
   useEffect(() => {
@@ -104,6 +124,7 @@ export function NotificationPanel() {
     function handleOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
+        closeDetail();
       }
     }
     document.addEventListener("mousedown", handleOutside);
@@ -111,12 +132,30 @@ export function NotificationPanel() {
   }, [open]);
 
   const groups = groupByDay(notifications);
+  const openDetail = async (id: string) => {
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      setDetail(await fetchNotificationDetail(id));
+    } catch {
+      setDetailError("通知详情加载失败");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   return (
     <div ref={containerRef} className="relative">
       {/* Bell button */}
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => {
+            const next = !v;
+            if (!next) closeDetail();
+            return next;
+          });
+        }}
         className="relative flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
         title="通知中心"
         aria-label="通知中心"
@@ -147,7 +186,40 @@ export function NotificationPanel() {
 
           {/* Notification list */}
           <div className="overflow-y-auto flex-1">
-            {isLoading ? (
+            {detailLoading ? (
+              <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+                加载中
+              </div>
+            ) : detailError ? (
+              <div className="h-32 flex flex-col items-center justify-center gap-3 text-sm">
+                <span className="text-slate-500">{detailError}</span>
+                <button
+                  onClick={closeDetail}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  返回列表
+                </button>
+              </div>
+            ) : detail ? (
+              <div className="px-4 py-3">
+                <button
+                  onClick={closeDetail}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors mb-3"
+                >
+                  返回列表
+                </button>
+                <div className="text-xs text-slate-500 mb-1">通知详情</div>
+                <div className="text-sm font-medium text-slate-100">{detail.title}</div>
+                <div className="mt-2 text-xs text-slate-500 flex items-center gap-2">
+                  <span>{detail.level}</span>
+                  <span>{detail.category}</span>
+                  <span>{relativeTime(detail.created_at)}</span>
+                </div>
+                <div className="mt-3 text-[13px] leading-relaxed text-slate-300 whitespace-pre-wrap">
+                  {detail.content ?? "无详情内容"}
+                </div>
+              </div>
+            ) : isLoading ? (
               <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
                 加载中
               </div>
@@ -166,7 +238,11 @@ export function NotificationPanel() {
                     {group.label}
                   </p>
                   {group.items.map((n) => (
-                    <NotificationItem key={n.id} n={n} />
+                    <NotificationItem
+                      key={n.id}
+                      n={n}
+                      onOpenDetail={(id) => { void openDetail(id); }}
+                    />
                   ))}
                 </div>
               ))

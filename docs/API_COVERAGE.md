@@ -197,11 +197,11 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 87 | GET | `/api/notifications` | List notifications | notifications.py:51 | public |
-| 88 | GET | `/api/notifications/unread-count` | Unread count | notifications.py:82 | public |
-| 89 | GET | `/api/notifications/{notification_id}` | Notification detail | notifications.py:93 | public |
-| 90 | PUT | `/api/notifications/{notification_id}/read` | Mark as read | notifications.py:111 | public |
-| 91 | POST | `/api/notifications/test` | Test notification | notifications.py:129 | public |
+| 87 | GET | `/api/notifications` | List notifications | notifications.py:74 | public |
+| 88 | GET | `/api/notifications/unread-count` | Unread count | notifications.py:107 | public |
+| 89 | GET | `/api/notifications/{notification_id}` | Notification detail | notifications.py:186 | public |
+| 90 | PUT | `/api/notifications/{notification_id}/read` | Mark as read | notifications.py:208 | public |
+| 91 | POST | `/api/notifications/test` | Test notification | notifications.py:230 | public |
 
 ### 2.14 paper_trading — `/api/paper-trading` (`backend/app/api/paper_trading.py`)
 
@@ -600,9 +600,9 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 85 | `/api/news/ingest_announcement` | POST | — | ❌ |
 | 86 | `/api/news/stats` | GET | — | ❌ |
 | 87 | `/api/notifications` | GET | notifications.ts:113 | ✅ |
-| 88 | `/api/notifications/unread-count` | GET | — | ❌ |
-| 89 | `/api/notifications/{notification_id}` | GET | — | ❌ |
-| 90 | `/api/notifications/{notification_id}/read` | PUT | notifications.ts:129 | ✅ |
+| 88 | `/api/notifications/unread-count` | GET | list response `unread_count` | ⚠️ redundant |
+| 89 | `/api/notifications/{notification_id}` | GET | notifications.ts:129 | ✅ |
+| 90 | `/api/notifications/{notification_id}/read` | PUT | notifications.ts:138 | ✅ |
 | 91 | `/api/notifications/test` | POST | — | ❌ |
 | 92 | `/api/paper-trading/status` | GET | — | ❌ |
 | 93 | `/api/paper-trading/graduation` | GET | — | ❌ |
@@ -678,6 +678,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 130 | `/api/risk/dingtalk-webhook` | DingTalk webhook receiver — not frontend-initiated |
 | 131 | `/api/sse/risk-events` | SSE stream — consumed via `EventSource` in frontend JS, not apiClient |
 | 83–85 | `/api/news/ingest*` | Script-triggered ingest, not user-facing UI |
+| 88 | `/api/notifications/unread-count` | Redundant for the panel because `GET /api/notifications` already returns `unread_count` |
 | 91 | `/api/notifications/test` | Admin test only |
 
 ### 5B — Dashboard Module Gap (historical)
@@ -702,7 +703,6 @@ snapshot.
 | 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
-| 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–93 | `/api/paper-trading/status`, `/api/paper-trading/graduation` | Legacy PT status/criteria endpoints not wrapped by current frontend API layer |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 
@@ -918,10 +918,10 @@ the §9.2 list plus `notifications.ts`.
 | Endpoint | Backend | Frontend | State | Note |
 |---|---|---|---|---|
 | `GET /api/notifications` | notifications.py:74 | notifications.ts:113 + `NotificationProvider` | ✅ matched | Panel loads backend rows and uses response `unread_count` |
-| `PUT /api/notifications/{notification_id}/read` | notifications.py:208 | notifications.ts:129 + row click handler | ✅ matched | Already-read rows are guarded client-side to avoid backend 404 reload |
-| `PUT /api/notifications/read-all` | notifications.py:120 | notifications.ts:142 + header action | ✅ matched | Header action marks loaded rows read and updates unread badge |
+| `PUT /api/notifications/{notification_id}/read` | notifications.py:208 | notifications.ts:138 + row click handler | ✅ matched | Already-read rows are guarded client-side to avoid backend 404 reload |
+| `PUT /api/notifications/read-all` | notifications.py:120 | notifications.ts:151 + header action | ✅ matched | Header action marks loaded rows read and updates unread badge |
 | `GET /api/notifications/unread-count` | notifications.py:107 | — | ⚠️ intentionally unused | Redundant for current panel because list response includes `unread_count` |
-| `GET /api/notifications/{notification_id}` | notifications.py:186 | — | ⚠️ frontend missing | No notification detail view exists yet |
+| `GET /api/notifications/{notification_id}` | notifications.py:186 | notifications.ts:129 + `NotificationPanel` detail view | ✅ matched | No-link notification rows open the backend detail payload |
 | `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ admin gap | No admin cleanup UI yet |
 | `GET/PUT /api/notifications/preferences` | notifications.py:152 / 170 | — | ⚠️ settings gap | Existing system notification settings use `/api/system/test-notification` and `/api/params` |
 | `POST /api/notifications/test` | notifications.py:230 | — | ⚠️ admin test gap | No direct frontend consumer |
@@ -937,7 +937,6 @@ the §9.2 list plus `notifications.ts`.
 
 ### §11.4 Remaining notification backlog
 
-- Add a notification detail view only if operators need a deep-link detail surface; current panel has enough title/content/link data for the sidebar workflow.
 - Add cleanup/preferences UI only if notification administration becomes an operator workflow. Until then, those endpoints remain backend/admin-only candidates rather than broken user-facing chains.
 
 ## §12 Fresh verify — 2026-06-01 (dashboard API-layer closure)
@@ -1884,4 +1883,60 @@ Fresh evidence:
 
 ### §25.4 Remaining Work
 
-Commit/push and GitHub checks remain pending for Batch 24.
+Batch 24 commit, push, and GitHub checks completed before Batch 25. No factor
+row 69 work remains.
+
+## §26 Fresh verify — 2026-06-01 (Notification detail view + unread-count reclass)
+
+### §26.1 Finding
+
+Rows 88-89 in §5D bundled two different cases. Fresh code review showed
+`GET /api/notifications/unread-count` is intentionally redundant because
+`GET /api/notifications` already returns `unread_count`, while
+`GET /api/notifications/{notification_id}` still lacked a frontend consumer.
+
+Fresh evidence:
+- `backend/app/api/notifications.py:74` and `:99-104` / §list route — list
+  response includes `unread_count`; fresh verify 2026-06-01 18:05 +08.
+- `backend/app/api/notifications.py:107` / §unread-count route — standalone
+  count endpoint remains backend-only by design; fresh verify 2026-06-01
+  18:05 +08.
+- `backend/app/api/notifications.py:186` / §notification detail route — detail
+  endpoint returns `repo.get_by_id()` or 404; fresh verify 2026-06-01
+  18:05 +08.
+- `frontend/src/api/notifications.ts:129` and `:134` / §notification API
+  wrappers — `fetchNotificationDetail()` calls `/notifications/{id}` and
+  normalizes the backend row; fresh verify 2026-06-01 18:05 +08.
+- `frontend/src/components/ui/NotificationPanel.tsx:128` and `:133` /
+  §notification panel — no-link rows fetch and render backend detail content;
+  fresh verify 2026-06-01 18:05 +08.
+
+### §26.2 Closure
+
+- Added `fetchNotificationDetail()` to the unified notification API layer.
+- Added a no-link notification detail state to `NotificationPanel`, including
+  load/error/detail/list states.
+- Added a dropdown-close regression so a reopened panel returns to the list
+  instead of stale detail content.
+- Reclassified row 88 as redundant and removed the notification row from §5D.
+
+### §26.3 Verification
+
+- RED detail contract:
+  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
+  failed before the wrapper/panel change because `fetchNotificationDetail` was
+  missing and the panel never called the backend detail endpoint.
+- RED close-state regression:
+  `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "returns to the list"`
+  failed before the close-path fix because reopened dropdowns still showed the
+  prior detail body.
+- GREEN targeted notification contracts:
+  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
+  -> 13 passed.
+
+Full regression/build/smoke results are recorded in the Batch 25 status report.
+
+### §26.4 Remaining Work
+
+Notification cleanup, preferences, and admin test endpoints remain backend/admin
+workflow candidates. They are not part of the current operator panel chain.

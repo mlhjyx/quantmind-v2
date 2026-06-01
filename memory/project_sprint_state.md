@@ -1,52 +1,62 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 24.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 25.
 date: 2026-06-01 +08:00
-status: governance_batch_24_factor_name_coverage_drift_targeted_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_24.md
+status: governance_batch_25_notification_detail_full_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_25.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 24
+## Current Handoff - 2026-06-01 Batch 25
 
-Mode: full-project closure/governance remediation, batch 24 factor `{name}`
-API coverage drift targeted verified before final regression/commit/push.
+Mode: full-project closure/governance remediation, batch 25 notification detail
+API coverage and unread-count reclassification fully verified before
+commit/push.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `2351496f` (`wire system streams viewer`), and PR #523 checks were clean before Batch 24 edits.
+- Latest pushed head before this batch is `29529dc1` (`close factor name
+  coverage drift`), and PR #523 checks were clean before Batch 25 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Row 69 `/api/factors/{name}` was inspected from §5D and proved to be
-  documentation drift: `fetchFactorIcSeries()` already wraps it and
-  `IcMonitoring.tsx` already consumes it for S1 IC time-series.
+- Row 88 `/api/notifications/unread-count` is redundant for the current
+  notification panel because the list endpoint already returns `unread_count`;
+  it was reclassified into §5A instead of adding a duplicate wrapper.
+- Row 89 `/api/notifications/{notification_id}` was a real frontend gap and is
+  now consumed by `fetchNotificationDetail()` plus the panel detail state.
+- During implementation, a close/reopen state bug surfaced: outside-click close
+  preserved stale detail content. A RED regression captured it before the
+  close-path fix.
 - Row 34 `/api/backtest/{run_id}/sensitivity` remains an intentional backend
   defer stub, not a missed frontend hook. Keep it in backlog unless the defer
   decision changes.
-- Runtime check against the existing 8000 FastAPI listener showed old loaded
-  SQL still running (`AVG(pnl)`, `benchmark_return`, and Decimal/float cost
-  arithmetic). A temporary uvicorn on 8011 with current source passed the same
-  detail endpoint probe. Treat port 8000 as needing a separate FastAPI reload
-  step before deployed runtime parity is claimed.
 
 Closed in this batch:
-- Added `fetchFactorIcSeries()` endpoint mapping coverage to
-  `frontend/src/__tests__/factors-api.test.ts`.
-- Added a source guard proving `IcMonitoring.tsx` still consumes the wrapper.
-- Updated `docs/API_COVERAGE.md` §3.6, row 69, §5D, historical O9, and new
-  §25; added
-  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_24.md`.
+- Added `fetchNotificationDetail()` to `frontend/src/api/notifications.ts`.
+- Wired no-link notification rows in
+  `frontend/src/components/ui/NotificationPanel.tsx` to render backend detail
+  payloads with load/error/back-to-list states.
+- Added notification API/UI contract tests and close/reopen regression coverage.
+- Updated `docs/API_COVERAGE.md` rows 88-90, §5A, §5D, §11, and new §26; added
+  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_25.md`.
 
 Verification:
-- Contract:
-  `npx vitest --run src/__tests__/factors-api.test.ts` -> 4 passed.
+- RED detail contract:
+  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
+  failed before implementation on missing detail wrapper/panel call.
+- RED close-state regression:
+  `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "returns to the list"`
+  failed before the close-path fix.
+- Targeted notification contracts:
+  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
+  -> 13 passed.
 - `npx tsc -b --pretty false` -> exit 0.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 146 passed.
+- `npx vitest --run` -> 149 passed.
 - `npm run build` -> exit 0 with existing Vite vendor-echarts chunk-size warning.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
@@ -54,13 +64,14 @@ Verification:
   passed, 2 skipped, 6976 deselected.
 
 Still open:
-- Run banned-word scan, then stage/commit/push Batch 24 and wait for GitHub
-  checks.
+- Run banned-word scan, then stage/commit/push Batch 25 and verify PR #523
+  remote checks before treating the batch as merge-ready.
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog.
-- API coverage row-level mappings outside backtest need a dedicated refresh
-  against the 170-route / 18-module aggregate count.
+- Remaining §5D backlog: row 34 backtest sensitivity; rows 44-46 execution
+  pending-orders/log/algo-config; row 62 execution alert-config PUT; rows
+  92-93 legacy paper-trading status/graduation; rows 134-136 and 140-141
+  strategy versions/factors/backtest.
 - Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
   and `beat`; then verify a fresh `realtime_risk_tick` row reports
   `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
@@ -70,7 +81,17 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Stage/commit/push Batch 22, then wait for GitHub checks before continuing.
+- Stage/commit/push Batch 25, update PR #523, then verify GitHub checks before
+  continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 24
+
+Batch 24 closed row 69 `/api/factors/{name}` as API coverage documentation
+drift. `fetchFactorIcSeries()` already wrapped the endpoint and
+`IcMonitoring.tsx` already consumed it. Commit `29529dc1` pushed as `close
+factor name coverage drift`; PR #523 checks passed before Batch 25 edits.
 
 ---
 

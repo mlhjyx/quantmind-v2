@@ -11,6 +11,7 @@ vi.mock("@/api/client", () => ({
 }));
 
 import {
+  fetchNotificationDetail,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -76,6 +77,30 @@ describe("notifications API contract", () => {
     await markNotificationRead("api-1");
 
     expect(apiClientMock.put).toHaveBeenCalledWith("/notifications/api-1/read");
+  });
+
+  it("loads a notification detail row through the backend endpoint", async () => {
+    apiClientMock.get.mockResolvedValueOnce({
+      data: {
+        id: "api-1",
+        level: "P1",
+        category: "risk",
+        title: "Backend risk alert",
+        content: "Full backend detail body",
+        is_read: true,
+        created_at: "2026-06-01T09:00:00+08:00",
+      },
+    });
+
+    const result = await fetchNotificationDetail("api-1");
+
+    expect(apiClientMock.get).toHaveBeenCalledWith("/notifications/api-1");
+    expect(result).toMatchObject({
+      id: "api-1",
+      title: "Backend risk alert",
+      content: "Full backend detail body",
+      is_read: true,
+    });
   });
 
   it("marks all notifications as read through the backend endpoint", async () => {

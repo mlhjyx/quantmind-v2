@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 const notificationsApiMock = vi.hoisted(() => ({
+  fetchNotificationDetail: vi.fn(),
   fetchNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
@@ -69,6 +70,11 @@ describe("NotificationPanel backend contract", () => {
     notificationsApiMock.markNotificationRead.mockResolvedValue({
       success: true,
       id: "api-1",
+    });
+    notificationsApiMock.fetchNotificationDetail.mockResolvedValue({
+      ...apiNotification,
+      content: "Full backend notification detail",
+      is_read: true,
     });
     notificationsApiMock.markAllNotificationsRead.mockResolvedValue({
       success: true,
@@ -141,6 +147,39 @@ describe("NotificationPanel backend contract", () => {
     await user.click(screen.getByRole("button", { name: "全部已读" }));
 
     expect(notificationsApiMock.markAllNotificationsRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a backend detail view for a no-link notification row", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() => {
+      expect(notificationsApiMock.fetchNotifications).toHaveBeenCalled();
+    });
+    await user.click(screen.getByRole("button", { name: "通知中心" }));
+    await user.click(await screen.findByText("Backend risk alert"));
+
+    expect(notificationsApiMock.fetchNotificationDetail).toHaveBeenCalledWith("api-1");
+    expect(await screen.findByText("通知详情")).toBeInTheDocument();
+    expect(screen.getByText("Full backend notification detail")).toBeInTheDocument();
+  });
+
+  it("returns to the list after the detail dropdown is closed", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() => {
+      expect(notificationsApiMock.fetchNotifications).toHaveBeenCalled();
+    });
+    await user.click(screen.getByRole("button", { name: "通知中心" }));
+    await user.click(await screen.findByText("Backend risk alert"));
+    expect(await screen.findByText("Full backend notification detail")).toBeInTheDocument();
+
+    await user.click(document.body);
+    await user.click(screen.getByRole("button", { name: "通知中心" }));
+
+    expect(screen.queryByText("Full backend notification detail")).not.toBeInTheDocument();
+    expect(screen.getByText("Loaded from backend")).toBeInTheDocument();
   });
 
   it("does not call the mark-read endpoint for already-read rows", async () => {

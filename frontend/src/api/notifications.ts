@@ -126,6 +126,15 @@ export async function fetchNotifications(
   };
 }
 
+export async function fetchNotificationDetail(notificationId: string): Promise<NotificationItem> {
+  const id = notificationId.trim();
+  if (!id) {
+    throw new Error("notification id is required");
+  }
+  const { data } = await apiClient.get<RawNotificationItem>(`/notifications/${id}`);
+  return normalizeNotification(data);
+}
+
 export async function markNotificationRead(
   notificationId: string,
 ): Promise<MarkNotificationReadResponse> {
