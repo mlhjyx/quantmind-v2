@@ -657,6 +657,62 @@ def test_aware_router_audit_error_class_primary_fail_fallback_engaged(
     assert row.actual_model == "ollama_chat/qwen3.5:9b"
 
 
+def test_aware_router_audit_persists_sanitized_primary_error_category(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback success rows persist provider error category after logs rotate."""
+    cost_storage: dict = {}
+    call_log_storage = _FakeCallLogStorage()
+
+    def factory() -> _CombinedFakeConn:
+        return _CombinedFakeConn(cost_storage, call_log_storage)
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            model="ollama_chat/qwen3.5:9b",
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+            _hidden_params={
+                "response_cost": 0.0,
+                "metadata": {
+                    "previous_models": [
+                        {
+                            "exception_type": "AuthenticationError",
+                            "exception_string": "Authentication Fails: invalid API key sk-test-secret",
+                        }
+                    ]
+                },
+            },
+        )
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    router = LiteLLMRouter()
+    budget = BudgetGuard(
+        factory,
+        monthly_budget_usd=Decimal("50.0"),
+        warn_threshold=Decimal("0.80"),
+        cap_threshold=Decimal("1.00"),
+    )
+    audit = LLMCallLogger(factory)
+    aware = BudgetAwareRouter(router, budget, audit=audit)
+
+    response = aware.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+        decision_id="d-auth-fallback",
+    )
+
+    assert response.is_fallback is True
+    assert call_log_storage.count() == 1
+    row = call_log_storage.rows[0]
+    assert row.error_class == "primary_fail_authentication"
+    assert "sk-test-secret" not in row.error_class
+
+
 def test_aware_router_audit_error_class_budget_capped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

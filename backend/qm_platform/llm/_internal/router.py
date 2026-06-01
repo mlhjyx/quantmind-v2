@@ -374,6 +374,10 @@ class LiteLLMRouter:
         )
 
         is_fallback = _is_fallback(actual_model=actual_model, primary_alias=primary_alias)
+        fallback_error_class = _extract_fallback_error_class(
+            result,
+            is_fallback=is_fallback,
+        )
 
         return LLMResponse(
             content=content,
@@ -384,6 +388,7 @@ class LiteLLMRouter:
             latency_ms=latency_ms,
             decision_id=decision_id,
             is_fallback=is_fallback,
+            fallback_error_class=fallback_error_class,
         )
 
 
@@ -523,6 +528,94 @@ def _extract_cost_usd(
 
     output_cost = Decimal(tokens_out) * output_rate
     return input_cost + output_cost
+
+
+def _value_from_container(container: Any, key: str) -> Any:
+    """Read key from LiteLLM dict/object metadata containers."""
+    if isinstance(container, dict):
+        return container.get(key)
+    if container is None:
+        return None
+    return getattr(container, key, None)
+
+
+def _extract_fallback_error_class(result: Any, *, is_fallback: bool) -> str | None:
+    """Return a durable, sanitized provider error category for fallback success rows.
+
+    LiteLLM Router records failed primary attempts under `previous_models` during
+    retry/fallback. The raw strings can include provider messages or key fragments,
+    so this helper only emits fixed category labels safe for `llm_call_log.error_class`.
+    """
+    if not is_fallback:
+        return None
+
+    hidden = getattr(result, "_hidden_params", None)
+    containers = [
+        hidden,
+        _value_from_container(hidden, "metadata"),
+        _value_from_container(hidden, "litellm_metadata"),
+        getattr(result, "metadata", None),
+        getattr(result, "litellm_metadata", None),
+    ]
+    for container in containers:
+        previous_models = _value_from_container(container, "previous_models")
+        if not isinstance(previous_models, list):
+            continue
+        for previous in previous_models:
+            if not isinstance(previous, dict):
+                continue
+            error_class = _classify_primary_provider_error(previous)
+            if error_class is not None:
+                return error_class
+    return None
+
+
+def _classify_primary_provider_error(previous_model: dict[str, Any]) -> str | None:
+    """Map LiteLLM previous-model exception metadata to fixed audit categories."""
+    exception_type = str(previous_model.get("exception_type") or "")
+    exception_string = str(previous_model.get("exception_string") or "")
+    if not exception_type and not exception_string:
+        return None
+
+    text = f"{exception_type} {exception_string}".lower()
+    category_patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (
+            "primary_fail_authentication",
+            (
+                "authentication",
+                "unauthorized",
+                "401",
+                "invalid api key",
+                "invalid key",
+                "api key",
+                "permission denied",
+            ),
+        ),
+        (
+            "primary_fail_rate_limit",
+            ("ratelimit", "rate limit", "429", "quota"),
+        ),
+        (
+            "primary_fail_timeout",
+            ("timeout", "timed out", "readtimeout"),
+        ),
+        (
+            "primary_fail_context_window",
+            ("contextwindow", "context window", "maximum context", "token limit"),
+        ),
+        (
+            "primary_fail_content_policy",
+            ("contentpolicy", "content policy", "policy violation", "safety"),
+        ),
+        (
+            "primary_fail_provider_unavailable",
+            ("serviceunavailable", "503", "apiconnection", "connection error"),
+        ),
+    )
+    for category, patterns in category_patterns:
+        if any(pattern in text for pattern in patterns):
+            return category
+    return "primary_fail_provider_error"
 
 
 PRIMARY_MODEL_SUBSTRINGS: dict[str, str] = {

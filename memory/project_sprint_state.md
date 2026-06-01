@@ -1,13 +1,49 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 7.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 8.
 date: 2026-06-01 +08:00
-status: governance_batch_7_mining_candidate_gate_contract_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_7.md
+status: governance_batch_8_llm_fallback_audit_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_8.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 7
+## Current Handoff - 2026-06-01 Batch 8
+
+Mode: full-project closure/governance remediation, batch 8 LLM fallback audit category durability verified locally before final smoke/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the LLM fallback audit path from code: `LiteLLMRouter` detected fallback, but `LLMResponse` did not expose a sanitized primary-provider failure category.
+- Confirmed `BudgetAwareRouter._audit_log()` persisted only the broad `primary_fail_fallback_engaged` label for non-capped fallback success rows.
+- Added `LLMResponse.fallback_error_class` with fixed category-only values.
+- Added LiteLLM metadata extraction from `previous_models` containers without persisting raw provider error strings.
+- Updated audit row construction to write the sanitized category for primary-fail fallback rows while keeping `budget_capped` and `budget_capped_routing_anomaly` behavior unchanged.
+- Added router/audit regression tests for authentication fallback metadata and no raw key-fragment persistence.
+
+Verified so far:
+- RED: `pytest backend/tests/test_litellm_router_core.py::test_fallback_response_records_sanitized_provider_error_class backend/tests/test_litellm_audit.py::test_aware_router_audit_persists_sanitized_primary_error_category -q` failed before the fix on missing `fallback_error_class` and broad audit labeling.
+- GREEN targeted tests -> 2 passed.
+- `pytest backend/tests/test_litellm_router_core.py backend/tests/test_litellm_audit.py -q` -> 52 passed.
+- `pytest backend/tests/test_litellm_budget.py backend/tests/test_meta_monitor_service.py -q` -> 61 passed.
+- `pytest backend/tests/test_market_regime_service.py backend/tests/test_news_classifier_service.py backend/tests/test_news_classifier_rag_wire.py backend/tests/test_rag_consumer_smoke.py backend/tests/test_regime_rag_wire.py -q` -> 97 passed, 2 skipped.
+- `ruff check backend/qm_platform/llm backend/tests/test_litellm_router_core.py backend/tests/test_litellm_audit.py` -> pass.
+- `ruff format --check backend/qm_platform/llm backend/tests/test_litellm_router_core.py backend/tests/test_litellm_audit.py` -> pass.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final smoke/diff checks, commit/push Batch 8 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 7
 
 Mode: full-project closure/governance remediation, batch 7 mining candidate normalization and Gate payload closure verified locally before final commit/CI.
 
