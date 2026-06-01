@@ -1,81 +1,88 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 27.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 28.
 date: 2026-06-01 +08:00
-status: governance_batch_27_pt_status_full_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_27.md
+status: governance_batch_28_strategy_workspace_full_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_28.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 27
+## Current Handoff - 2026-06-01 Batch 28
 
-Mode: full-project closure/governance remediation, batch 27 paper-trading
-status coverage and parameterized graduation endpoint reclassification fully
-verified before commit/push.
+Mode: full-project closure/governance remediation, batch 28 strategy edit-route
+loading, strategy metadata coverage, and strategy API request-shape drift
+remediation locally verified before commit/push.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `081296d9` (`wire execution db
-  fallback`), and PR #523 checks were clean before Batch 27 edits.
+- Latest pushed head before this batch is `a23f762b` (`wire pt status summary`),
+  and PR #523 checks were clean before Batch 28 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Row 92 `/api/paper-trading/status` is a useful read-only PT lifecycle/status
-  endpoint. `PtStatus.tsx` already had an S2 trading-state card, but it did not
-  consume the PT status payload.
-- Row 93 `/api/paper-trading/graduation` is an older parameterized criteria
-  endpoint requiring caller-supplied backtest baselines. Current operator gate
-  UI uses `/api/paper-trading/graduation-status`, already wrapped and consumed.
-- Row 34 `/api/backtest/{run_id}/sensitivity` remains an intentional backend
-  defer stub, not a missed frontend hook. Keep it in backlog unless the defer
-  decision changes.
+- Strategy rows 134-136 and 140-141 are not one class of gap. Versions GET and
+  factors GET are read-only and useful in the edit workspace; version create
+  and rollback are real mutations and need diff/confirm/audit semantics.
+- `/strategy/:id` already existed but `StrategyWorkspace.tsx` ignored the route
+  id, so edit links opened a blank editor instead of the selected strategy.
+- Existing strategy create/update wrappers sent the old editor payload directly;
+  backend request models require `market/config/factor_names` for create and
+  `factor_config/backtest_config` for update.
+- Row 141 direct strategy backtest trigger stays outside the workspace because
+  `/backtest/config?strategy_id=...` is the safer confirmation path.
 
 Closed in this batch:
-- Added typed `PaperTradingStatus` and `fetchPaperTradingStatus()` to
-  `frontend/src/api/dashboard.ts`.
-- Wired `frontend/src/pages/PtStatus.tsx` S2 trading-state card to query and
-  render PT NAV, holdings count, running days, latest data date, Sharpe, MDD,
-  cumulative return, and graduation-day readiness.
-- Extended `frontend/src/__tests__/pt-graduation-api-contract.test.ts`.
-- Updated `docs/API_COVERAGE.md` row 92, row 93, §3.4, §5C, §5D, and new §28;
-  added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_27.md`.
+- Added typed strategy detail/version/factor wrappers and backend-shape
+  normalization in `frontend/src/api/strategies.ts`.
+- Adapted strategy create/update wrappers to backend request bodies.
+- Wired `frontend/src/pages/StrategyWorkspace.tsx` to load `/strategy/:id`,
+  display versions/factors metadata, and route run-backtest through
+  `/backtest/config?strategy_id=...`.
+- Added query keys for strategy versions/factors.
+- Added `frontend/src/__tests__/strategy-api-contract.test.ts`.
+- Added a partial-update regression so name-only updates do not send empty
+  config blocks to the backend.
+- Updated `docs/API_COVERAGE.md` §3.10, rows 132-141, §5C, §5D, §5E, and new
+  §29; added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_28.md`.
 
 Verification:
-- RED PT status contract:
-  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` failed
-  before implementation on missing status wrapper/page usage.
-- Targeted PT contract:
-  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` -> 4
+- RED strategy contract:
+  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` failed before
+  implementation on detail normalization, missing versions/factors wrappers,
+  create/update request-shape adaptation, and route-id workspace wiring.
+- Targeted strategy contract:
+  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` -> 5
   passed.
-- Backend endpoint compatibility:
-  `pytest backend/tests/test_api_routes.py::TestPaperTradingAPI -q` -> 7
+- Backend strategy API compatibility:
+  `pytest backend/tests/test_api_routes.py::TestStrategiesAPI -q` -> 11
   passed.
 - `npx tsc -b --pretty false` -> exit 0.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 154 passed.
+- `npx vitest --run` -> 159 passed.
 - `npm run build` -> exit 0 with existing Vite vendor-echarts chunk-size warning.
-- Browser smoke on `http://127.0.0.1:5173/pt-status?smoke=batch27`:
-  PT status screen rendered, S2 showed the PT status metrics, and the
-  timestamped console-error window after `2026-06-01T10:35:15.523Z` had 0 new
-  errors.
-- Read-only endpoint probe:
-  `GET http://127.0.0.1:8000/api/paper-trading/status` -> 200 with expected
-  status payload shape.
+- Browser smoke on
+  `http://127.0.0.1:5173/strategy/28fc37e5-2d32-4ada-92e0-41c11a5103d0?smoke=batch28`:
+  saved strategy name, versions/factors panel, and run-backtest button rendered
+  with 0 new console errors. Clicking run-backtest navigated to
+  `/backtest/config?strategy_id=28fc37e5-2d32-4ada-92e0-41c11a5103d0` with 0
+  new console errors.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
 
 Still open:
-- Run banned-word scan, then stage/commit/push Batch 27 and verify PR #523
-  remote checks before treating the batch as merge-ready.
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Remaining §5D backlog: row 34 backtest sensitivity; rows 134-136 and 140-141
-  strategy versions/factors/backtest.
+- Remaining §5D backlog: row 34 backtest sensitivity only.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
 - Row 93 `/api/paper-trading/graduation` stays outside current operator UI
   unless caller-supplied backtest baselines are reintroduced.
 - Row 62 alert-config requires a backend design for storage, validation, diff
@@ -89,8 +96,17 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Stage/commit/push Batch 27, update PR #523, then verify GitHub checks before
+- Stage/commit/push Batch 28, update PR #523, then verify GitHub checks before
   continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 27
+
+Batch 27 closed paper-trading row 92 by wiring `/api/paper-trading/status` into
+`PtStatus.tsx` S2 and reclassified row 93 as superseded by fixed-standard
+`/api/paper-trading/graduation-status`. Commit `a23f762b` pushed as `wire pt
+status summary`; PR #523 checks passed before Batch 28 edits.
 
 ---
 

@@ -479,13 +479,15 @@ strategy overview, factor rows, and pipeline steps.
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| strategies.ts:47 | GET | `/strategies` |
-| strategies.ts:67 | GET | `/strategies/{id}` |
-| strategies.ts:72 | POST | `/strategies` |
-| strategies.ts:77 | PUT | `/strategies/{id}` |
-| strategies.ts:82 | DELETE | `/strategies/{id}` |
+| strategies.ts:238 | GET | `/strategies` |
+| strategies.ts:243/252 | GET | `/strategies/{id}` |
+| strategies.ts:256 | GET | `/strategies/{id}/versions` |
+| strategies.ts:261 | GET | `/strategies/{id}/factors` |
+| strategies.ts:270 | POST | `/strategies` |
+| strategies.ts:287 | PUT | `/strategies/{id}` |
+| strategies.ts:302 | DELETE | `/strategies/{id}` |
 
-**5 calls → all 5 consumed** (#132, #133, #137, #138, #139)
+**7 calls → all 7 consumed** (#132, #133, #134, #137, #138, #139, #140)
 
 ### 3.11 system.ts (`frontend/src/api/system.ts`)
 
@@ -646,15 +648,15 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 129 | `/api/risk/stress-tests` | GET | risk.ts:277 | ✅ |
 | 130 | `/api/risk/dingtalk-webhook` | POST | — | ❌ |
 | 131 | `/api/sse/risk-events` | GET | — | ❌ |
-| 132 | `/api/strategies` | GET | strategies.ts:47 | ✅ |
-| 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:67 | ✅ |
-| 134 | `/api/strategies/{strategy_id}/versions` | GET | — | ❌ |
+| 132 | `/api/strategies` | GET | strategies.ts:238 | ✅ |
+| 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:243/252 | ✅ |
+| 134 | `/api/strategies/{strategy_id}/versions` | GET | strategies.ts:256 | ✅ |
 | 135 | `/api/strategies/{strategy_id}/versions` | POST | — | ❌ |
 | 136 | `/api/strategies/{strategy_id}/rollback` | POST | — | ❌ |
-| 137 | `/api/strategies` | POST | strategies.ts:72 | ✅ |
-| 138 | `/api/strategies/{strategy_id}` | PUT | strategies.ts:77 | ✅ |
-| 139 | `/api/strategies/{strategy_id}` | DELETE | strategies.ts:82 | ✅ |
-| 140 | `/api/strategies/{strategy_id}/factors` | GET | — | ❌ |
+| 137 | `/api/strategies` | POST | strategies.ts:270 | ✅ |
+| 138 | `/api/strategies/{strategy_id}` | PUT | strategies.ts:287 | ✅ |
+| 139 | `/api/strategies/{strategy_id}` | DELETE | strategies.ts:302 | ✅ |
+| 140 | `/api/strategies/{strategy_id}/factors` | GET | strategies.ts:261 | ✅ |
 | 141 | `/api/strategies/{strategy_id}/backtest` | POST | — | ❌ |
 | 142 | `/api/system/datasources` | GET | system.ts:110 | ✅ |
 | 143 | `/api/system/health` | GET | system.ts:190 | ✅ |
@@ -696,6 +698,7 @@ snapshot.
 | 107–110 | `/api/pms/*` | **PHYSICALLY RETIRED iter 50 2026-05-24 (ADR-094)** — pms_engine.py + api/pms.py + frontend page/route/nav 同 PR 全部删除. V3 SSOT 走 V3 §4 L1 PMSRule + V3 §7.3 trailing_stop |
 | 46 | `/api/execution/algo-config` | Legacy display-only endpoint from the retired `TradeExecution` path; prior audits found it can expose stale `strategy_configs` display values and is not in the trading path |
 | 93 | `/api/paper-trading/graduation` | Legacy parameterized criteria endpoint requiring caller-supplied backtest baselines; current operator UI uses fixed-standard `/api/paper-trading/graduation-status` instead |
+| 141 | `/api/strategies/{strategy_id}/backtest` | Direct async trigger is superseded by the operator-confirmed `/backtest/config?strategy_id=...` flow, which submits through `/api/backtest/run` after configuration review |
 | 98 | `/api/params/changelog` | No frontend UI for changelog |
 | 99 | `/api/params/{key}` GET | Only PUT consumed; GET by key unused |
 | 101 | `/api/params/init-defaults` | Init script only |
@@ -705,13 +708,13 @@ snapshot.
 | # | Endpoint | Priority |
 |---|----------|----------|
 | 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
-| 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 
 ### 5E — Needs Backend Semantics Before UI
 
 | # | Endpoint | Rationale |
 |---|----------|-----------|
 | 62 | `/api/execution/alert-config` PUT | Admin-gated endpoint only writes `operation_audit_log` and echoes the payload; no config store or runtime reload semantics exist yet, so wiring a UI would imply a mutation that does not persist |
+| 135–136 | `/api/strategies/{strategy_id}/versions` POST, `/rollback` POST | Version creation and rollback are real mutations. UI needs explicit diff preview, changelog policy, rollback confirmation, audit trail, and post-mutation reload semantics before these controls should be exposed |
 
 ---
 
@@ -2069,3 +2072,80 @@ Full regression/build/smoke results are recorded in the Batch 27 status report.
 `/api/paper-trading/graduation` should stay out of the current operator UI
 unless the product reintroduces caller-supplied backtest baselines. The active
 gate view should continue to use `/api/paper-trading/graduation-status`.
+
+## §29 Fresh verify — 2026-06-01 (Strategy edit route + read-only metadata)
+
+### §29.1 Finding
+
+Rows 134-136 and 140-141 were grouped as one strategy-management gap, but fresh
+code review split them into four classes:
+
+- Row 134 `/api/strategies/{strategy_id}/versions` and row 140
+  `/api/strategies/{strategy_id}/factors` are read-only metadata endpoints.
+  They belong on the strategy edit workspace because they help the operator
+  understand the loaded strategy before saving or configuring a backtest.
+- `/strategy/:id` already existed in the router, but `StrategyWorkspace.tsx`
+  ignored the route id and opened a blank editor. The edit action from
+  `StrategyLibrary.tsx` therefore did not load the selected backend strategy.
+- Existing create/update wrappers sent the UI editor payload directly, while
+  the backend requires `market`, `config`, and `factor_names` on create, and
+  `factor_config` / `backtest_config` on update.
+- Row 141 `/api/strategies/{strategy_id}/backtest` is a direct async trigger.
+  Current operator flow should stay on `/backtest/config?strategy_id=...`,
+  then submit through `/api/backtest/run` after config review.
+- Rows 135-136 are real version mutations and need an explicit diff/rollback
+  workflow before UI exposure.
+
+Fresh evidence:
+- `backend/app/api/strategies.py:29`, `:38`, and `:60` / §request models —
+  create/update/backtest request bodies require backend-specific shapes; fresh
+  verify 2026-06-01 18:48 +08.
+- `backend/app/api/strategies.py:115`, `:148`, `:174`, `:268`, and `:290` /
+  §strategy router — versions GET, version create, rollback, factors GET, and
+  direct backtest trigger are separate endpoints with different risk profiles;
+  fresh verify 2026-06-01 18:48 +08.
+- `frontend/src/router.tsx:51-53` / §strategy routes — `/strategy/:id` is a
+  real edit route; fresh verify 2026-06-01 18:48 +08.
+- `frontend/src/api/strategies.ts:243-261`, `:270`, and `:287` / §strategy API
+  wrappers — frontend now normalizes detail, versions, and factors and adapts
+  create/update payloads to backend request bodies; fresh verify 2026-06-01
+  18:48 +08.
+- `frontend/src/pages/StrategyWorkspace.tsx:120`, `:162`, `:172`, and `:243` /
+  §strategy workspace — page now reads the route id, queries versions/factors,
+  and routes backtests through the confirmation page; fresh verify 2026-06-01
+  18:48 +08.
+
+### §29.2 Closure
+
+- Added typed strategy detail/version/factor wrappers and backend-shape
+  normalization in `frontend/src/api/strategies.ts`.
+- Adapted create/update wrappers to the backend request contract.
+- Wired `/strategy/:id` to load the selected strategy into `StrategyWorkspace`.
+- Added a compact versions/factors metadata panel to the strategy workspace.
+- Changed strategy backtest navigation to include `strategy_id` in the existing
+  config-confirmation route instead of calling the direct strategy trigger.
+- Marked rows 134 and 140 as consumed, moved rows 135-136 to §5E, and moved row
+  141 to §5C as superseded by the confirmation flow.
+
+### §29.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` failed before
+  implementation because detail normalization, versions/factors wrappers,
+  backend-shape create/update adaptation, and route-id workspace wiring were
+  missing.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` -> 5 passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full regression/build/smoke results are recorded in the Batch 28 status report.
+
+### §29.4 Remaining Work
+
+Rows 135-136 need a small version-management design before implementation:
+version diff preview, required changelog text, rollback confirmation, audit
+record display, post-mutation reload, and a regression proving the editor
+refreshes after rollback. Row 141 should remain outside the workspace unless a
+separate "quick run" product decision replaces the safer config-confirmation
+path.

@@ -24,6 +24,8 @@ export const queryKeys = {
   // ── Strategies ──
   strategies: ["strategies"] as const,
   strategyDetail: (id: string) => ["strategies", id] as const,
+  strategyVersions: (id: string) => ["strategies", id, "versions"] as const,
+  strategyFactors: (id: string) => ["strategies", id, "factors"] as const,
 
   // ── Backtests ──
   backtestHistory: ["backtest-history"] as const,

@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -10,10 +10,22 @@ import { StrategyPreview } from "@/components/strategy/StrategyPreview";
 import { AssistPanel } from "@/components/ai/AssistPanel";
 import { useNotificationStore } from "@/store/notificationStore";
 import { getFactorsSummary } from "@/api/factors";
-import { listStrategies, createStrategy, updateStrategy } from "@/api/strategies";
+import {
+  createStrategy,
+  getStrategy,
+  getStrategyFactors,
+  getStrategyVersions,
+  listStrategies,
+  updateStrategy,
+} from "@/api/strategies";
 import { STALE } from "@/api/QueryProvider";
 import { queryKeys } from "@/lib/queryKeys";
-import type { StrategyCreatePayload, Strategy } from "@/api/strategies";
+import type {
+  Strategy,
+  StrategyConfigVersion,
+  StrategyCreatePayload,
+  StrategyFactorsResponse,
+} from "@/api/strategies";
 
 const DEFAULT_CONFIG: StrategyCreatePayload = {
   name: "",
@@ -29,9 +41,85 @@ const DEFAULT_CONFIG: StrategyCreatePayload = {
 
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
+function strategyToPayload(strategy: Strategy): StrategyCreatePayload {
+  return {
+    name: strategy.name,
+    description: strategy.description ?? "",
+    factor_ids: strategy.factor_ids,
+    top_n: strategy.top_n,
+    rebalance_freq: strategy.rebalance_freq,
+    weight_method: strategy.weight_method,
+    industry_cap: strategy.industry_cap,
+    single_stock_cap: strategy.single_stock_cap,
+    initial_capital: strategy.initial_capital,
+  };
+}
+
+function StrategyMetadataPanel({
+  versions,
+  factors,
+  loading,
+}: {
+  versions: StrategyConfigVersion[];
+  factors?: StrategyFactorsResponse;
+  loading: boolean;
+}) {
+  const latest = versions[0];
+  const factorRows = factors?.factors ?? [];
+
+  return (
+    <GlassCard padding="sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-slate-200">版本与因子</h3>
+        {loading && <span className="text-xs text-slate-500">加载中</span>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="px-2.5 py-2 rounded-lg bg-white/5 border border-white/5">
+          <p className="text-xs text-slate-500">版本数</p>
+          <p className="text-base font-semibold text-slate-200">{versions.length}</p>
+        </div>
+        <div className="px-2.5 py-2 rounded-lg bg-white/5 border border-white/5">
+          <p className="text-xs text-slate-500">因子数</p>
+          <p className="text-base font-semibold text-slate-200">
+            {factors?.factor_names.length ?? factorRows.length}
+          </p>
+        </div>
+      </div>
+
+      {latest ? (
+        <div className="mb-3 text-xs text-slate-400">
+          <span className="text-slate-500">最新版本</span>
+          <span className="ml-2 text-slate-200">v{latest.version}</span>
+          {latest.changelog && <p className="mt-1 line-clamp-2">{latest.changelog}</p>}
+        </div>
+      ) : (
+        <p className="mb-3 text-xs text-slate-500">暂无版本记录</p>
+      )}
+
+      {factorRows.length > 0 ? (
+        <div className="space-y-1.5">
+          {factorRows.slice(0, 5).map((factor) => (
+            <div key={factor.name} className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-300 truncate">{factor.name}</span>
+              <span className="text-xs text-slate-500 shrink-0">
+                {factor.direction === -1 ? "反向" : factor.direction === 1 ? "正向" : "待补"}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">未返回因子明细</p>
+      )}
+    </GlassCard>
+  );
+}
+
 export default function StrategyWorkspace() {
   const navigate = useNavigate();
+  const { id: routeStrategyId } = useParams<{ id?: string }>();
   const queryClient = useQueryClient();
+  const routeEditId = routeStrategyId && routeStrategyId !== "new" ? routeStrategyId : null;
 
   const [config, setConfig] = useState<StrategyCreatePayload>(DEFAULT_CONFIG);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -54,6 +142,52 @@ export default function StrategyWorkspace() {
     retry: false,
   });
 
+  const {
+    data: routeStrategy,
+    isFetching: strategyDetailLoading,
+    isError: strategyDetailError,
+  } = useQuery({
+    queryKey: routeEditId ? [...queryKeys.strategyDetail(routeEditId)] : ["strategies", "new"],
+    queryFn: () => getStrategy(routeEditId!),
+    enabled: Boolean(routeEditId),
+    staleTime: STALE.config,
+    retry: false,
+  });
+
+  const metadataStrategyId = editingId ?? routeEditId;
+  const { data: strategyVersions = [], isFetching: versionsLoading } = useQuery({
+    queryKey: metadataStrategyId
+      ? [...queryKeys.strategyVersions(metadataStrategyId)]
+      : ["strategies", "versions", "idle"],
+    queryFn: () => getStrategyVersions(metadataStrategyId!),
+    enabled: Boolean(metadataStrategyId),
+    staleTime: STALE.config,
+    retry: false,
+  });
+
+  const { data: strategyFactors, isFetching: factorsLoading } = useQuery({
+    queryKey: metadataStrategyId
+      ? [...queryKeys.strategyFactors(metadataStrategyId)]
+      : ["strategies", "factors", "idle"],
+    queryFn: () => getStrategyFactors(metadataStrategyId!),
+    enabled: Boolean(metadataStrategyId),
+    staleTime: STALE.factor,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!routeEditId) {
+      setConfig(DEFAULT_CONFIG);
+      setEditingId(null);
+    }
+  }, [routeEditId]);
+
+  useEffect(() => {
+    if (!routeStrategy) return;
+    setConfig(strategyToPayload(routeStrategy));
+    setEditingId(routeStrategy.id);
+  }, [routeStrategy]);
+
   const saveMutation = useMutation({
     mutationFn: () =>
       editingId
@@ -62,6 +196,10 @@ export default function StrategyWorkspace() {
     onSuccess: (saved: Strategy) => {
       setEditingId(saved.id);
       queryClient.invalidateQueries({ queryKey: [...queryKeys.strategies] });
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.strategyDetail(saved.id)] });
+      if (saved.id && saved.id !== routeEditId) {
+        navigate(`/strategy/${saved.id}`, { replace: !editingId });
+      }
     },
   });
 
@@ -94,23 +232,22 @@ export default function StrategyWorkspace() {
       });
       return;
     }
-    navigate("/backtest/config");
+    if (!editingId) {
+      useNotificationStore.getState().add({
+        type: "warning",
+        title: "请先保存策略",
+        message: "回测配置需要已保存的策略ID",
+      });
+      return;
+    }
+    navigate(`/backtest/config?strategy_id=${editingId}`);
   };
 
   const handleLoadStrategy = (s: Strategy) => {
-    setConfig({
-      name: s.name,
-      description: s.description ?? "",
-      factor_ids: s.factor_ids,
-      top_n: s.top_n,
-      rebalance_freq: s.rebalance_freq,
-      weight_method: s.weight_method,
-      industry_cap: s.industry_cap,
-      single_stock_cap: s.single_stock_cap,
-      initial_capital: s.initial_capital,
-    });
+    setConfig(strategyToPayload(s));
     setEditingId(s.id);
     setLoadPanelOpen(false);
+    navigate(`/strategy/${s.id}`);
   };
 
   return (
@@ -119,6 +256,9 @@ export default function StrategyWorkspace() {
 
       {factorsError && (
         <ErrorBanner message="因子数据加载失败，请确认后端API已启动" className="mb-3" />
+      )}
+      {strategyDetailError && (
+        <ErrorBanner message="策略详情加载失败，请返回策略库重新选择" className="mb-3" />
       )}
 
       {/* Header */}
@@ -143,6 +283,7 @@ export default function StrategyWorkspace() {
             onClick={() => {
               setConfig(DEFAULT_CONFIG);
               setEditingId(null);
+              navigate("/strategy/new");
             }}
           >
             新建
@@ -227,6 +368,12 @@ export default function StrategyWorkspace() {
         <div className="w-[260px] shrink-0 flex flex-col gap-4">
           {/* AI Assistant — Frontend Design v3 §3.2.2 (replaces Sprint 1.18 placeholder) */}
           <AssistPanel context={{ page: "strategy" }} mode="inline" />
+
+          <StrategyMetadataPanel
+            versions={strategyVersions}
+            factors={strategyFactors}
+            loading={strategyDetailLoading || versionsLoading || factorsLoading}
+          />
 
           {/* Strategy Preview */}
           <GlassCard className="flex-1 overflow-y-auto" padding="sm">
