@@ -1,13 +1,49 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 8.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 9.
 date: 2026-06-01 +08:00
-status: governance_batch_8_llm_fallback_audit_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_8.md
+status: governance_batch_9_notification_api_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_9.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 8
+## Current Handoff - 2026-06-01 Batch 9
+
+Mode: full-project closure/governance remediation, batch 9 notification panel API closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the notification UI/backend contract from code: backend `/api/notifications` routes existed, but `NotificationProvider` seeded local mock notifications and never called the backend.
+- Added `frontend/src/api/notifications.ts` wrappers for list, per-row read, and read-all endpoints with response normalization.
+- Refactored `NotificationProvider` to load backend rows, expose loading/error state, keep toast behavior, update unread counts, and avoid backend calls for already-read rows.
+- Updated `NotificationPanel` loading/empty/error/data states.
+- Removed the nested provider/toast mount from `Layout.tsx`; `main.tsx` remains the single app-level notification provider.
+- Updated `docs/API_COVERAGE.md` and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_9.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx` failed before the fix on missing API module, zero backend fetch calls, seeded mock rows, missing backend states, and missing backend mark-all call.
+- RED edge: `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "already-read"` failed before the guard because read rows still called the mark-read endpoint.
+- GREEN targeted notification contracts -> 10 passed.
+- `npx vitest --run` -> 100 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7005 deselected.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Notification detail, cleanup, and preferences endpoints remain backend/admin-only unless they become explicit operator workflows.
+
+Next safe step:
+- Run final diff/check hygiene, commit/push Batch 9 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 8
 
 Mode: full-project closure/governance remediation, batch 8 LLM fallback audit category durability verified locally before final smoke/CI.
 

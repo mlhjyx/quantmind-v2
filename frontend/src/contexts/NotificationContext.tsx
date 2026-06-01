@@ -6,19 +6,16 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type NotificationItem,
+  type NotificationLevel,
+} from "@/api/notifications";
 
-export type NotificationLevel = "P0" | "P1" | "P2" | "P3";
-
-export interface Notification {
-  id: string;
-  level: NotificationLevel;
-  category: string;
-  title: string;
-  content?: string;
-  link?: string;
-  is_read: boolean;
-  created_at: string;
-}
+export type { NotificationLevel };
+export type Notification = NotificationItem;
 
 export interface Toast {
   id: string;
@@ -32,6 +29,8 @@ interface NotificationContextValue {
   notifications: Notification[];
   toasts: Toast[];
   unreadCount: number;
+  isLoading: boolean;
+  error: string | null;
   addToast: (toast: Omit<Toast, "id">) => void;
   dismissToast: (id: string) => void;
   markRead: (id: string) => void;
@@ -40,86 +39,6 @@ interface NotificationContextValue {
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
-
-// ── Seed mock notifications ──
-function makeMockNotifications(): Notification[] {
-  const now = new Date();
-  function daysAgo(d: number) {
-    const dt = new Date(now);
-    dt.setDate(dt.getDate() - d);
-    return dt.toISOString();
-  }
-  return [
-    {
-      id: "n1",
-      level: "P0",
-      category: "风控",
-      title: "熔断告警: L2触发",
-      content: "组合回撤超过-8%，已自动降仓至50%。需人工确认恢复。",
-      link: "/settings/risk",
-      is_read: false,
-      created_at: daysAgo(0),
-    },
-    {
-      id: "n2",
-      level: "P1",
-      category: "PT",
-      title: "Paper Trading: 调仓信号生成",
-      content: "v1.1策略生成调仓信号，待执行4只股票。",
-      link: "/dashboard/astock",
-      is_read: false,
-      created_at: daysAgo(0),
-    },
-    {
-      id: "n3",
-      level: "P2",
-      category: "因子",
-      title: "因子体检完成",
-      content: "34个因子正常，2个因子IC衰减超阈值，建议复查。",
-      link: "/factors",
-      is_read: false,
-      created_at: daysAgo(1),
-    },
-    {
-      id: "n4",
-      level: "P2",
-      category: "回测",
-      title: "回测任务完成",
-      content: "动量反转v3回测完成，Sharpe 1.12，MDD -18.4%。",
-      link: "/backtest/config",
-      is_read: false,
-      created_at: daysAgo(1),
-    },
-    {
-      id: "n5",
-      level: "P3",
-      category: "系统",
-      title: "数据更新完成",
-      content: "日频行情数据已同步至2026-03-27。",
-      is_read: true,
-      created_at: daysAgo(1),
-    },
-    {
-      id: "n6",
-      level: "P1",
-      category: "AI",
-      title: "GP因子挖掘任务完成",
-      content: "本次挖掘发现3个候选因子，IC均值0.032，建议进入审批流程。",
-      link: "/mining",
-      is_read: true,
-      created_at: daysAgo(2),
-    },
-    {
-      id: "n7",
-      level: "P3",
-      category: "系统",
-      title: "备份完成",
-      content: "PostgreSQL全量备份成功，大小 2.1GB。",
-      is_read: true,
-      created_at: daysAgo(2),
-    },
-  ];
-}
 
 let _idCounter = 100;
 function nextId() {
@@ -135,12 +54,56 @@ const DISMISS_MS: Record<NotificationLevel, number | null> = {
 };
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>(
-    makeMockNotifications
-  );
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const loadNotifications = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetchNotifications({ limit: 50, offset: 0 });
+      setNotifications(response.items);
+      setUnreadCount(response.unread_count);
+      setError(null);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+      setError("通知加载失败");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      setIsLoading(true);
+      try {
+        const response = await fetchNotifications({ limit: 50, offset: 0 });
+        if (cancelled) return;
+        setNotifications(response.items);
+        setUnreadCount(response.unread_count);
+        setError(null);
+      } catch {
+        if (cancelled) return;
+        setNotifications([]);
+        setUnreadCount(0);
+        setError("通知加载失败");
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const addToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = nextId();
@@ -158,14 +121,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markRead = useCallback((id: string) => {
+    const target = notifications.find((n) => n.id === id);
+    if (!target || target.is_read) {
+      return;
+    }
+    setUnreadCount((prev) => Math.max(0, prev - 1));
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
     );
-  }, []);
+    void markNotificationRead(id).catch(() => {
+      setError("通知标记失败");
+      void loadNotifications();
+    });
+  }, [loadNotifications, notifications]);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-  }, []);
+    setUnreadCount(0);
+    void markAllNotificationsRead().catch(() => {
+      setError("通知标记失败");
+      void loadNotifications();
+    });
+  }, [loadNotifications]);
 
   const addNotification = useCallback(
     (n: Omit<Notification, "id" | "is_read" | "created_at">) => {
@@ -177,14 +154,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         created_at: new Date().toISOString(),
       };
       setNotifications((prev) => [newN, ...prev]);
+      setUnreadCount((prev) => prev + 1);
       // Also show as toast
       addToast({ level: n.level, title: n.title, content: n.content, link: n.link });
     },
     [addToast]
   );
-
-  // Suppress unused-effect lint — keep for future WebSocket integration
-  useEffect(() => {}, []);
 
   return (
     <NotificationContext.Provider
@@ -192,6 +167,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         notifications,
         toasts,
         unreadCount,
+        isLoading,
+        error,
         addToast,
         dismissToast,
         markRead,

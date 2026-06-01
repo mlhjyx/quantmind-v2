@@ -94,7 +94,7 @@ function NotificationItem({ n }: { n: Notification }) {
 }
 
 export function NotificationPanel() {
-  const { notifications, unreadCount, markAllRead } = useNotifications();
+  const { notifications, unreadCount, isLoading, error, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +147,15 @@ export function NotificationPanel() {
 
           {/* Notification list */}
           <div className="overflow-y-auto flex-1">
-            {notifications.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+                加载中
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+                {error}
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
                 暂无通知
               </div>

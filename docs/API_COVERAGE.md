@@ -4,7 +4,7 @@
 **Fresh verify addendum**: 2026-05-25 §9 is the current count baseline. The original
 matrix body is retained as historical audit evidence.
 **Current backend surface**: 162 endpoints across 24 router files (§10.1)
-**Current frontend API modules**: 12 files (§9.2)
+**Current frontend API modules**: 13 files (§11)
 **Current frontend-only orphan**: 0 after the 2026-05-28 O7 HTTP backfill closure
 (§10)
 **Methodology**: `@router.(get|post|put|delete|patch)` grep on `backend/app/api/**/*.py` + `apiClient.(get|post|put|delete|patch)` grep on `frontend/src/api/*.ts`
@@ -27,6 +27,8 @@ matrix body is retained as historical audit evidence.
   `GET /api/pipeline/{run_id}/logs` now has a Redis-backed HTTP endpoint; PN-005
   writer instrumentation and WebSocket tailing remain tracked as enhancement work,
   not frontend-only orphan work.
+- Notification panel mock seeding is closed in §11: list, per-row read, and
+  read-all flows now consume `frontend/src/api/notifications.ts`.
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -566,10 +568,10 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 84 | `/api/news/ingest_rsshub` | POST | — | ❌ |
 | 85 | `/api/news/ingest_announcement` | POST | — | ❌ |
 | 86 | `/api/news/stats` | GET | — | ❌ |
-| 87 | `/api/notifications` | GET | — | ❌ |
+| 87 | `/api/notifications` | GET | notifications.ts:113 | ✅ |
 | 88 | `/api/notifications/unread-count` | GET | — | ❌ |
 | 89 | `/api/notifications/{notification_id}` | GET | — | ❌ |
-| 90 | `/api/notifications/{notification_id}/read` | PUT | — | ❌ |
+| 90 | `/api/notifications/{notification_id}/read` | PUT | notifications.ts:129 | ✅ |
 | 91 | `/api/notifications/test` | POST | — | ❌ |
 | 92 | `/api/paper-trading/status` | GET | — | ❌ |
 | 93 | `/api/paper-trading/graduation` | GET | — | ❌ |
@@ -631,7 +633,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 
 ---
 
-## §5 Unused Endpoint Candidates (Backend-Only, 74 endpoints)
+## §5 Unused Endpoint Candidates (historical backend-only snapshot)
 
 > These endpoints have no frontend consumer in `frontend/src/api/*.ts`. Some are legitimate (admin scripts, DingTalk webhooks, health probes); others may be Phase J cleanup candidates.
 
@@ -669,7 +671,7 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
 | 75–77 | `/api/market/*` | Market data not consumed by any frontend module |
-| 87–90 | `/api/notifications/*` | Notifications panel not using API module |
+| 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
 | 111–113 | `/api/portfolio/*` | Portfolio panel bypasses API module |
 | 118–120 | `/api/reports/*` | Report generation not wired |
@@ -868,3 +870,38 @@ Remaining PN-005 scope is explicitly narrower:
 - a retention decision if the project later needs durable DB-backed history.
 
 These are enhancements/backlog, not current frontend-only API orphans.
+
+## §11 Fresh verify — 2026-06-01 (notification panel API closure)
+
+### §11.1 Frontend route consumer delta
+
+`frontend/src/api/notifications.ts` adds the missing frontend API module for the
+notification panel. The current frontend API module inventory is **13 files**:
+the §9.2 list plus `notifications.ts`.
+
+### §11.2 Notification endpoint status
+
+| Endpoint | Backend | Frontend | State | Note |
+|---|---|---|---|---|
+| `GET /api/notifications` | notifications.py:74 | notifications.ts:113 + `NotificationProvider` | ✅ matched | Panel loads backend rows and uses response `unread_count` |
+| `PUT /api/notifications/{notification_id}/read` | notifications.py:208 | notifications.ts:129 + row click handler | ✅ matched | Already-read rows are guarded client-side to avoid backend 404 reload |
+| `PUT /api/notifications/read-all` | notifications.py:120 | notifications.ts:142 + header action | ✅ matched | Header action marks loaded rows read and updates unread badge |
+| `GET /api/notifications/unread-count` | notifications.py:107 | — | ⚠️ intentionally unused | Redundant for current panel because list response includes `unread_count` |
+| `GET /api/notifications/{notification_id}` | notifications.py:186 | — | ⚠️ frontend missing | No notification detail view exists yet |
+| `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ admin gap | No admin cleanup UI yet |
+| `GET/PUT /api/notifications/preferences` | notifications.py:152 / 170 | — | ⚠️ settings gap | Existing system notification settings use `/api/system/test-notification` and `/api/params` |
+| `POST /api/notifications/test` | notifications.py:230 | — | ⚠️ admin test gap | No direct frontend consumer |
+
+### §11.3 Verification
+
+- RED: `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx` failed before the fix on missing `@/api/notifications`, zero backend fetch calls, seeded mock rows, and missing backend mark-all calls.
+- Edge RED: `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "already-read"` failed before the guard because read rows still called `markNotificationRead()`.
+- GREEN targeted notification contracts: 10 passed.
+- Full frontend suite: `npx vitest --run` -> 100 passed.
+- Frontend production build: `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7005 deselected.
+
+### §11.4 Remaining notification backlog
+
+- Add a notification detail view only if operators need a deep-link detail surface; current panel has enough title/content/link data for the sidebar workflow.
+- Add cleanup/preferences UI only if notification administration becomes an operator workflow. Until then, those endpoints remain backend/admin-only candidates rather than broken user-facing chains.
