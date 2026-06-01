@@ -22,12 +22,14 @@ Platform 严格隔离 sustained: 0 import backend.app.* (subprocess only).
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from backend.qm_platform.ci.orchestrator import CIPhase, CIResult
+from backend.qm_platform.ci.prepush import SMOKE_COLLECT_ONLY_ENV, SMOKE_COLLECT_TARGETS
 
 DEFAULT_CELL_TIMEOUT_SECONDS = 300  # 5min per cell (smoke ~50s + buffer)
 
@@ -83,6 +85,16 @@ def default_matrix() -> list[MatrixCell]:
 
 def _build_pytest_cmd(cell: MatrixCell) -> list[str]:
     """Build pytest invocation cmd for a matrix cell."""
+    if os.environ.get(SMOKE_COLLECT_ONLY_ENV) == "1":
+        return [
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-m",
+            cell.tags,
+            *SMOKE_COLLECT_TARGETS,
+        ]
+
     return [
         "pytest",
         "backend/tests/",

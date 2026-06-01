@@ -87,6 +87,21 @@ def test_default_cmd_builder_matches_prepush_smoke_scope():
     ]
 
 
+def test_collect_only_env_uses_prepush_smoke_collect_targets(monkeypatch: pytest.MonkeyPatch):
+    """Hosted CI can run matrix as a blocking collect/wiring gate."""
+    monkeypatch.setenv("QM_CI_SMOKE_COLLECT_ONLY", "1")
+    runner = MagicMock(return_value=_mk_completed(returncode=0))
+    orch = CIMatrixOrchestrator(matrix=default_matrix(), runner=runner)
+
+    orch.run_phase(CIPhase.CI_MATRIX)
+
+    cmd = runner.call_args.args[0]
+    assert cmd[:4] == ["pytest", "--collect-only", "-q", "-m"]
+    assert cmd[4] == "smoke and not live_tushare"
+    assert "backend/tests/smoke/" in cmd
+    assert "backend/tests/test_realtime_risk_beat_smoke.py" in cmd
+
+
 # ────────────────────────────────────────────────────────────
 # CIMatrixOrchestrator.run_phase scenarios
 # ────────────────────────────────────────────────────────────

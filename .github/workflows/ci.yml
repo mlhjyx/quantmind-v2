@@ -112,4 +112,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run ci_matrix phase
+        env:
+          QM_CI_SMOKE_COLLECT_ONLY: "1"
         run: python scripts/ci_run_phase.py --phase ci_matrix

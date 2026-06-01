@@ -25,6 +25,8 @@ Closed in this batch:
 - Added `backend/tests/test_github_ci_workflow.py` and included it in bounded pre-commit collect coverage.
 - Followed the first GitHub blocking failure: `ci_matrix` failed while `regression`, `pre_commit`, and `pre_push` passed, exposing that matrix smoke used a bare pytest command and hid the pytest tail.
 - Aligned `CIMatrixOrchestrator` smoke execution with the passing pre-push smoke scope and added bounded stdout-tail detail for failed matrix cells.
+- Followed the second GitHub blocking failure: the tail showed selected smoke tests ended with `3 errors` on GitHub-hosted runners, which matches the workflow's documented no-local-runtime constraint.
+- Added `QM_CI_SMOKE_COLLECT_ONLY=1` support to `CIMatrixOrchestrator` and set the hosted `ci_matrix` job to the same blocking collect/wiring contract as pre-push; local matrix still runs full smoke when the env var is absent.
 - Updated `docs/mvp/MVP_4_3_cicd.md` and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_10.md`.
 
 Verified so far:
@@ -38,6 +40,8 @@ Verified so far:
 - Matrix command/tail RED tests failed before the follow-up fix; full matrix orchestrator tests -> 18 passed after the fix.
 - `ruff check backend/qm_platform/ci/ci_matrix.py backend/tests/test_qm_platform_ci_matrix.py` -> PASS.
 - Follow-up `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
+- Hosted collect-only RED test failed before env support; full matrix orchestrator tests -> 19 passed after the fix.
+- Hosted collect-only `python scripts/ci_run_phase.py --phase ci_matrix` with `QM_CI_SMOKE_COLLECT_ONLY=1` -> PASS.
 
 Still open:
 - Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.

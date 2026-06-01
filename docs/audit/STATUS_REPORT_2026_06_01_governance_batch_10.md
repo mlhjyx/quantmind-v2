@@ -26,7 +26,8 @@ Active discovery:
 - Before the fix, `python scripts/ci_run_phase.py --phase regression` failed immediately with `FILE_MISSING` for the nonexistent `backtest_*` JSON files.
 - `python scripts/ci_run_phase.py --phase ci_matrix` already passed locally, so the advisory wrapper on that job was unnecessary noise.
 - Local pre-commit collect did not include a GitHub workflow contract test, so advisory masking could regress without tripping the bounded governance collect set.
-- After the first push, GitHub confirmed the new blocking behavior: `regression`, `pre_commit`, and `pre_push` passed, while `ci_matrix` failed instead of being masked. The matrix runner used a bare `pytest -m ... -q` command, unlike the passing pre-push smoke command on the same runner, and its failure detail exposed only `stdout_len`.
+- After the first push, GitHub confirmed the new blocking behavior: `regression`, `pre_commit`, and `pre_push` passed, while `ci_matrix` failed instead of being masked. The matrix runner used a bare `pytest -m ... -q` command, unlike the hosted pre-push collect-only command, and its failure detail exposed only `stdout_len`.
+- After the command-tail follow-up, GitHub showed the remaining hosted-runner gap explicitly: `ci_matrix` selected tests but ended with `3 errors`, because GitHub-hosted runners do not provide the local runtime services required by smoke execution.
 
 ## Fixes
 
@@ -37,6 +38,8 @@ Active discovery:
 - Added the workflow contract test to the bounded `pre_commit` collect target list.
 - Aligned `CIMatrixOrchestrator` smoke execution with the passing pre-push smoke scope: `pytest backend/tests/ -m "smoke and not live_tushare" --tb=line -q --timeout=60`.
 - Added bounded stdout-tail output for failed matrix cells so future GitHub failures include the last meaningful pytest line rather than only output length.
+- Added `QM_CI_SMOKE_COLLECT_ONLY=1` support to `CIMatrixOrchestrator`, sharing the pre-push collect target list for hosted CI.
+- Set the GitHub `ci_matrix` job to the blocking collect-only contract. Local matrix runs without that env still execute the full smoke command.
 - Updated `docs/mvp/MVP_4_3_cicd.md` to describe the blocking GitHub behavior.
 
 ## Verification
@@ -61,6 +64,10 @@ Green phase:
 - Matrix GREEN: `pytest backend/tests/test_qm_platform_ci_matrix.py::test_default_cmd_builder_matches_prepush_smoke_scope backend/tests/test_qm_platform_ci_matrix.py::test_cell_failure_includes_stdout_tail_for_debugging backend/tests/test_qm_platform_ci_matrix.py -q` -> 18 passed.
 - `ruff check backend/qm_platform/ci/ci_matrix.py backend/tests/test_qm_platform_ci_matrix.py` -> PASS.
 - Follow-up `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
+- Hosted collect-only RED: `pytest backend/tests/test_qm_platform_ci_matrix.py::test_collect_only_env_uses_prepush_smoke_collect_targets -q` failed before env support.
+- Hosted collect-only GREEN: `pytest backend/tests/test_qm_platform_ci_matrix.py -q` -> 19 passed.
+- Local full matrix mode: `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
+- Hosted collect-only mode: `$env:QM_CI_SMOKE_COLLECT_ONLY='1'; python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
 
 ## Open Backlog
 
