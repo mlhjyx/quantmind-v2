@@ -71,6 +71,16 @@ export interface SystemHealth {
   data_freshness?: { latest_kline_date: string | null; days_stale: number };
 }
 
+export interface SystemStreamStatus {
+  stream: string;
+  length: number;
+  last_published_at: string | null;
+}
+
+export interface SystemStreamsResponse {
+  streams: SystemStreamStatus[];
+}
+
 export interface QmtAccountAsset {
   total_asset: number;
   cash: number;
@@ -178,6 +188,11 @@ export async function fetchBeatSchedule(): Promise<BeatScheduleResponse> {
 
 export async function fetchSystemHealth(): Promise<SystemHealth> {
   const { data } = await apiClient.get<SystemHealth>("/system/health");
+  return data;
+}
+
+export async function fetchSystemStreams(): Promise<SystemStreamsResponse> {
+  const { data } = await apiClient.get<SystemStreamsResponse>("/system/streams");
   return data;
 }
 

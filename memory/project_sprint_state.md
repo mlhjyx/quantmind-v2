@@ -1,29 +1,32 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 22.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 23.
 date: 2026-06-01 +08:00
-status: governance_batch_22_backtest_results_deep_dive_frontend_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_22.md
+status: governance_batch_23_system_streams_frontend_targeted_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_23.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 22
+## Current Handoff - 2026-06-01 Batch 23
 
-Mode: full-project closure/governance remediation, batch 22 BacktestResults
-deep-dive frontend wiring locally verified before final commit/push.
+Mode: full-project closure/governance remediation, batch 23 SystemSettings
+Redis Streams viewer targeted verified before final regression/commit/push.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `844a101a` (`harden backtest detail endpoints`), and PR #523 checks were clean before Batch 22 edits.
+- Latest pushed head before this batch is `c6089e9e` (`wire backtest results detail endpoints`), and PR #523 checks were clean before Batch 23 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Batch 21 hardened rows 26-32 and 35 at the backend/runtime-contract layer,
-  but `BacktestResults.tsx` still consumed only sparse
-  `/backtest/{run_id}/result` data.
+- Row 34 `/api/backtest/{run_id}/sensitivity` was inspected first and is an
+  intentional backend defer stub, not a missed frontend hook. Keep it in
+  backlog unless the defer decision changes.
+- Row 144 `/api/system/streams` was a clean read-only closure candidate:
+  backend returns `stream`, `length`, and `last_published_at`, while
+  `SystemSettings` health tab had no Streams panel.
 - Runtime check against the existing 8000 FastAPI listener showed old loaded
   SQL still running (`AVG(pnl)`, `benchmark_return`, and Decimal/float cost
   arithmetic). A temporary uvicorn on 8011 with current source passed the same
@@ -31,40 +34,36 @@ Active discovery:
   step before deployed runtime parity is claimed.
 
 Closed in this batch:
-- Added typed detail wrappers to `frontend/src/api/backtest.ts` for monthly,
-  holdings, trades-for-result, annual risk metrics, Brinson attribution, cost
-  sensitivity, market-state, live-compare, and report URL.
-- Updated `frontend/src/pages/BacktestResults.tsx` so the page overlays detail
-  data onto the summary result and adds industry attribution, cost sensitivity,
-  market-state, and live-compare tabs.
-- Added `frontend/src/__tests__/backtest-results-detail-contract.test.ts` and
-  `frontend/src/__tests__/backtest-results-page-render.test.tsx`.
-- Updated `docs/API_COVERAGE.md` §3.2, rows 26-32/35, §5D, and new §23; added
-  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_22.md`.
+- Added `SystemStreamStatus`, `SystemStreamsResponse`, and
+  `fetchSystemStreams()` to `frontend/src/api/system.ts`.
+- Added a read-only Redis Streams panel to
+  `frontend/src/pages/SystemSettings.tsx` health tab with 30-second refresh,
+  stream totals, active stream count, per-stream length, and last publish time.
+- Added `frontend/src/__tests__/system-api-streams.test.ts` and
+  `frontend/src/__tests__/system-settings-streams.test.tsx`.
+- Updated `docs/API_COVERAGE.md` §3.11, row 144, §5D, D6, and new §24; added
+  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_23.md`.
 
 Verification:
-- RED: `npx vitest --run src/__tests__/backtest-results-detail-contract.test.ts`
-  first failed because wrappers/page wiring were absent.
-- Targeted: detail contract + BacktestCompare trade contract -> 9 passed.
-- Render: page render + detail contract -> 7 passed.
+- RED:
+  `npx vitest --run src/__tests__/system-api-streams.test.ts src/__tests__/system-settings-streams.test.tsx`
+  failed before implementation because `fetchSystemStreams` and the UI panel
+  were absent.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/system-api-streams.test.ts src/__tests__/system-settings-streams.test.tsx`
+  -> 2 passed.
 - `npx tsc -b --pretty false` -> exit 0.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 142 passed.
-- `npm run build` -> exit 0 with existing Vite vendor-echarts chunk warning.
-- `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7
-  passed.
+- `npx vitest --run` -> 144 passed.
+- `npm run build` -> exit 0 with existing Vite vendor-echarts chunk-size warning.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
-- Temporary current-source runtime probe on `127.0.0.1:8011` returned
-  monthly=4, holdings_summary=0, holdings_detail=0, annual=1,
-  attribution_industries=0, market_states=0, cost_rows=4, and
-  live_compare_has_backtest=true for run
-  `2c91bd92-ee0f-4f52-9244-795365cc1037`; the process was stopped.
 
 Still open:
-- Stage/commit/push Batch 22, then wait for GitHub checks.
+- Run banned-word scan, then stage/commit/push Batch 23 and wait for GitHub
+  checks.
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
 - Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog.

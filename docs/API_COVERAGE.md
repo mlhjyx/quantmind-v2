@@ -485,16 +485,21 @@ strategy overview, factor rows, and pipeline steps.
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| system.ts:57 | GET | `/system/datasources` |
-| system.ts:62 | GET | `/system/scheduler` |
-| system.ts:67 | GET | `/system/health` |
-| system.ts:72 | GET | `/params` |
-| system.ts:85 | PUT | `/params/{key}` |
-| system.ts:93 | POST | `/system/test-notification` |
-| system.ts:103 | GET | `/system/env-state` |
-| system.ts:130 | GET | `/system/calendar-info` |
+| system.ts:110 | GET | `/system/datasources` |
+| system.ts:149 | GET | `/system/scheduler` |
+| system.ts:185 | GET | `/system/beat-schedule` |
+| system.ts:190 | GET | `/system/health` |
+| system.ts:195 | GET | `/system/streams` |
+| system.ts:200 | GET | `/health/qmt` |
+| system.ts:205 | GET | `/params` |
+| system.ts:218 | PUT | `/params/{key}` |
+| system.ts:226 | POST | `/system/test-notification` |
+| system.ts:236 | GET | `/system/env-state` |
+| system.ts:263 | GET | `/system/calendar-info` |
+| system.ts:285 | GET | `/system/settings/paper-strategy-id` |
+| system.ts:325 | GET | `/system/scheduler-task-log` |
 
-**8 calls → all 8 consumed** (#142, #145, #143, #97, #100, #146, #148, #147)
+**13 calls → all 13 consumed** (#142, #145, beat dashboard, #143, #144, #74, #97, #100, #146, #148, #147, D5, scheduler dashboard)
 
 ---
 
@@ -577,7 +582,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 71 | `/api/factors/{name}/archive` | POST | factors.ts:196 | ✅ |
 | 72 | `/api/health` | GET | — | ❌ |
 | 73 | `/api/health/checks` | GET | — | ❌ |
-| 74 | `/api/health/qmt` | GET | system.ts:184 | ✅ |
+| 74 | `/api/health/qmt` | GET | system.ts:200 | ✅ |
 | 75 | `/api/market/indices` | GET | market.ts:34 | ✅ |
 | 76 | `/api/market/sectors` | GET | market.ts:39 | ✅ |
 | 77 | `/api/market/top-movers` | GET | market.ts:47 | ✅ |
@@ -600,10 +605,10 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:99 | ✅ |
 | 95 | `/api/paper-trading/positions` | GET | dashboard.ts:109 | ✅ |
 | 96 | `/api/paper-trading/trades` | GET | dashboard.ts:67 | ✅ |
-| 97 | `/api/params` | GET | system.ts:72 | ✅ |
+| 97 | `/api/params` | GET | system.ts:205 | ✅ |
 | 98 | `/api/params/changelog` | GET | — | ❌ |
 | 99 | `/api/params/{key}` | GET | — | ❌ |
-| 100 | `/api/params/{key}` | PUT | system.ts:85 | ✅ |
+| 100 | `/api/params/{key}` | PUT | system.ts:218 | ✅ |
 | 101 | `/api/params/init-defaults` | POST | — | ❌ |
 | 102 | `/api/pipeline/status` | GET | pipeline.ts:96 | ✅ |
 | 103 | `/api/pipeline/runs` | GET | pipeline.ts:111 | ✅ |
@@ -645,13 +650,13 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 139 | `/api/strategies/{strategy_id}` | DELETE | strategies.ts:82 | ✅ |
 | 140 | `/api/strategies/{strategy_id}/factors` | GET | — | ❌ |
 | 141 | `/api/strategies/{strategy_id}/backtest` | POST | — | ❌ |
-| 142 | `/api/system/datasources` | GET | system.ts:57 | ✅ |
-| 143 | `/api/system/health` | GET | system.ts:67 | ✅ |
-| 144 | `/api/system/streams` | GET | — | ❌ |
-| 145 | `/api/system/scheduler` | GET | system.ts:62 | ✅ |
-| 146 | `/api/system/test-notification` | POST | system.ts:93 | ✅ |
-| 147 | `/api/system/calendar-info` | GET | system.ts:130 | ✅ |
-| 148 | `/api/system/env-state` | GET | system.ts:103 | ✅ |
+| 142 | `/api/system/datasources` | GET | system.ts:110 | ✅ |
+| 143 | `/api/system/health` | GET | system.ts:190 | ✅ |
+| 144 | `/api/system/streams` | GET | system.ts:195 | ✅ |
+| 145 | `/api/system/scheduler` | GET | system.ts:149 | ✅ |
+| 146 | `/api/system/test-notification` | POST | system.ts:226 | ✅ |
+| 147 | `/api/system/calendar-info` | GET | system.ts:263 | ✅ |
+| 148 | `/api/system/env-state` | GET | system.ts:236 | ✅ |
 
 ---
 
@@ -697,7 +702,6 @@ snapshot.
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–93 | `/api/paper-trading/status`, `/api/paper-trading/graduation` | Legacy PT status/criteria endpoints not wrapped by current frontend API layer |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
-| 144 | `/api/system/streams` | Streams viewer not wired |
 
 ---
 
@@ -846,8 +850,8 @@ Total frontend apiClient calls: 83 (deduplicated by URL: ~60 unique paths)
 | D2 | `POST /api/pipeline/trigger` | pipeline.py:168 | pipeline.ts:125 (`triggerPipeline`) | ✅ matched | iter 1 PN-001 closed O2 orphan |
 | D3 | `GET /api/pipeline/{run_id}/logs` | pipeline.py:267 | pipeline.ts:180 (`getPipelineLogs`) | ✅ matched | O7 HTTP backfill closed 2026-05-28; PN-005 writer/WS enhancements remain |
 | D4 | `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ backend has + frontend missing | new admin endpoint, no UI yet (candidate §5D) |
-| D5 | `GET /api/system/settings/paper-strategy-id` | system.py:509 | system.ts:152 (`getPaperStrategyId`) | ✅ matched | iter 50+ new pair |
-| D6 | `GET /api/system/streams` | system.py:334 | — | ⚠️ backend has + frontend missing | sustained §5D legitimate-ops gap |
+| D5 | `GET /api/system/settings/paper-strategy-id` | system.py:509 | system.ts:285 (`getPaperStrategyId`) | ✅ matched | iter 50+ new pair |
+| D6 | `GET /api/system/streams` | system.py:334 | system.ts:195 (`fetchSystemStreams`) | ✅ matched | §24 closes the former ops viewer gap |
 | D7 | `POST /api/factors/correlation-prune` | factors.py:1121 | factors.ts:207 | ✅ matched | iter 11 PN-002 closed O10 orphan |
 
 ### §9.4 Backtest +1 root-cause locator
@@ -1775,3 +1779,55 @@ cost arithmetic), which indicates the service process had not loaded the §22
 backend changes yet. This batch did not restart Servy. Ops backlog: reload the
 FastAPI service in a separate runtime step, then re-run the same detail endpoint
 probe against port 8000 before declaring deployed runtime parity.
+
+## §24 Fresh verify — 2026-06-01 (System Redis Streams viewer)
+
+### §24.1 Finding
+
+Row 144 `GET /api/system/streams` was backend-implemented but frontend-unwired.
+The health page already exposed service and resource status, but Redis Streams
+state required an external query path.
+
+Fresh evidence:
+- `backend/app/api/system.py:567` / §system streams endpoint — the route returns
+  `{"streams": bus.all_streams_status()}`; fresh verify 2026-06-01 17:33 +08.
+- `backend/app/core/stream_bus.py:191` / §StreamBus status summary — each row
+  contains `stream`, `length`, and `last_published_at`; fresh verify
+  2026-06-01 17:33 +08.
+- `frontend/src/api/system.ts:194` / §System wrappers — `fetchSystemStreams()`
+  now wraps `/system/streams`; fresh verify 2026-06-01 17:33 +08.
+- `frontend/src/pages/SystemSettings.tsx:63` and `:644` /
+  §SystemSettings health tab — the Redis Streams panel loads through the API
+  wrapper and is mounted under health; fresh verify 2026-06-01 17:33 +08.
+
+### §24.2 Closure
+
+- Added typed Redis Streams API wrapper in `frontend/src/api/system.ts`.
+- Added a read-only Redis Streams panel to `SystemSettings` health tab with
+  30-second refresh, stream counts, total messages, per-stream length, and last
+  publish time.
+- Added wrapper and rendered-page contract tests.
+- Updated row 144 to consumed and removed it from §5D.
+
+### §24.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/system-api-streams.test.ts src/__tests__/system-settings-streams.test.tsx`
+  first failed because the wrapper and panel were absent.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/system-api-streams.test.ts src/__tests__/system-settings-streams.test.tsx`
+  -> 2 passed.
+- Frontend regression:
+  `npx tsc -b --pretty false` -> exit 0;
+  `python scripts/audit/check_frontend_api_discipline.py` -> PASS;
+  `npx vitest --run` -> 144 passed;
+  `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size
+  warning.
+- Backend smoke/pre-push:
+  `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected; `bash config/hooks/pre-push` -> X10 clean, LLM import guard
+  clean, smoke 91 passed, 2 skipped, 6976 deselected.
+
+### §24.4 Remaining Work
+
+Commit/push and GitHub checks remain pending for Batch 23.

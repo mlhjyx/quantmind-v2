@@ -7,12 +7,14 @@ import {
   fetchDataSources,
   fetchSchedulerTasks,
   fetchSystemHealth,
+  fetchSystemStreams,
   fetchNotificationParams,
   saveNotificationParams,
   testNotification,
   type DataSource,
   type SchedulerTask,
   type SystemHealth,
+  type SystemStreamStatus,
 } from "@/api/system";
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
@@ -56,6 +58,100 @@ function formatNumber(n: number | null): string {
   if (n >= 1e8) return `${(n / 1e8).toFixed(1)}亿`;
   if (n >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
   return n.toLocaleString();
+}
+
+function StreamsStatusPanel() {
+  const [streams, setStreams] = useState<SystemStreamStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await fetchSystemStreams();
+      setStreams(data.streams ?? []);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "未知错误";
+      setError(`Streams 状态加载失败: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    timerRef.current = setInterval(load, 30_000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [load]);
+
+  const totalLength = streams.reduce((sum, item) => sum + item.length, 0);
+  const activeCount = streams.filter((item) => item.length > 0).length;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between mb-1">
+        <SectionTitle>Redis Streams</SectionTitle>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">30s 自动刷新</span>
+          <Button variant="ghost" size="sm" onClick={load}>刷新</Button>
+        </div>
+      </div>
+
+      {error && (
+        <GlassCard padding="sm" className="text-sm text-red-400">
+          {error}
+        </GlassCard>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-20 rounded-xl bg-white/5 animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <GlassCard padding="sm">
+              <div className="text-xs text-slate-500 mb-1">注册 Streams</div>
+              <div className="text-lg font-semibold text-slate-100">{streams.length}</div>
+            </GlassCard>
+            <GlassCard padding="sm">
+              <div className="text-xs text-slate-500 mb-1">有消息 Streams</div>
+              <div className="text-lg font-semibold text-slate-100">{activeCount}</div>
+            </GlassCard>
+            <GlassCard padding="sm">
+              <div className="text-xs text-slate-500 mb-1">总消息数</div>
+              <div className="text-lg font-semibold text-slate-100">{formatNumber(totalLength)}</div>
+            </GlassCard>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {streams.map((stream) => (
+              <GlassCard key={stream.stream} padding="sm" className="flex items-start gap-3">
+                <StatusDot status={stream.length > 0 ? "healthy" : "unknown"} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-mono text-slate-100 truncate">{stream.stream}</div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    消息数 <span className="text-slate-300 font-mono">{formatNumber(stream.length)}</span>
+                    <span className="mx-2 text-slate-700">/</span>
+                    最近发布 <span className="text-slate-300">{formatDate(stream.last_published_at)}</span>
+                  </div>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+
+          {streams.length === 0 && (
+            <GlassCard padding="sm" className="text-center text-sm text-slate-500">
+              暂无 Redis Streams 状态
+            </GlassCard>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 // ── Tab 1: 数据源管理 ──────────────────────────────────────────────────────
@@ -544,6 +640,8 @@ function HealthTab() {
           <span className="text-xs text-emerald-400">最新</span>
         )}
       </GlassCard>
+
+      <StreamsStatusPanel />
 
       <OpsEscapeHatchPanel />
     </div>
