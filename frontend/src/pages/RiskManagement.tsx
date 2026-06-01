@@ -19,7 +19,7 @@ import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons, ChartTooltip } from "@/components/shared";
 import { RiskEventTracePanel } from "@/components/risk/RiskEventTracePanel";
 import { SafetyControlPanel } from "@/components/safety/SafetyControlPanel";
-import { fetchCircuitBreakerState } from "@/api/dashboard";
+import { fetchCircuitBreakerState } from "@/api/risk";
 import type { CircuitBreakerState } from "@/types/dashboard";
 import { useRiskEventsSSE } from "@/hooks/useRiskEventsSSE";
 
@@ -386,6 +386,14 @@ export default function RiskManagement() {
   const [loading, setLoading]                 = useState(true);
   const [fetchError, setFetchError]           = useState(false);
 
+  const { data: paperSid } = useQuery({
+    queryKey: ["system-paper-strategy-id"],
+    queryFn: () => getPaperStrategyId(),
+    staleTime: 60 * 60 * 1000,
+  });
+  const strategyId =
+    paperSid?.configured && paperSid.paper_strategy_id ? paperSid.paper_strategy_id : null;
+
   useEffect(() => {
     let live = true;
     const load = async () => {
@@ -446,18 +454,23 @@ export default function RiskManagement() {
     };
     void load();
     // Circuit breaker state (Frontend Design v3 §3.1.3 — fix hardcoded LOW)
-    fetchCircuitBreakerState()
-      .then((cb) => { if (live) setCbState(cb); })
-      .catch(() => { if (live) setCbState(null); });
+    if (strategyId) {
+      fetchCircuitBreakerState(strategyId)
+        .then((cb) => { if (live) setCbState(cb); })
+        .catch(() => { if (live) setCbState(null); });
+    } else {
+      setCbState(null);
+    }
 
     const id = setInterval(() => void load(), 30_000);
     const cbId = setInterval(() => {
-      void fetchCircuitBreakerState()
+      if (!strategyId) return;
+      void fetchCircuitBreakerState(strategyId)
         .then((cb) => { if (live) setCbState(cb); })
-        .catch(() => {});
+        .catch(() => { if (live) setCbState(null); });
     }, 10_000);
     return () => { live = false; clearInterval(id); clearInterval(cbId); };
-  }, []);
+  }, [strategyId]);
 
   const warnCount     = riskLimits?.filter((r) => r.status === "warn").length ?? 0;
   const criticalCount = riskLimits?.filter((r) => r.status === "critical").length ?? 0;

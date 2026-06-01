@@ -35,7 +35,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "iron_law_enforce.py"
+HOOK = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "iron_law_enforce.py"
 
 
 def _run_hook(payload: dict | None = None) -> tuple[int, str, str]:
@@ -53,6 +53,13 @@ def _run_hook(payload: dict | None = None) -> tuple[int, str, str]:
         timeout=10,
     )
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def _additional_context(stdout: str) -> str:
+    """Return parsed hook additionalContext; empty stdout means no warning."""
+    if not stdout.strip():
+        return ""
+    return json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
 
 
 def _edit(file_path: str, old: str, new: str) -> dict:
@@ -112,7 +119,7 @@ def test_v1_law_2_verify_code_sustained() -> None:
         )
     )
     assert rc == 0
-    assert "铁律 2" in out
+    assert "铁律 2" in _additional_context(out)
 
 
 def test_v1_law_4_neutralize_sustained() -> None:
@@ -124,14 +131,14 @@ def test_v1_law_4_neutralize_sustained() -> None:
         )
     )
     assert rc == 0
-    assert "铁律 4" in out
+    assert "铁律 4" in _additional_context(out)
 
 
 def test_v1_pt_protection_sustained() -> None:
     """v1 sustained: PT 核心链路文件保护."""
     rc, out, _ = _run_hook(_edit("backend/app/services/signal_service.py", "old", "new"))
     assert rc == 0
-    assert "PT 核心链路" in out
+    assert "PT 核心链路" in _additional_context(out)
 
 
 # ── v2 V3 §11 fail-open detect ──
@@ -146,8 +153,9 @@ def test_v2_v3_module_fail_open_true_detected() -> None:
         )
     )
     assert rc == 0
-    assert "V3 §11" in out
-    assert "fail-open" in out
+    context = _additional_context(out)
+    assert "V3 §11" in context
+    assert "fail-open" in context
 
 
 def test_v2_v3_module_fail_open_silent_ok_whitelist() -> None:
@@ -159,7 +167,9 @@ def test_v2_v3_module_fail_open_silent_ok_whitelist() -> None:
         )
     )
     assert rc == 0
-    assert "V3 §11" not in out, f"silent_ok whitelist should suppress, got: {out!r}"
+    assert "V3 §11" not in _additional_context(out), (
+        f"silent_ok whitelist should suppress, got: {out!r}"
+    )
 
 
 def test_v2_v3_module_bare_except_pass_detected() -> None:
@@ -171,7 +181,7 @@ def test_v2_v3_module_bare_except_pass_detected() -> None:
         )
     )
     assert rc == 0
-    assert "V3 §11" in out
+    assert "V3 §11" in _additional_context(out)
 
 
 def test_v2_v3_module_outside_scope_no_trigger() -> None:
@@ -183,7 +193,7 @@ def test_v2_v3_module_outside_scope_no_trigger() -> None:
         )
     )
     assert rc == 0
-    assert "V3 §11" not in out, f"non-V3 path should not trigger, got: {out!r}"
+    assert "V3 §11" not in _additional_context(out), f"non-V3 path should not trigger, got: {out!r}"
 
 
 # ── v2 Beat schedule 注释 detect ──
@@ -198,8 +208,9 @@ def test_v2_beat_schedule_comment_detected() -> None:
         )
     )
     assert rc == 0
-    assert "铁律 44 X9" in out
-    assert "Beat schedule 注释" in out
+    context = _additional_context(out)
+    assert "铁律 44 X9" in context
+    assert "Beat schedule 注释" in context
 
 
 def test_v2_beat_schedule_no_comment_no_trigger() -> None:
@@ -211,7 +222,7 @@ def test_v2_beat_schedule_no_comment_no_trigger() -> None:
         )
     )
     assert rc == 0
-    assert "铁律 44 X9" not in out
+    assert "铁律 44 X9" not in _additional_context(out)
 
 
 def test_v2_beat_schedule_outside_scope_no_trigger() -> None:
@@ -223,7 +234,7 @@ def test_v2_beat_schedule_outside_scope_no_trigger() -> None:
         )
     )
     assert rc == 0
-    assert "铁律 44 X9" not in out
+    assert "铁律 44 X9" not in _additional_context(out)
 
 
 # ── v2 prompt 设计 0 hardcoded command detect ──
@@ -238,8 +249,9 @@ def test_v2_prompt_design_hardcoded_command_detected() -> None:
         )
     )
     assert rc == 0
-    assert "memory #19/#20" in out
-    assert "hardcoded shell command" in out
+    context = _additional_context(out)
+    assert "memory #19/#20" in context
+    assert "hardcoded shell command" in context
 
 
 def test_v2_prompt_design_no_hardcode_no_trigger() -> None:
@@ -251,7 +263,7 @@ def test_v2_prompt_design_no_hardcode_no_trigger() -> None:
         )
     )
     assert rc == 0
-    assert "memory #19/#20" not in out
+    assert "memory #19/#20" not in _additional_context(out)
 
 
 def test_v2_prompt_design_outside_scope_no_trigger() -> None:
@@ -265,7 +277,7 @@ def test_v2_prompt_design_outside_scope_no_trigger() -> None:
         )
     )
     assert rc == 0
-    assert "memory #19/#20" not in out, "non-prompt path should not trigger"
+    assert "memory #19/#20" not in _additional_context(out), "non-prompt path should not trigger"
 
 
 # ── 边界 graceful ──

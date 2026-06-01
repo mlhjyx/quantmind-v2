@@ -6,6 +6,7 @@
  */
 
 import apiClient from "./client";
+import type { CircuitBreakerState } from "@/types/dashboard";
 
 export type RiskEventSeverity = "p0" | "p1" | "p2" | "info";
 
@@ -46,6 +47,30 @@ export interface RiskEventsFilter {
   limit?: number;
   offset?: number;
   include_chain?: boolean;
+}
+
+export async function fetchCircuitBreakerState(
+  strategyId: string,
+  executionMode = "paper",
+): Promise<CircuitBreakerState> {
+  const { data } = await apiClient.get<CircuitBreakerState>(
+    `/risk/state/${strategyId}`,
+    { params: { execution_mode: executionMode } },
+  );
+  return data;
+}
+
+export async function forceResetCircuitBreaker(
+  strategyId: string,
+  reason: string,
+  executionMode = "paper",
+): Promise<CircuitBreakerState> {
+  const { data } = await apiClient.post<CircuitBreakerState>(
+    `/risk/force-reset/${strategyId}`,
+    { reason },
+    { params: { execution_mode: executionMode } },
+  );
+  return data;
 }
 
 /**

@@ -19,7 +19,7 @@ import { Card, CardHeader } from "@/components/shared";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import apiClient from "@/api/client";
 import type { CircuitBreakerState } from "@/types/dashboard";
-import { fetchCircuitBreakerState } from "@/api/dashboard";
+import { fetchCircuitBreakerState, forceResetCircuitBreaker } from "@/api/risk";
 import { fetchEnvState, type EnvState, getPaperStrategyId } from "@/api/system";
 import { isAdminAuthed } from "@/api/execution";
 
@@ -65,27 +65,6 @@ export function SafetyControlPanel() {
   const [showApproveRecovery, setShowApproveRecovery] = useState<"approve" | "reject" | null>(null);
   const [pendingApprovalId, setPendingApprovalId] = useState<string | null>(null);
 
-  // Session 58 round-4 ADR-084 Phase 1: setInterval → react-query (uniform lifecycle).
-  // 反 manual setInterval + 4 useState dance. react-query handles:
-  // - Refetch interval (10s sustained)
-  // - Mount/unmount cleanup
-  // - Dedupe concurrent queries
-  // - Background pause when tab inactive
-  // - Per-key cache (other components subscribing same key get free reuse)
-  const { data, isLoading, refetch } = useQuery<SafetyPanelData>({
-    queryKey: ["safety-control-panel"],
-    queryFn: async () => {
-      const [cb, env, authed] = await Promise.all([
-        fetchCircuitBreakerState().catch(() => null),
-        fetchEnvState().catch(() => null),
-        isAdminAuthed().catch(() => false),
-      ]);
-      return { cb, env, adminAuthed: authed };
-    },
-    refetchInterval: 10_000,
-    staleTime: 5_000,
-  });
-
   // iter 137 reviewer P0 fix — fetch real paper_strategy_id UUID for L4 recovery
   // POST path (replaces "default" hardcoded which failed backend _parse_uuid).
   // Sibling pattern: ReportCenter.tsx:101-113 (iter 39 canonical).
@@ -97,6 +76,24 @@ export function SafetyControlPanel() {
   const strategyId =
     paperSid?.configured && paperSid.paper_strategy_id ? paperSid.paper_strategy_id : null;
 
+  // Session 58 round-4 ADR-084 Phase 1: setInterval → react-query (uniform lifecycle).
+  // The circuit-breaker endpoint requires a UUID strategy path; do not mask that
+  // call into "default" or null when PAPER_STRATEGY_ID is configured.
+  const { data, isLoading, refetch } = useQuery<SafetyPanelData>({
+    queryKey: ["safety-control-panel", strategyId],
+    queryFn: async () => {
+      const [cb, env, authed] = await Promise.all([
+        strategyId ? fetchCircuitBreakerState(strategyId) : Promise.resolve(null),
+        fetchEnvState().catch(() => null),
+        isAdminAuthed().catch(() => false),
+      ]);
+      return { cb, env, adminAuthed: authed };
+    },
+    enabled: paperSid !== undefined,
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+
   const state = data?.cb ?? null;
   const envState = data?.env ?? null;
   const adminAuthed = data?.adminAuthed ?? null;
@@ -104,11 +101,21 @@ export function SafetyControlPanel() {
   const load = () => void refetch();
 
   const handleForceReset = async (meta: { reason?: string }) => {
+    if (!strategyId) {
+      setShowResetConfirm(false);
+      setActionMsg({
+        ok: false,
+        text: "无法获取策略ID (PAPER_STRATEGY_ID 未配置, 请检查后端 settings)",
+      });
+      setTimeout(() => setActionMsg(null), 8000);
+      return;
+    }
     setShowResetConfirm(false);
     try {
-      await apiClient.post("/risk/force-reset/default", {
-        reason: meta.reason ?? "manual reset via frontend SafetyControlPanel",
-      });
+      await forceResetCircuitBreaker(
+        strategyId,
+        meta.reason ?? "manual reset via frontend SafetyControlPanel",
+      );
       setActionMsg({ ok: true, text: "Force-reset 成功, 刷新中..." });
       void load();
     } catch (err) {
@@ -365,20 +372,31 @@ export function SafetyControlPanel() {
             {/* Force-reset button */}
             <button
               onClick={() => setShowResetConfirm(true)}
-              disabled={loading || currentLevel === 0 || adminAuthed === false}
+              disabled={loading || currentLevel === 0 || adminAuthed === false || !strategyId}
               className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer"
               style={{
-                background: currentLevel === 0 || adminAuthed === false ? C.bg3 : `${C.up}15`,
-                border: `1px solid ${currentLevel === 0 || adminAuthed === false ? C.border : `${C.up}50`}`,
+                background:
+                  currentLevel === 0 || adminAuthed === false || !strategyId ? C.bg3 : `${C.up}15`,
+                border: `1px solid ${
+                  currentLevel === 0 || adminAuthed === false || !strategyId
+                    ? C.border
+                    : `${C.up}50`
+                }`,
                 fontSize: 12,
-                color: currentLevel === 0 || adminAuthed === false ? C.text4 : C.up,
+                color:
+                  currentLevel === 0 || adminAuthed === false || !strategyId ? C.text4 : C.up,
                 fontWeight: 500,
-                cursor: currentLevel === 0 || adminAuthed === false ? "not-allowed" : "pointer",
+                cursor:
+                  currentLevel === 0 || adminAuthed === false || !strategyId
+                    ? "not-allowed"
+                    : "pointer",
               }}
               title={
-                currentLevel === 0
-                  ? "当前 NORMAL, 无需 reset"
-                  : adminAuthed === false
+                !strategyId
+                  ? "PAPER_STRATEGY_ID 未配置, 无法 force-reset"
+                  : currentLevel === 0
+                    ? "当前 NORMAL, 无需 reset"
+                    : adminAuthed === false
                     ? "需先设置 Admin Token (走 Execution 页面 ⚙ 入口)"
                     : "回归 L0 NORMAL (需要理由 + 高风险确认)"
               }

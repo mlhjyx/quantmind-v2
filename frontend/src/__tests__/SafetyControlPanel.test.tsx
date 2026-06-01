@@ -27,13 +27,16 @@ const mockFetchCircuitBreakerState = vi.fn();
 const mockFetchEnvState = vi.fn();
 const mockIsAdminAuthed = vi.fn();
 const mockApiClientPost = vi.fn();
+const mockForceResetCircuitBreaker = vi.fn();
 const mockGetPaperStrategyId = vi.fn();
 
 // Canonical real UUID used by tests (replaces "default" hardcode after P0 fix).
 const REAL_STRATEGY_UUID = "11111111-2222-3333-4444-555555555555";
 
-vi.mock("@/api/dashboard", () => ({
-  fetchCircuitBreakerState: () => mockFetchCircuitBreakerState(),
+vi.mock("@/api/risk", () => ({
+  fetchCircuitBreakerState: (strategyId: string) => mockFetchCircuitBreakerState(strategyId),
+  forceResetCircuitBreaker: (strategyId: string, reason: string) =>
+    mockForceResetCircuitBreaker(strategyId, reason),
 }));
 vi.mock("@/api/system", () => ({
   fetchEnvState: () => mockFetchEnvState(),
@@ -106,6 +109,12 @@ describe("SafetyControlPanel — iter 137 W2-F F2 L4 Recovery flow", () => {
     vi.clearAllMocks();
     mockFetchEnvState.mockResolvedValue(envPaper);
     mockIsAdminAuthed.mockResolvedValue(true);
+    mockForceResetCircuitBreaker.mockResolvedValue({
+      level: 0,
+      level_name: "NORMAL",
+      trigger_reason: null,
+      position_multiplier: 1,
+    });
     // iter 137 reviewer P0 fix — paper_strategy_id resolves to real UUID
     mockGetPaperStrategyId.mockResolvedValue({
       paper_strategy_id: REAL_STRATEGY_UUID,
@@ -220,7 +229,7 @@ describe("SafetyControlPanel — iter 137 W2-F F2 L4 Recovery flow", () => {
     expect(screen.getByText(/极高风险/)).toBeInTheDocument();
   });
 
-  it("T7 (P0 fix): Request button disabled when paper_strategy_id not configured", async () => {
+  it("T7 (P0 fix): Risk state is not fetched when paper_strategy_id is not configured", async () => {
     mockFetchCircuitBreakerState.mockResolvedValue(cbL4Staged);
     // Override paper_strategy_id mock for this test: NOT configured
     mockGetPaperStrategyId.mockResolvedValue({
@@ -230,12 +239,39 @@ describe("SafetyControlPanel — iter 137 W2-F F2 L4 Recovery flow", () => {
     });
     renderWithProviders();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /发起 L4 恢复请求/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /强制回归 L0 NORMAL/ })).toBeInTheDocument();
     });
 
-    // Request button should be disabled when strategy_id NOT configured (iter 137 P0 fix)
-    const button = screen.getByRole("button", { name: /发起 L4 恢复请求/ });
+    // UUID-keyed risk endpoints must not be called when strategy_id is unavailable.
+    expect(mockFetchCircuitBreakerState).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /发起 L4 恢复请求/ })).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: /强制回归 L0 NORMAL/ });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", expect.stringContaining("PAPER_STRATEGY_ID 未配置"));
+  });
+
+  it("T8 (P1 fix): Force reset posts with configured paper_strategy_id UUID", async () => {
+    mockFetchCircuitBreakerState.mockResolvedValue(cbL4Staged);
+    renderWithProviders();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /强制回归 L0 NORMAL/ })).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /强制回归 L0 NORMAL/ }));
+    const reasonInput = await screen.findByPlaceholderText(/说明操作原因/);
+    await userEvent.type(reasonInput, "manual reset after verified recovery");
+    await userEvent.click(screen.getByRole("button", { name: /确定/ }));
+
+    await waitFor(() => {
+      expect(mockForceResetCircuitBreaker).toHaveBeenCalledWith(
+        REAL_STRATEGY_UUID,
+        expect.stringContaining("manual reset"),
+      );
+    });
+    expect(mockApiClientPost).not.toHaveBeenCalledWith(
+      "/risk/force-reset/default",
+      expect.anything(),
+    );
   });
 });

@@ -7,7 +7,6 @@ import type {
   NAVPeriod,
   PendingAction,
   Position,
-  CircuitBreakerState,
   Trade,
 } from "@/types/dashboard";
 
@@ -78,16 +77,4 @@ export interface StrategyOverview {
 export async function fetchDashboardStrategies(): Promise<StrategyOverview[]> {
   const { data } = await api.get<StrategyOverview[]>("/dashboard/strategies");
   return data;
-}
-
-export async function fetchCircuitBreakerState(): Promise<CircuitBreakerState | null> {
-  try {
-    const { data } = await api.get<CircuitBreakerState>(
-      "/risk/state/default",
-      { params: { execution_mode: "live" } },
-    );
-    return data;
-  } catch {
-    return null;
-  }
 }

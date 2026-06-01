@@ -1,11 +1,45 @@
 ---
-description: Codex remediation handoff updated after runtime, Agent LLM, CI, attribution, mining, and GP feedback remediation.
-date: 2026-05-29 +08:00
-status: governance_runtime_remediation_in_progress
-source_report: docs/audit/FULL_PROJECT_CLOSURE_AND_GOVERNANCE_AUDIT_2026_05_27.md
+description: Codex remediation handoff updated after 2026-06-01 governance batch 1.
+date: 2026-06-01 +08:00
+status: governance_batch_1_verified_open_runtime_backlog
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_1.md
 ---
 
 # Project Sprint State
+
+## Current Handoff — 2026-06-01
+
+Mode: full-project closure/governance remediation, batch 1 verified.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+- User authorized autonomous remediation, but continue to avoid broker calls, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT startup unless specifically required.
+- Read-only account verification was attempted with `python scripts/_verify_account_oneshot.py`; miniQMT connect returned `-1`, so account-state verification is not complete in this shell.
+
+Closed in this batch:
+- Fixed pytest discovery drift: `pyproject.toml` now uses `backend/tests`, with `backend/tests/test_pytest_config.py` guarding the setting.
+- Wired local pre-commit collect-only coverage to active governance inventory and hook behavior tests.
+- Moved hook behavior tests from stale `.claude` mirror paths to active `.codex/hooks`.
+- Extended cite-drift hook V3 path scope to active `.codex/agents` and repo `.agents/skills`.
+- Fixed active `iron_law_enforce.py` Windows redirected-stdout crash by emitting ASCII-safe JSON and parsing hook JSON in tests.
+- Removed frontend circuit-breaker `/risk/*/default` usage; `SafetyControlPanel` and `RiskManagement` now use configured `PAPER_STRATEGY_ID` through UUID-keyed `src/api/risk.ts` wrappers.
+
+Verified:
+- `python scripts/ci_run_phase.py --phase pre_commit` PASS.
+- Governance/hook pytest subset: 120 passed.
+- Smoke: 91 passed, 2 skipped.
+- Frontend risk/API/page Vitest subset: 21 passed.
+- `npm run build` PASS, with chunk-size warning only.
+- Manual active-hook PT warning probe returned rc=0 JSON.
+
+Still open:
+- P0 runtime backlog: active LLM failure-rate meta alert and realtime risk path not exercising portfolio/QMT inputs remain unresolved.
+- P1 frontend/API backlog: websocket route mismatch, notification mock seeding, mining selected-ID placeholder, and CI/GitHub governance parity need next batches.
+- Backup/GP/backtest first-fire evidence from the 2026-05-29 handoff remains relevant unless superseded by newer runtime proof.
+
+Next safe step:
+- Continue with a second remediation batch focused on either runtime meta-monitor/LLM failure-rate diagnosis or frontend/API contract closure. Avoid starting QMT/Servy ops until an explicit runtime touchpoint is chosen.
 
 ## Current Handoff — 2026-05-29
 

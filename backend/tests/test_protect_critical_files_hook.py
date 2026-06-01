@@ -26,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "protect_critical_files.py"
+HOOK = Path(__file__).resolve().parents[2] / ".codex" / "hooks" / "protect_critical_files.py"
 
 
 def _run_hook(payload: dict) -> tuple[int, str, str]:
