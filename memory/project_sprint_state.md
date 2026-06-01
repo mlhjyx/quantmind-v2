@@ -1,50 +1,58 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 33.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 34.
 date: 2026-06-01 +08:00
-status: governance_batch_33_news_ops_taxonomy_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_33.md
+status: governance_batch_34_params_contract_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_34.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 33
+## Current Handoff - 2026-06-01 Batch 34
 
-Mode: full-project closure/governance remediation, batch 33 news ops API
-taxonomy in progress.
+Mode: full-project closure/governance remediation, batch 34 params API contract
+and taxonomy in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `7f5f472d` (`reclass external api
-  rows`), and PR #523 checks were clean before Batch 33 edits.
+- Latest pushed head before this batch is `fe746aa5` (`classify news ops
+  endpoints`), and PR #523 checks were clean before Batch 34 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- API coverage rows 83-86 were backend-only by design, not missing operator UI.
-- Rows 83-85 are ops-triggered news ingestion endpoints that can call external
-  providers, classifier services, and persistence paths.
-- Row 86 is an ops diagnostics endpoint for recent news counts and samples.
-- RSSHub route coverage already existed; 5-source ingest, announcement ingest,
-  and stats needed matching mocked route coverage.
+- API coverage row 97 was marked consumed, but `fetchNotificationParams()` used
+  `category` while backend `GET /api/params` expects `module`.
+- The wrapper returned grouped backend data as though it were
+  `NotificationParam[]`, so `SystemSettings.tsx` could call `.map()` on a
+  non-array response.
+- Rows 98, 99, and 101 are audit/read/bootstrap surfaces, not current operator
+  UI gaps.
 
 Closed in this batch:
-- Added `backend/tests/test_news_api_manual_endpoints.py`.
-- Updated `docs/API_COVERAGE.md` rows 83-86 to explicit ops taxonomy labels.
-- Added `docs/API_COVERAGE.md` §34.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_33.md`.
+- Added `frontend/src/__tests__/system-api-contract.test.ts`.
+- Fixed `frontend/src/api/system.ts::fetchNotificationParams()`.
+- Added backend route tests for `/api/params/changelog` and
+  `/api/params/init-defaults`.
+- Updated `docs/API_COVERAGE.md` rows 97-101 and added §35.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_34.md`.
 
 Verification:
-- `pytest backend/tests/test_news_api_manual_endpoints.py -q` -> 4 passed.
-- `pytest backend/tests/test_news_api_manual_endpoints.py backend/tests/test_news_api_rsshub_endpoint.py -q`
-  -> 16 passed.
-- `ruff check backend/tests/test_news_api_manual_endpoints.py` -> all checks
+- RED: `npx vitest --run src/__tests__/system-api-contract.test.ts` failed on
+  `category` vs `module`.
+- GREEN: `npx vitest --run src/__tests__/system-api-contract.test.ts` -> 1
   passed.
-- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7024
+- `pytest backend/tests/test_param_system.py::TestParamAPI -q` -> 8 passed.
+- `npx vitest --run src/__tests__/system-api-contract.test.ts src/__tests__/system-settings-streams.test.tsx`
+  -> 2 files passed, 2 tests passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest --run` -> 35 files passed, 162 tests passed.
+- `npm run build` -> exit 0 with existing large `vendor-echarts` warning.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7026
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
-  passed, 2 skipped, 6980 deselected.
+  passed, 2 skipped, 6982 deselected.
 - Pending: commit, push, PR body append, and PR #523 check watch.
 
 Still open:
@@ -53,8 +61,6 @@ Still open:
 - Remaining §5D backlog: none after row 34 reclassification, dashboard row
   reconciliation, row 131 SSE closure, and Batch 32 taxonomy cleanup.
 - Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
-- Rows 98-99 and 101 params admin/read surfaces remain open for the next
-  taxonomy or UI-semantics pass.
 - Rows 135-136 strategy version create/rollback need a version-management UI
   design with diff preview, required changelog, rollback confirmation, audit
   display, post-mutation reload, and rollback refresh regression coverage.
@@ -74,6 +80,15 @@ Still open:
 
 Next safe step:
 - Stage/commit/push and verify PR #523 checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 33
+
+Batch 33 reclassified API coverage rows 83-86 as news ops-ingest/diagnostics
+taxonomy rows, added `backend/tests/test_news_api_manual_endpoints.py`, added
+`docs/API_COVERAGE.md` §34, and pushed commit `fe746aa5` (`classify news ops
+endpoints`). PR #523 checks passed after the push.
 
 ---
 

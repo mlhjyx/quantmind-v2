@@ -217,11 +217,11 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 97 | GET | `/api/params` | List all params | params.py:41 | public |
-| 98 | GET | `/api/params/changelog` | Param changelog | params.py:63 | public |
-| 99 | GET | `/api/params/{key}` | Get param by key | params.py:78 | public |
-| 100 | PUT | `/api/params/{key}` | Update param | params.py:97 | public |
-| 101 | POST | `/api/params/init-defaults` | Init default params | params.py:124 | public |
+| 97 | GET | `/api/params` | List all params | params.py:63 | public |
+| 98 | GET | `/api/params/changelog` | Param changelog | params.py:89 | public |
+| 99 | GET | `/api/params/{key}` | Get param by key | params.py:144 | public |
+| 100 | PUT | `/api/params/{key}` | Update param | params.py:168 | public |
+| 101 | POST | `/api/params/init-defaults` | Init default params | params.py:201 | public |
 
 ### 2.16 pipeline — `/api/pipeline` (`backend/app/api/pipeline.py`)
 
@@ -613,11 +613,11 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:120 | ✅ |
 | 95 | `/api/paper-trading/positions` | GET | dashboard.ts:130 | ✅ |
 | 96 | `/api/paper-trading/trades` | GET | dashboard.ts:67 | ✅ |
-| 97 | `/api/params` | GET | system.ts:205 | ✅ |
-| 98 | `/api/params/changelog` | GET | — | ❌ |
-| 99 | `/api/params/{key}` | GET | — | ❌ |
-| 100 | `/api/params/{key}` | PUT | system.ts:218 | ✅ |
-| 101 | `/api/params/init-defaults` | POST | — | ❌ |
+| 97 | `/api/params` | GET | system.ts:216/221 | ✅ |
+| 98 | `/api/params/changelog` | GET | params.py:89 | ⚠️ audit endpoint |
+| 99 | `/api/params/{key}` | GET | params.py:144 | ⚠️ redundant read |
+| 100 | `/api/params/{key}` | PUT | system.ts:239 | ✅ |
+| 101 | `/api/params/init-defaults` | POST | params.py:201 | ⚠️ admin bootstrap |
 | 102 | `/api/pipeline/status` | GET | pipeline.ts:96 | ✅ |
 | 103 | `/api/pipeline/runs` | GET | pipeline.ts:111 | ✅ |
 | 104 | `/api/pipeline/runs/{run_id}` | GET | pipeline.ts:150 | ✅ |
@@ -700,9 +700,9 @@ snapshot.
 | 46 | `/api/execution/algo-config` | Legacy display-only endpoint from the retired `TradeExecution` path; prior audits found it can expose stale `strategy_configs` display values and is not in the trading path |
 | 93 | `/api/paper-trading/graduation` | Legacy parameterized criteria endpoint requiring caller-supplied backtest baselines; current operator UI uses fixed-standard `/api/paper-trading/graduation-status` instead |
 | 141 | `/api/strategies/{strategy_id}/backtest` | Direct async trigger is superseded by the operator-confirmed `/backtest/config?strategy_id=...` flow, which submits through `/api/backtest/run` after configuration review |
-| 98 | `/api/params/changelog` | No frontend UI for changelog |
-| 99 | `/api/params/{key}` GET | Only PUT consumed; GET by key unused |
-| 101 | `/api/params/init-defaults` | Init script only |
+| 98 | `/api/params/changelog` | Audit endpoint; no active frontend surface after DEV_PARAM_CONFIG was marked DESIGN_OVERSIZED; see §35 |
+| 99 | `/api/params/{key}` GET | Redundant read path because the current settings UI uses grouped `/api/params?module=notification`; see §35 |
+| 101 | `/api/params/init-defaults` | Admin/bootstrap endpoint, not a user-facing control; see §35 |
 
 ### 5D — Backend-Implemented But Frontend Not Yet Wired
 
@@ -2422,3 +2422,71 @@ Full smoke/pre-push results are recorded in the Batch 33 status report.
 Remaining `❌` rows after this news cleanup: row 34 deferred backtest
 sensitivity, rows 98-99 and 101 params admin/read surfaces, rows 135-136
 strategy version mutations, and row 141 superseded strategy backtest.
+
+## §35 Fresh verify — 2026-06-01 (Params contract drift + taxonomy)
+
+### §35.1 Finding
+
+Row 97 was marked consumed, but the frontend wrapper had a runtime contract
+drift: `fetchNotificationParams()` called `/api/params` with `category` and
+returned the backend object as `NotificationParam[]`. The backend accepts
+`module` and returns `{ modules, params }`. This would make
+`SystemSettings.tsx` call `.map()` on a non-array response.
+
+Rows 98, 99, and 101 were stale backend-only markers rather than current UI
+gaps. `DEV_PARAM_CONFIG.md` is explicitly DESIGN_OVERSIZED, and the active
+settings UI only needs grouped notification params plus the existing PUT loop.
+The remaining params endpoints are audit/read/bootstrap surfaces.
+
+Fresh evidence:
+- `backend/app/api/params.py:63` / §list params — list endpoint accepts
+  `module` and returns grouped `{modules, params}`; fresh verify 2026-06-01
+  20:18 +08.
+- `frontend/src/api/system.ts:216` and `:221` / §notification params wrapper —
+  wrapper now sends `module=notification` and normalizes grouped backend rows
+  into `{key, value}` pairs; fresh verify 2026-06-01 20:18 +08.
+- `frontend/src/__tests__/system-api-contract.test.ts:21` / §contract test —
+  RED first failed on `category` vs `module`, then GREEN passed after wrapper
+  normalization; fresh verify 2026-06-01 20:18 +08.
+- `backend/app/api/params.py:89` and
+  `backend/tests/test_param_system.py:278` / §changelog route — changelog is an
+  audit endpoint with mocked route coverage; fresh verify 2026-06-01 20:18 +08.
+- `backend/app/api/params.py:144` and
+  `backend/tests/test_param_system.py:259` / §single-param route — single read
+  remains available but current UI uses the grouped params endpoint; fresh
+  verify 2026-06-01 20:18 +08.
+- `backend/app/api/params.py:201` and
+  `backend/tests/test_param_system.py:387` / §init-defaults route — init
+  defaults is bootstrap/admin behavior, not frontend initiated; fresh verify
+  2026-06-01 20:18 +08.
+
+### §35.2 Closure
+
+- Fixed `fetchNotificationParams()` request/query/response normalization.
+- Added frontend contract coverage for the params wrapper.
+- Added backend route coverage for `/api/params/changelog` and
+  `/api/params/init-defaults`.
+- Reclassified rows 98, 99, and 101 as audit/read/bootstrap taxonomy rows.
+
+### §35.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/system-api-contract.test.ts` failed on
+  `category` vs `module`.
+- GREEN:
+  `npx vitest --run src/__tests__/system-api-contract.test.ts` -> 1 passed.
+- Backend params routes:
+  `pytest backend/tests/test_param_system.py::TestParamAPI -q` -> 8 passed.
+- Frontend params/system subset:
+  `npx vitest --run src/__tests__/system-api-contract.test.ts src/__tests__/system-settings-streams.test.tsx`
+  -> 2 files passed, 2 tests passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full smoke/pre-push results are recorded in the Batch 34 status report.
+
+### §35.4 Remaining Work
+
+Remaining `❌` rows after this params cleanup: row 34 deferred backtest
+sensitivity, rows 135-136 strategy version mutations, and row 141 superseded
+strategy backtest.

@@ -104,6 +104,17 @@ export interface NotificationParam {
   value: string;
 }
 
+interface ParamRowRaw {
+  key?: string;
+  param_name?: string;
+  value?: unknown;
+  param_value?: unknown;
+}
+
+interface ParamsResponseRaw {
+  params?: Record<string, ParamRowRaw[]>;
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 
 export async function fetchDataSources(): Promise<DataSource[]> {
@@ -202,10 +213,20 @@ export async function fetchQmtHealth(): Promise<QmtHealth> {
 }
 
 export async function fetchNotificationParams(): Promise<NotificationParam[]> {
-  const { data } = await apiClient.get<NotificationParam[]>("/params", {
-    params: { category: "notification" },
+  const { data } = await apiClient.get<ParamsResponseRaw | ParamRowRaw[]>("/params", {
+    params: { module: "notification" },
   });
-  return data;
+  const rows = Array.isArray(data) ? data : (data.params?.notification ?? []);
+  return rows
+    .map((row) => {
+      const key = row.key ?? row.param_name ?? "";
+      const rawValue = row.value ?? row.param_value;
+      return {
+        key,
+        value: rawValue === null || rawValue === undefined ? "" : String(rawValue),
+      };
+    })
+    .filter((row) => row.key.length > 0);
 }
 
 export async function saveNotificationParams(
