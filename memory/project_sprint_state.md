@@ -1,50 +1,41 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 35.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 36.
 date: 2026-06-01 +08:00
-status: governance_batch_35_api_matrix_final_cleanup_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_35.md
+status: governance_batch_36_params_admin_gate_blocked_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_36.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 35
+## Current Handoff - 2026-06-01 Batch 36
 
-Mode: full-project closure/governance remediation, batch 35 final API matrix
-hard-gap cleanup in progress.
+Mode: full-project closure/governance remediation, batch 36 params admin-gate
+security follow-up blocked by redline precondition.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `de82df38` (`fix params settings
-  contract`), and PR #523 checks were clean before Batch 35 edits.
+- Latest pushed head before this batch is `8ef358e8` (`close api matrix hard
+  gaps`), and PR #523 checks were clean after Batch 35.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- API coverage rows 34, 135-136, and 141 were the final hard gap markers, but
-  each is already a deferred/sensitive/superseded endpoint rather than missing
-  wiring.
-- Row 34 is an explicit deferred sensitivity-analysis contract.
-- Rows 135-136 are version mutations needing UX design before exposure.
-- Row 141 direct strategy backtest is superseded by the reviewed
-  `/backtest/config?strategy_id=...` flow.
+- Params mutation endpoints remain public in `backend/app/api/params.py`.
+- Existing audit history flags `PUT /api/params/{key}` and
+  `POST /api/params/init-defaults` as runtime-configuration mutation surfaces.
+- Intended fix is to add `verify_admin_token` to params mutation endpoints, but
+  this requires a production-code edit under the project redline SOP.
 
 Closed in this batch:
-- Added backend route coverage for direct strategy backtest.
-- Updated `docs/API_COVERAGE.md` rows 34, 135-136, and 141 to explicit taxonomy
-  labels.
-- Added `docs/API_COVERAGE.md` §36.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_35.md`.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_36.md` with
+  evidence, blocker, proposed fix batch, and acceptance criteria.
+- No production code was edited after the redline check failed.
 
 Verification:
-- `pytest backend/tests/test_api_routes.py::TestStrategiesAPI -q` -> 13
-  passed.
-- `ruff check backend/tests/test_api_routes.py` -> all checks passed.
-- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7028
-  deselected.
-- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
-  passed, 2 skipped, 6984 deselected.
+- `python scripts/_verify_account_oneshot.py` -> exit 1,
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
 - Pending: commit, push, PR body append, and PR #523 check watch.
 
 Still open:
@@ -71,7 +62,18 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Stage/commit/push and verify PR #523 checks.
+- Stage/commit/push the blocked-security status report, then continue a
+  non-redline audit surface or retry params admin-gate only after read-only
+  account verification is available or explicitly waived.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 35
+
+Batch 35 removed the last hard `❌` markers from `docs/API_COVERAGE.md`, added
+direct strategy backtest route coverage, added `docs/API_COVERAGE.md` §36, and
+pushed commit `8ef358e8` (`close api matrix hard gaps`). PR #523 checks passed
+after the push.
 
 ---
 
