@@ -385,7 +385,7 @@ export interface BacktestNavPoint {
 export type BacktestTradeSide = "buy" | "sell" | string;
 
 export interface BacktestTradeRow {
-  id: number;
+  id: string | number;
   signal_date: string | null;
   exec_date: string | null;
   stock_code: string;

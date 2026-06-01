@@ -1,13 +1,66 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 20.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 21.
 date: 2026-06-01 +08:00
-status: governance_batch_20_backtest_compare_trade_diff_local_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_20.md
+status: governance_batch_21_backtest_detail_runtime_local_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_21.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 20
+## Current Handoff - 2026-06-01 Batch 21
+
+Mode: full-project closure/governance remediation, batch 21 backtest detail
+endpoint schema/runtime contract locally verified before final commit/push.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `7b849f09` (`close backtest compare trade diff`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 21 edits.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 20 browser/runtime verification exposed an adjacent backend issue: backtest detail endpoints documented as backend-implemented were querying stale columns and could return 500s or Decimal/date/UUID shapes.
+- DDL/writer verification showed `backtest_daily_nav` has `benchmark_nav` but no `benchmark_return`, `backtest_trades` has `trade_id` but no `id`, and `backtest_holdings` has no stored `market_value` or `pnl`.
+- Direct app startup was intentionally avoided for runtime proof to avoid QMT manager startup side effects; instead, direct endpoint functions were exercised against the real DB with read-only rollback.
+
+Closed in this batch:
+- Hardened `backend/app/api/backtest.py` detail endpoints:
+  `_safe_query()` now fails loud on undefined columns; NAV/report derive `benchmark_return`; trades use `trade_id AS id`; holdings derive market value/PnL; detail payloads normalize Decimal/date/UUID.
+- Updated `frontend/src/api/backtest.ts` so `BacktestTradeRow.id` accepts UUID string IDs.
+- Added `backend/tests/test_backtest_detail_endpoint_contract.py`.
+- Updated `docs/API_COVERAGE.md` §22 and §5D, and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_21.md`.
+- While sedimenting §22, corrected stale `cancelBacktest()` orphan text: it maps to `POST /api/backtest/{run_id}/cancel` in `backtest.py`.
+- Surfaced broader API coverage aggregate-count drift: raw route grep now reports 170 backend routes across 25 router files and 18 frontend API modules; header counts were updated, while row-level non-backtest remapping remains backlog.
+
+Verification:
+- RED: `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` initially failed on the new contract guards.
+- GREEN targeted: `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7 passed.
+- Existing compatibility: `pytest backend/tests/test_a4_a6.py::TestA6BacktestNavEndpoint backend/tests/test_backtest_api.py -q` -> 33 passed.
+- `ruff check backend/app/api/backtest.py backend/tests/test_backtest_detail_endpoint_contract.py` -> PASS.
+- `python -m py_compile backend/app/api/backtest.py` -> PASS.
+- `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` -> 3 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Full frontend suite/build: `npx vitest --run` -> 135 passed; `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size warning.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020 deselected.
+- Pre-push guard: `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91 passed, 2 skipped, 6976 deselected.
+- Real DB read-only runtime against run `2c91bd92-ee0f-4f52-9244-795365cc1037`: nav, trades, holdings summary, annual, monthly, attribution, market-state, cost-sensitivity, live-compare, and report all returned without runtime errors; report temp file removed.
+
+Still open:
+- Stage/commit/push Batch 21, then wait for GitHub checks.
+- Backtest rows 26-32 and 35 are backend-runtime-hardened but still need frontend wrappers/deep-dive UI integration before marking them consumed.
+- Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred by existing ADR tracking.
+- API coverage row-level mappings outside backtest need a dedicated refresh against the 170-route / 18-module aggregate count.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Stage/commit/push Batch 21, then wait for GitHub checks before continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 20
 
 Mode: full-project closure/governance remediation, batch 20 BacktestCompare S5 trade diff locally verified before final commit/push.
 

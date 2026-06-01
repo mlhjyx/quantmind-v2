@@ -3,8 +3,8 @@
 **Generated**: 2026-05-20
 **Fresh verify addendum**: 2026-05-25 §9 is the current count baseline. The original
 matrix body is retained as historical audit evidence.
-**Current backend surface**: 162 endpoints across 24 router files (§10.1)
-**Current frontend API modules**: 13 files (§11)
+**Current backend surface**: 170 endpoints across 25 router files (§22.5)
+**Current frontend API modules**: 18 files (§22.5)
 **Current frontend-only orphan**: 0 after the 2026-05-28 O7 HTTP backfill closure
 (§10)
 **Methodology**: `@router.(get|post|put|delete|patch)` grep on `backend/app/api/**/*.py` + `apiClient.(get|post|put|delete|patch)` grep on `frontend/src/api/*.ts`
@@ -15,13 +15,13 @@ matrix body is retained as historical audit evidence.
 
 | Metric | Count | % |
 |--------|-------|---|
-| Total backend endpoints | 162 | 100% |
+| Total backend endpoints | 170 | 100% |
 | Frontend-only orphans (no matching backend) | 0 | — |
 | Original 2026-05-20 backend endpoints | 148 | historical |
 | Original 2026-05-20 frontend-only orphans | 10 | historical |
 
 **Key findings**:
-- The 2026-05-20 50% backend-only ratio is historical. Use §10 for the current
+- The 2026-05-20 50% backend-only ratio is historical. Use §22.5 for the current
   endpoint count and orphan status.
 - Original 10 frontend-only orphans were reconciled to 0. O7
   `GET /api/pipeline/{run_id}/logs` now has a Redis-backed HTTP endpoint; PN-005
@@ -82,22 +82,23 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 20 | POST | `/api/backtest/run` | Start backtest run | backtest.py:145 | public |
-| 21 | GET | `/api/backtest/history` | Backtest run history | backtest.py:212 | public |
-| 22 | GET | `/api/backtest/{run_id}` | Backtest run status | backtest.py:284 | public |
-| 23 | GET | `/api/backtest/{run_id}/result` | Backtest result | backtest.py:308 | public |
-| 24 | GET | `/api/backtest/{run_id}/nav` | NAV series | backtest.py:377 | public |
-| 25 | GET | `/api/backtest/{run_id}/trades` | Trade list | backtest.py:420 | public |
-| 26 | GET | `/api/backtest/{run_id}/holdings` | Holdings | backtest.py:511 | public |
-| 27 | GET | `/api/backtest/{run_id}/annual` | Annual returns | backtest.py:570 | public |
-| 28 | GET | `/api/backtest/{run_id}/monthly` | Monthly returns | backtest.py:637 | public |
-| 29 | GET | `/api/backtest/{run_id}/attribution` | Factor attribution | backtest.py:693 | public |
-| 30 | GET | `/api/backtest/{run_id}/market-state` | Market state | backtest.py:743 | public |
-| 31 | GET | `/api/backtest/{run_id}/cost-sensitivity` | Cost sensitivity | backtest.py:827 | public |
-| 32 | GET | `/api/backtest/{run_id}/report` | Backtest report | backtest.py:936 | public |
-| 33 | POST | `/api/backtest/compare` | Compare runs | backtest.py:1031 | public |
-| 34 | POST | `/api/backtest/{run_id}/sensitivity` | Sensitivity analysis | backtest.py:1082 | public |
-| 35 | GET | `/api/backtest/{run_id}/live-compare` | Live vs backtest | backtest.py:1112 | public |
+| 20 | POST | `/api/backtest/run` | Start backtest run | backtest.py:169 | public |
+| 20a | POST | `/api/backtest/{run_id}/cancel` | Cancel backtest run | backtest.py:243 | public |
+| 21 | GET | `/api/backtest/history` | Backtest run history | backtest.py:292 | public |
+| 22 | GET | `/api/backtest/{run_id}` | Backtest run status | backtest.py:364 | public |
+| 23 | GET | `/api/backtest/{run_id}/result` | Backtest result | backtest.py:388 | public |
+| 24 | GET | `/api/backtest/{run_id}/nav` | NAV series | backtest.py:457 | public |
+| 25 | GET | `/api/backtest/{run_id}/trades` | Trade list | backtest.py:509 | public |
+| 26 | GET | `/api/backtest/{run_id}/holdings` | Holdings | backtest.py:596 | public |
+| 27 | GET | `/api/backtest/{run_id}/annual` | Annual returns | backtest.py:658 | public |
+| 28 | GET | `/api/backtest/{run_id}/monthly` | Monthly returns | backtest.py:727 | public |
+| 29 | GET | `/api/backtest/{run_id}/attribution` | Factor attribution | backtest.py:783 | public |
+| 30 | GET | `/api/backtest/{run_id}/market-state` | Market state | backtest.py:838 | public |
+| 31 | GET | `/api/backtest/{run_id}/cost-sensitivity` | Cost sensitivity | backtest.py:920 | public |
+| 32 | GET | `/api/backtest/{run_id}/report` | Backtest report | backtest.py:1035 | public |
+| 33 | POST | `/api/backtest/compare` | Compare runs | backtest.py:1137 | public |
+| 34 | POST | `/api/backtest/{run_id}/sensitivity` | Sensitivity analysis | backtest.py:1198 | public |
+| 35 | GET | `/api/backtest/{run_id}/live-compare` | Live vs backtest | backtest.py:1296 | public |
 
 ### 2.5 dashboard — `/api/dashboard` (`backend/app/api/dashboard.py`)
 
@@ -359,7 +360,8 @@ Frontend base URL: `apiClient` configured in `frontend/src/api/client.ts:28` (ax
 | backtest.ts:189 | GET | `/backtest/history` |
 | backtest.ts:207 | POST | `/backtest/compare` |
 
-**6 calls → 5 consumed (#20, #22, #23, #21, #33); 1 orphan** (`/backtest/{runId}/cancel` — no backend endpoint)
+**6 calls → 6 consumed (#20, #20a, #22, #23, #21, #33)**. Historical O1 cancel
+orphan is resolved by `backend/app/api/backtest.py:243`.
 
 ### 3.3 client.ts (`frontend/src/api/client.ts`)
 
@@ -677,7 +679,7 @@ snapshot.
 
 | # | Endpoint | Priority |
 |---|----------|----------|
-| 26–32, 34–35 | `/api/backtest/{run_id}/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest deep-dive views not yet connected |
+| 26–32, 34–35 | `/api/backtest/{run_id}/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest deep-dive views not yet connected; rows 26-32 + 35 backend runtime contract hardened in §22 |
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
@@ -695,7 +697,7 @@ snapshot.
 
 | # | File:Line | Method | URL Called | Notes |
 |---|-----------|--------|------------|-------|
-| O1 | backtest.ts:183 | POST | `/backtest/{runId}/cancel` | No cancel endpoint in backtest.py — cancel may be Celery task revoke only |
+| O1 | backtest.ts:183 | POST | `/backtest/{runId}/cancel` | **RESOLVED** — backend cancel endpoint exists in `backtest.py:243`; see PR #446 note in §6.1 |
 | O2 | pipeline.ts:101 | POST | `/pipeline/trigger` | No trigger endpoint in pipeline.py (only status/runs/approve/reject) |
 | O3 | pipeline.ts:106 | POST | `/pipeline/pause` | **RESOLVED** — see §6.1 / PN-003 |
 | O4 | pipeline.ts:122 | POST | `/pipeline/approve/{id}` | Uses old approval path — backend uses `/approval/queue/{item_id}/approve` |
@@ -839,7 +841,14 @@ Total frontend apiClient calls: 83 (deduplicated by URL: ~60 unique paths)
 
 ### §9.4 Backtest +1 root-cause locator
 
-Existing matrix §2.4 (rows 20-35) shows 16 backtest endpoints. Fresh grep returns 17 (lines 141, 215, 264, 336, 360, 429, 469, 560, 616, 685, 741, 791, 873, 988, 1081, 1132, 1230). The +1 is `POST /api/backtest/{run_id}/sensitivity` (backtest.py:1132) — already in matrix row 34. The actual delta is bookkeeping: 2026-05-20 §8 listed `backtest: 16` but the row table rows 20-35 = 16 ⊕ the new entry was added during 2026-05-19 frontend-redesign push without §8 footer count sync. **No new endpoint** — §8 footer is the drift, fixed below.
+Existing matrix §2.4 originally showed 16 numbered backtest rows, while fresh
+grep returns 17 route decorators. Batch 21 re-verified the current route lines:
+169, 243, 292, 364, 388, 457, 509, 596, 658, 727, 783, 838, 920, 1035,
+1137, 1198, and 1296. The previously missing row is
+`POST /api/backtest/{run_id}/cancel` (`backtest.py:243`), which matches
+`cancelBacktest()` in `frontend/src/api/backtest.ts:281`. The historical O1
+orphan text is corrected above; row 34 sensitivity remains present and deferred
+by design.
 
 ### §9.5 Orphan status sustained from §6.1
 
@@ -1582,3 +1591,104 @@ Fresh evidence:
 - Backtest rows 26-32 and 34-35 remain backend-only until dedicated deep-dive
   views need holdings, annual/monthly slices, attribution, market state,
   cost sensitivity, report, sensitivity, or live-compare endpoints.
+
+## §22 Fresh verify — 2026-06-01 (Backtest detail endpoint schema/runtime hardening)
+
+### §22.1 Finding
+
+Batch 20's browser smoke exposed an adjacent backend runtime gap: several
+backtest detail endpoints were marked as backend-implemented in rows 26-32 and
+35, but their SQL no longer matched the actual DDL and writer contract. The
+visible symptom was an empty BacktestCompare chart path plus server-side 500s
+when detail endpoints queried columns that do not exist in the committed schema.
+
+Fresh evidence:
+- `docs/QUANTMIND_V2_DDL_FINAL.sql:599-640` / §backtest DDL — `backtest_daily_nav`
+  has `benchmark_nav` but no `benchmark_return`; `backtest_trades` has
+  `trade_id` but no `id`; `backtest_holdings` has `shares`, `cost_basis`, and
+  `market_price` but no stored `market_value` or `pnl`; fresh verify
+  2026-06-01 16:56 +08.
+- `backend/app/tasks/backtest_tasks.py:579-605` / §backtest result writer —
+  writer inserts trades without `target_price`/`transfer_fee` and NAV rows with
+  `benchmark_nav`, not `benchmark_return`; fresh verify 2026-06-01 16:56 +08.
+- `backend/app/api/backtest.py:122`, `:458`, `:570`, `:623`, `:921`,
+  `:1036`, and `:1297` / §backtest router — patched runtime contract points;
+  fresh verify 2026-06-01 16:56 +08.
+
+### §22.2 Closure
+
+- Narrowed `_safe_query()` so only missing relation errors return an empty list;
+  undefined-column schema drift now fails loud instead of being reported as no
+  data.
+- Derived `benchmark_return` from `benchmark_nav` with `LAG(benchmark_nav)` for
+  NAV/report paths.
+- Updated trades SQL to select `trade_id AS id` and use `CAST(NULL AS NUMERIC)`
+  placeholders for fields not stored by the writer.
+- Derived holdings `market_value` and `pnl` from actual holdings columns.
+- Normalized Decimal/date/UUID values before detail responses leave
+  `backend/app/api/backtest.py`.
+- Updated the frontend trade-row type to accept UUID string IDs returned by the
+  backend.
+- Added `backend/tests/test_backtest_detail_endpoint_contract.py` covering
+  fail-loud schema errors, JSON-friendly conversion, DDL-aligned SQL guards,
+  trades UUID IDs, cost-sensitivity Decimal arithmetic, and live-compare metric
+  conversion.
+
+### §22.3 Verification
+
+- RED:
+  `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` first
+  failed on the new guards because trades SQL still used `NULL::numeric`, direct
+  endpoint-call defaults needed explicit query args, and the cost-sensitivity
+  assertion targeted the non-baseline row.
+- GREEN targeted:
+  `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7
+  passed.
+- Existing backtest/A6 compatibility:
+  `pytest backend/tests/test_a4_a6.py::TestA6BacktestNavEndpoint backend/tests/test_backtest_api.py -q`
+  -> 33 passed.
+- Backend lint/compile:
+  `ruff check backend/app/api/backtest.py backend/tests/test_backtest_detail_endpoint_contract.py`
+  -> PASS; `python -m py_compile backend/app/api/backtest.py` -> PASS.
+- Frontend compatibility:
+  `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` ->
+  3 passed; `npx tsc -b --pretty false` -> exit 0; frontend API discipline
+  guard -> PASS.
+- Real DB read-only runtime check against run
+  `2c91bd92-ee0f-4f52-9244-795365cc1037`: direct calls to nav, trades,
+  holdings summary, annual, monthly, attribution, market-state,
+  cost-sensitivity, live-compare, and report all returned without runtime
+  errors; the generated report temp file was removed after verification.
+
+### §22.4 Remaining API Governance Backlog
+
+- Rows 26-32 and 35 are now backend-runtime-hardened, but they remain
+  frontend-unwired in this coverage matrix until `BacktestResults.tsx` or a
+  successor deep-dive page consumes them through `frontend/src/api/backtest.ts`
+  wrappers.
+- Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog by
+  design.
+
+### §22.5 Aggregate Count Drift Surfaced
+
+While correcting the backtest cancel row, Batch 21 re-ran the raw route/module
+counts. This supersedes the older §10 headline count but does not replace the
+row-level matrix audit, which remains future work for non-backtest domains.
+
+- Backend raw grep:
+  `rg -n "@router\\.(get|post|put|delete|patch)\\(" backend/app/api -g "*.py"`
+  -> 170 route decorators across 25 router files.
+- Per-router counts:
+  agent 10, approval 6, attribution 2, auth 3, backtest 17, dashboard 8,
+  execution 3, execution_ops 17, factors 11, health 3, market 3, mining 5,
+  news 4, notifications 9, paper_trading 5, params 7, pipeline 12,
+  portfolio 3, realtime 2, remote_status 2, report 5, risk 12, sse 1,
+  strategies 10, system 10.
+- Frontend API modules:
+  18 `frontend/src/api/*.ts` files: agent, approval, attribution, backtest,
+  client, dashboard, execution, factors, market, mining, notifications,
+  pipeline, portfolio, realtime, reports, risk, strategies, system.
+
+Backlog: run a dedicated API coverage refresh to update every non-backtest
+row-level mapping and stale count paragraph rather than silently editing only
+the headline numbers.
