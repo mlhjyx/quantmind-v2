@@ -383,7 +383,7 @@ Axios instance definition only. No direct API calls. **0 calls**.
 Historical 2026-05-20 snapshot. Superseded by §12 Fresh verify.
 
 Current wrapper coverage includes Dashboard summary, NAV, pending actions,
-alerts, monthly returns, industry distribution, paper trades, positions,
+alerts, monthly returns, industry distribution, paper status, paper trades, positions,
 strategy overview, factor rows, and pipeline steps.
 
 ### 3.5 execution.ts (`frontend/src/api/execution.ts`)
@@ -606,10 +606,10 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 89 | `/api/notifications/{notification_id}` | GET | notifications.ts:129 | ✅ |
 | 90 | `/api/notifications/{notification_id}/read` | PUT | notifications.ts:138 | ✅ |
 | 91 | `/api/notifications/test` | POST | — | ❌ |
-| 92 | `/api/paper-trading/status` | GET | — | ❌ |
-| 93 | `/api/paper-trading/graduation` | GET | — | ❌ |
-| 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:99 | ✅ |
-| 95 | `/api/paper-trading/positions` | GET | dashboard.ts:109 | ✅ |
+| 92 | `/api/paper-trading/status` | GET | dashboard.ts:85 | ✅ |
+| 93 | `/api/paper-trading/graduation` | GET | — | ⚠️ superseded |
+| 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:120 | ✅ |
+| 95 | `/api/paper-trading/positions` | GET | dashboard.ts:130 | ✅ |
 | 96 | `/api/paper-trading/trades` | GET | dashboard.ts:67 | ✅ |
 | 97 | `/api/params` | GET | system.ts:205 | ✅ |
 | 98 | `/api/params/changelog` | GET | — | ❌ |
@@ -695,6 +695,7 @@ snapshot.
 |---|----------|-----------|
 | 107–110 | `/api/pms/*` | **PHYSICALLY RETIRED iter 50 2026-05-24 (ADR-094)** — pms_engine.py + api/pms.py + frontend page/route/nav 同 PR 全部删除. V3 SSOT 走 V3 §4 L1 PMSRule + V3 §7.3 trailing_stop |
 | 46 | `/api/execution/algo-config` | Legacy display-only endpoint from the retired `TradeExecution` path; prior audits found it can expose stale `strategy_configs` display values and is not in the trading path |
+| 93 | `/api/paper-trading/graduation` | Legacy parameterized criteria endpoint requiring caller-supplied backtest baselines; current operator UI uses fixed-standard `/api/paper-trading/graduation-status` instead |
 | 98 | `/api/params/changelog` | No frontend UI for changelog |
 | 99 | `/api/params/{key}` GET | Only PUT consumed; GET by key unused |
 | 101 | `/api/params/init-defaults` | Init script only |
@@ -704,7 +705,6 @@ snapshot.
 | # | Endpoint | Priority |
 |---|----------|----------|
 | 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
-| 92–93 | `/api/paper-trading/status`, `/api/paper-trading/graduation` | Legacy PT status/criteria endpoints not wrapped by current frontend API layer |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 
 ### 5E — Needs Backend Semantics Before UI
@@ -2008,3 +2008,64 @@ Full regression/build/smoke results are recorded in the Batch 26 status report.
 `PUT /api/execution/alert-config` needs an explicit backend design before UI:
 define storage, validation, diff preview, reload semantics, audit record, and
 rollback path. Until then, it should not be wired into the operator panel.
+
+## §28 Fresh verify — 2026-06-01 (Paper trading status + graduation reclass)
+
+### §28.1 Finding
+
+Rows 92-93 were grouped as legacy paper-trading endpoints. Fresh code review
+showed they should be split:
+
+- Row 92 `/api/paper-trading/status` is a useful read-only PT lifecycle/status
+  endpoint. `PtStatus.tsx` already had an S2 trading-state card, but it only
+  showed environment/config state and did not consume the PT status payload.
+- Row 93 `/api/paper-trading/graduation` is a legacy parameterized criteria
+  endpoint requiring caller-supplied backtest baselines. Current UI and fixed
+  gate semantics use `/api/paper-trading/graduation-status`, already wrapped by
+  `fetchPaperGraduationStatus()`.
+
+Fresh evidence:
+- `backend/app/api/paper_trading.py:57` / §paper-trading-status route —
+  read-only status endpoint returning NAV, position count, running days, Sharpe,
+  MDD, total return, latest date, and graduation-ready flag; fresh verify
+  2026-06-01 18:33 +08.
+- `backend/app/api/paper_trading.py:76` / §paper-trading-graduation route —
+  parameterized baseline comparison endpoint; fresh verify 2026-06-01 18:33 +08.
+- `backend/app/api/paper_trading.py:101` / §paper-trading-graduation-status
+  route — fixed-standard UI endpoint; fresh verify 2026-06-01 18:33 +08.
+- `frontend/src/api/dashboard.ts:85` / §paper status wrapper — frontend now
+  wraps `/paper-trading/status`; fresh verify 2026-06-01 18:33 +08.
+- `frontend/src/pages/PtStatus.tsx:403-405` and `:448` / §PT status page —
+  page now queries and renders the read-only PT status payload in S2; fresh
+  verify 2026-06-01 18:33 +08.
+
+### §28.2 Closure
+
+- Added typed `PaperTradingStatus` and `fetchPaperTradingStatus()` to
+  `frontend/src/api/dashboard.ts`.
+- Wired `PtStatus.tsx` S2 trading-state card to display PT NAV, holdings count,
+  running days, latest data date, Sharpe, MDD, cumulative return, and graduation
+  day readiness.
+- Added contract/source-guard tests for the status wrapper and page usage.
+- Marked row 92 as consumed and row 93 as superseded by the fixed-standard
+  graduation-status endpoint.
+
+### §28.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` failed
+  before implementation because `fetchPaperTradingStatus()` and PtStatus page
+  usage were missing.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` -> 4
+  passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full regression/build/smoke results are recorded in the Batch 27 status report.
+
+### §28.4 Remaining Work
+
+`/api/paper-trading/graduation` should stay out of the current operator UI
+unless the product reintroduces caller-supplied backtest baselines. The active
+gate view should continue to use `/api/paper-trading/graduation-status`.

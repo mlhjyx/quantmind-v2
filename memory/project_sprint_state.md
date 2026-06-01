@@ -1,81 +1,83 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 26.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 27.
 date: 2026-06-01 +08:00
-status: governance_batch_26_execution_readonly_fallback_full_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_26.md
+status: governance_batch_27_pt_status_full_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_27.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 26
+## Current Handoff - 2026-06-01 Batch 27
 
-Mode: full-project closure/governance remediation, batch 26 execution read-only
-DB fallback coverage and unsafe/no-op execution endpoint reclassification fully
+Mode: full-project closure/governance remediation, batch 27 paper-trading
+status coverage and parameterized graduation endpoint reclassification fully
 verified before commit/push.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `2dc316c7` (`wire notification detail
-  view`), and PR #523 checks were clean before Batch 26 edits.
+- Latest pushed head before this batch is `081296d9` (`wire execution db
+  fallback`), and PR #523 checks were clean before Batch 27 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Rows 44-45 `/api/execution/pending-orders` and `/api/execution/log` are
-  read-only DB `trade_log` visibility endpoints. They are useful when QMT
-  order/trade snapshots are unavailable.
-- Row 46 `/api/execution/algo-config` is legacy display-only behavior from the
-  retired `TradeExecution` path. Prior audits found it can show stale
-  `strategy_configs` values and is not in the trading path.
-- Row 62 `/api/execution/alert-config` is admin-gated but only writes an audit
-  row and echoes the payload; it has no config storage or runtime reload
-  semantics, so UI wiring would imply a mutation that does not persist.
+- Row 92 `/api/paper-trading/status` is a useful read-only PT lifecycle/status
+  endpoint. `PtStatus.tsx` already had an S2 trading-state card, but it did not
+  consume the PT status payload.
+- Row 93 `/api/paper-trading/graduation` is an older parameterized criteria
+  endpoint requiring caller-supplied backtest baselines. Current operator gate
+  UI uses `/api/paper-trading/graduation-status`, already wrapped and consumed.
 - Row 34 `/api/backtest/{run_id}/sensitivity` remains an intentional backend
   defer stub, not a missed frontend hook. Keep it in backlog unless the defer
   decision changes.
 
 Closed in this batch:
-- Added typed `getPendingOrders()` and `getExecutionLog()` wrappers to
-  `frontend/src/api/execution.ts`.
-- Added `queryKeys.executionPendingOrders` and `queryKeys.executionLog`.
-- Wired `frontend/src/pages/Execution/index.tsx` to show DB fallback tables for
-  pending orders and execution log rows when QMT orders/trades are absent.
-- Added `frontend/src/__tests__/execution-api-contract.test.ts`.
-- Updated `docs/API_COVERAGE.md` rows 44-46, row 62, §3.5, §5C, §5D, new §5E,
-  and new §27; added
-  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_26.md`.
+- Added typed `PaperTradingStatus` and `fetchPaperTradingStatus()` to
+  `frontend/src/api/dashboard.ts`.
+- Wired `frontend/src/pages/PtStatus.tsx` S2 trading-state card to query and
+  render PT NAV, holdings count, running days, latest data date, Sharpe, MDD,
+  cumulative return, and graduation-day readiness.
+- Extended `frontend/src/__tests__/pt-graduation-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` row 92, row 93, §3.4, §5C, §5D, and new §28;
+  added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_27.md`.
 
 Verification:
-- RED execution contract:
-  `npx vitest --run src/__tests__/execution-api-contract.test.ts` failed before
-  implementation on missing wrappers/page usage.
-- Targeted execution contract:
-  `npx vitest --run src/__tests__/execution-api-contract.test.ts` -> 3 passed.
+- RED PT status contract:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` failed
+  before implementation on missing status wrapper/page usage.
+- Targeted PT contract:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` -> 4
+  passed.
 - Backend endpoint compatibility:
-  `pytest backend/tests/test_sprint123_apis.py -q` -> 21 passed.
+  `pytest backend/tests/test_api_routes.py::TestPaperTradingAPI -q` -> 7
+  passed.
 - `npx tsc -b --pretty false` -> exit 0.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 152 passed.
+- `npx vitest --run` -> 154 passed.
 - `npm run build` -> exit 0 with existing Vite vendor-echarts chunk-size warning.
-- Browser smoke on `http://127.0.0.1:5173/execution?smoke=batch26`:
-  Execution screen rendered, `今日委托` and `今日成交` tabs opened, QMT-unavailable
-  fallback text rendered, and the timestamped console-error window after
-  `2026-06-01T10:23:16.466Z` had 0 new errors.
+- Browser smoke on `http://127.0.0.1:5173/pt-status?smoke=batch27`:
+  PT status screen rendered, S2 showed the PT status metrics, and the
+  timestamped console-error window after `2026-06-01T10:35:15.523Z` had 0 new
+  errors.
+- Read-only endpoint probe:
+  `GET http://127.0.0.1:8000/api/paper-trading/status` -> 200 with expected
+  status payload shape.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
 
 Still open:
-- Run banned-word scan, then stage/commit/push Batch 26 and verify PR #523
+- Run banned-word scan, then stage/commit/push Batch 27 and verify PR #523
   remote checks before treating the batch as merge-ready.
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Remaining §5D backlog: row 34 backtest sensitivity; rows 92-93 legacy
-  paper-trading status/graduation; rows 134-136 and 140-141 strategy
-  versions/factors/backtest.
+- Remaining §5D backlog: row 34 backtest sensitivity; rows 134-136 and 140-141
+  strategy versions/factors/backtest.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
 - Row 62 alert-config requires a backend design for storage, validation, diff
   preview, reload behavior, audit payload, and rollback path before UI.
 - Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
@@ -87,8 +89,17 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Stage/commit/push Batch 26, update PR #523, then verify GitHub checks before
+- Stage/commit/push Batch 27, update PR #523, then verify GitHub checks before
   continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 26
+
+Batch 26 closed execution rows 44-45 through read-only DB fallback tables on the
+Execution page and reclassified row 46 legacy display-only plus row 62 backend
+no-op. Commit `081296d9` pushed as `wire execution db fallback`; PR #523 checks
+passed before Batch 27 edits.
 
 ---
 

@@ -71,6 +71,27 @@ export async function fetchPaperTrades(limit = 50): Promise<Trade[]> {
   return data;
 }
 
+export interface PaperTradingStatus {
+  nav: number;
+  position_count: number;
+  running_days: number;
+  sharpe: number;
+  mdd: number;
+  total_return: number;
+  trade_date: string | null;
+  graduation_ready: boolean;
+}
+
+export async function fetchPaperTradingStatus(
+  strategyId = "",
+): Promise<PaperTradingStatus> {
+  const config = strategyId
+    ? { params: { strategy_id: strategyId } }
+    : undefined;
+  const { data } = await api.get<PaperTradingStatus>("/paper-trading/status", config);
+  return data;
+}
+
 export type PaperTradingExecutionMode = "paper" | "live" | string;
 
 export interface PaperGraduationCriterion {
