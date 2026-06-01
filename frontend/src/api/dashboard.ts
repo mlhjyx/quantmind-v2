@@ -2,10 +2,15 @@
 // (反 bypass apiClient.interceptors 真 401/429/503 toast handler + auth header)
 import apiClient from "./client";
 import type {
+  Alert,
   DashboardSummary,
+  FactorRow,
+  IndustryItem,
+  MonthlyReturns,
   NAVPoint,
   NAVPeriod,
   PendingAction,
+  PipelineStep,
   Position,
   Trade,
 } from "@/types/dashboard";
@@ -31,6 +36,28 @@ export async function fetchNAVSeries(
 export async function fetchPendingActions(): Promise<PendingAction[]> {
   const { data } = await api.get<PendingAction[]>(
     "/dashboard/pending-actions",
+  );
+  return data;
+}
+
+export async function fetchAlerts(hours = 24): Promise<Alert[]> {
+  const { data } = await api.get<Alert[]>("/dashboard/alerts", {
+    params: { hours },
+  });
+  return data;
+}
+
+export async function fetchMonthlyReturns(): Promise<MonthlyReturns> {
+  const { data } = await api.get<MonthlyReturns>("/dashboard/monthly-returns", {
+    params: { execution_mode: "live" },
+  });
+  return data;
+}
+
+export async function fetchIndustryDistribution(): Promise<IndustryItem[]> {
+  const { data } = await api.get<IndustryItem[]>(
+    "/dashboard/industry-distribution",
+    { params: { execution_mode: "live" } },
   );
   return data;
 }
@@ -77,4 +104,72 @@ export interface StrategyOverview {
 export async function fetchDashboardStrategies(): Promise<StrategyOverview[]> {
   const { data } = await api.get<StrategyOverview[]>("/dashboard/strategies");
   return data;
+}
+
+interface DashboardFactorRaw {
+  name: string;
+  category: string | null;
+  direction: string;
+  status: string;
+  ic_mean: number | null;
+  ic_ir: number | null;
+}
+
+export async function fetchDashboardFactorRows(): Promise<FactorRow[]> {
+  const { data } = await api.get<DashboardFactorRaw[]>("/factors");
+  return data.map((factor) => ({
+    name: factor.name,
+    cat: factor.category ?? "未知",
+    ic: factor.ic_mean ?? 0,
+    ir: factor.ic_ir ?? 0,
+    dir: factor.direction === "positive" ? "正向" : "反向",
+    status:
+      factor.status === "active"
+        ? "active"
+        : factor.status === "candidate"
+          ? "new"
+          : "decay",
+    trend: [],
+  }));
+}
+
+interface PipelineStatusRaw {
+  status?: string;
+  current_node?: string | null;
+  node_statuses?: Record<string, string>;
+  nodes?: Array<{ id?: string; name?: string; status: string }>;
+}
+
+function toDashboardStepStatus(
+  name: string,
+  status: string,
+  currentNode?: string | null,
+  pipelineStatus?: string,
+): string {
+  if (status === "completed") return "done";
+  if (name === currentNode && pipelineStatus === "running") return "running";
+  return status;
+}
+
+export async function fetchDashboardPipelineSteps(): Promise<PipelineStep[]> {
+  const { data } = await api.get<PipelineStatusRaw>("/pipeline/status");
+  if (data.nodes && data.nodes.length > 0) {
+    return data.nodes.map((node) => {
+      const name = node.name ?? node.id ?? "";
+      return {
+        name,
+        status: toDashboardStepStatus(
+          node.id ?? name,
+          node.status,
+          data.current_node,
+          data.status,
+        ),
+      };
+    });
+  }
+
+  return Object.entries(data.node_statuses ?? {}).map(([name, status]) => ({
+    name,
+    status: toDashboardStepStatus(name, status, data.current_node, data.status),
+  }));
 }

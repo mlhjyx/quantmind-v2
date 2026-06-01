@@ -1,7 +1,8 @@
 import { Card, CardHeader } from "@/components/shared";
 import { C } from "@/theme";
+import type { MonthlyReturns } from "@/types/dashboard";
 
-export function MonthlyHeatmap({ monthlyData }: { monthlyData: Record<string, number[]> }) {
+export function MonthlyHeatmap({ monthlyData }: { monthlyData: MonthlyReturns }) {
   return (
     <Card className="col-span-4">
       <CardHeader title="月度收益" titleEn="Monthly %" />

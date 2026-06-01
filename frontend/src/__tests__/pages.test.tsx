@@ -33,6 +33,11 @@ vi.mock("@/api/dashboard", () => ({
   fetchPositions: vi.fn().mockResolvedValue([]),
   fetchCircuitBreakerState: vi.fn().mockResolvedValue(null),
   fetchPendingActions: vi.fn().mockResolvedValue([]),
+  fetchAlerts: vi.fn().mockResolvedValue([]),
+  fetchMonthlyReturns: vi.fn().mockResolvedValue({}),
+  fetchIndustryDistribution: vi.fn().mockResolvedValue([]),
+  fetchDashboardFactorRows: vi.fn().mockResolvedValue([]),
+  fetchDashboardPipelineSteps: vi.fn().mockResolvedValue([]),
   fetchDashboardStrategies: vi.fn().mockResolvedValue([]),
   fetchPaperTrades: vi.fn().mockResolvedValue([]),
 }));

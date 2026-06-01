@@ -29,6 +29,10 @@ matrix body is retained as historical audit evidence.
   not frontend-only orphan work.
 - Notification panel mock seeding is closed in §11: list, per-row read, and
   read-all flows now consume `frontend/src/api/notifications.ts`.
+- Dashboard secondary panels are closed in §12: alerts, monthly returns,
+  industry distribution, factor rows, and pipeline steps now go through
+  `frontend/src/api/dashboard.ts` wrappers instead of page-level `apiClient`
+  calls.
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -360,9 +364,11 @@ Axios instance definition only. No direct API calls. **0 calls**.
 
 ### 3.4 dashboard.ts (`frontend/src/api/dashboard.ts`)
 
-No `apiClient.*` calls — comment only at line 2.  
-**0 direct calls** — dashboard data likely fetched via react-query hooks elsewhere or SSE/WebSocket.  
-All 8 dashboard endpoints (#36–43) are **backend-only** (no frontend API module consumer).
+Historical 2026-05-20 snapshot. Superseded by §12 Fresh verify.
+
+Current wrapper coverage includes Dashboard summary, NAV, pending actions,
+alerts, monthly returns, industry distribution, paper trades, positions,
+strategy overview, factor rows, and pipeline steps.
 
 ### 3.5 execution.ts (`frontend/src/api/execution.ts`)
 
@@ -905,3 +911,60 @@ the §9.2 list plus `notifications.ts`.
 
 - Add a notification detail view only if operators need a deep-link detail surface; current panel has enough title/content/link data for the sidebar workflow.
 - Add cleanup/preferences UI only if notification administration becomes an operator workflow. Until then, those endpoints remain backend/admin-only candidates rather than broken user-facing chains.
+
+## §12 Fresh verify — 2026-06-01 (dashboard API-layer closure)
+
+### §12.1 Finding
+
+`frontend/src/pages/Dashboard/index.tsx` previously imported `apiClient`
+directly for five secondary data reads:
+
+| UI panel | Previous page-level call | Current wrapper |
+|---|---|---|
+| Alerts | `/dashboard/alerts` | `fetchAlerts()` |
+| Monthly heatmap | `/dashboard/monthly-returns` | `fetchMonthlyReturns()` |
+| Industry distribution | `/dashboard/industry-distribution` | `fetchIndustryDistribution()` |
+| Factor library rows | `/factors` | `fetchDashboardFactorRows()` |
+| AI pipeline steps | `/pipeline/status` | `fetchDashboardPipelineSteps()` |
+
+Risk: the API matrix grep only counts `frontend/src/api/*.ts`, so page-level
+calls hid real consumers and made the historical §3.4 “backend-only” dashboard
+claim stale. The page also owned response-shape conversion that belongs in the
+API layer per LL-035.
+
+### §12.2 Closure
+
+- Added the five wrappers in `frontend/src/api/dashboard.ts`.
+- Centralized Dashboard row types in `frontend/src/types/dashboard.ts`.
+- Updated `MonthlyHeatmap` to accept backend `null` months via
+  `MonthlyReturns`.
+- Removed the direct `apiClient` import and all `apiClient.*` calls from
+  `Dashboard/index.tsx`.
+- Added `frontend/src/__tests__/dashboard-api-contract.test.ts` to lock wrapper
+  exports, endpoint params, factor-row normalization, pipeline-step
+  normalization, and the Dashboard page boundary.
+
+### §12.3 Verification
+
+- RED: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed
+  before the fix on missing wrapper exports and the direct `apiClient` import.
+- GREEN targeted contract: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts`
+  -> 6 passed.
+- Broader frontend/API suite:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 20 passed.
+- Full frontend suite: `npx vitest --run` -> 106 passed.
+- Frontend build: `npm run build` -> exit 0 with the existing Vite vendor
+  chunk-size warning only.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/dashboard`;
+  heading `驾驶舱` was visible and console error list was empty.
+
+### §12.4 Remaining API Governance Backlog
+
+- `DashboardAstock.tsx`, `PTGraduation.tsx`, `Portfolio.tsx`,
+  `RiskManagement.tsx`, `ReportCenter.tsx`, `MarketData.tsx`, and a few
+  shared widgets still import `apiClient` directly. They are not broken by this
+  batch, but they remain candidates for follow-up API-layer contraction if their
+  page-level calls contain response conversion or hide consumers from the matrix.

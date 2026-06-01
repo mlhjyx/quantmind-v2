@@ -1,16 +1,33 @@
 import { useEffect, useState, useCallback } from "react";
-// Frontend Design v3 §4.3 / Audit Finding #5: 6 raw axios bypass → apiClient SSOT
-import apiClient from "@/api/client";
 import { Link } from "react-router-dom";
 import { ChevronRight, Play, Bell } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Card, CardHeader } from "@/components/shared";
-import { fetchSummary, fetchPositions, fetchNAVSeries, fetchPendingActions } from "@/api/dashboard";
+import {
+  fetchAlerts,
+  fetchDashboardFactorRows,
+  fetchDashboardPipelineSteps,
+  fetchIndustryDistribution,
+  fetchMonthlyReturns,
+  fetchNAVSeries,
+  fetchPendingActions,
+  fetchPositions,
+  fetchSummary,
+} from "@/api/dashboard";
 import { fetchEnvState, fetchCalendarInfo, type EnvState, type CalendarInfo } from "@/api/system";
 import { C } from "@/theme";
-import type { DashboardSummary, Position, PendingAction } from "@/types/dashboard";
+import type {
+  Alert,
+  DashboardSummary,
+  FactorRow,
+  IndustryItem,
+  MonthlyReturns,
+  PendingAction,
+  PipelineStep,
+  Position,
+} from "@/types/dashboard";
 import { usePortfolio } from "@/hooks/useRealtimeData";
 import { ShutdownBanner } from "@/components/safety/ShutdownBanner";
 
@@ -18,18 +35,14 @@ import { KPIGrid } from "./KPIGrid";
 import { EquityCurve } from "./EquityCurve";
 import type { NavChartPoint } from "./EquityCurve";
 import { AlertsPanel } from "./AlertsPanel";
-import type { Alert } from "./AlertsPanel";
 import { PendingActionsPanel } from "./PendingActionsPanel";
 import { AttributionPanel } from "./AttributionPanel";  // iter 147 W2-F F6
 import { StrategiesPanel } from "./StrategiesPanel";
 import { HoldingsTable } from "./HoldingsTable";
 import { MonthlyHeatmap } from "./MonthlyHeatmap";
 import { IndustryAndSystem } from "./IndustryAndSystem";
-import type { IndustryItem } from "./IndustryAndSystem";
 import { FactorLibraryPanel } from "./FactorLibraryPanel";
-import type { FactorRow } from "./FactorLibraryPanel";
 import { AIPipelinePanel } from "./AIPipelinePanel";
-import type { PipelineStep } from "./AIPipelinePanel";
 
 export default function DashboardOverview() {
   const { data: rtPortfolio } = usePortfolio();
@@ -40,7 +53,7 @@ export default function DashboardOverview() {
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   // iter 139 W2-F F8 closure — pending actions widget (熔断/健康/管道)
   const [pendingActions, setPendingActions] = useState<PendingAction[] | null>(null);
-  const [monthlyData, setMonthlyData] = useState<Record<string, number[]> | null>(null);
+  const [monthlyData, setMonthlyData] = useState<MonthlyReturns | null>(null);
   const [industryDist, setIndustryDist] = useState<IndustryItem[] | null>(null);
   const [navChartData, setNavChartData] = useState<NavChartPoint[]>([]);
   const [factorData, setFactorData] = useState<FactorRow[]>([]);
@@ -70,8 +83,8 @@ export default function DashboardOverview() {
 
     // Alerts
     setAlertsError(null);
-    apiClient.get<Alert[]>("/dashboard/alerts", { params: { execution_mode: "live" } })
-      .then((r) => setAlerts(r.data))
+    fetchAlerts()
+      .then(setAlerts)
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "请求失败";
         setAlertsError(`预警数据加载失败: ${msg}`);
@@ -87,8 +100,8 @@ export default function DashboardOverview() {
 
     // Monthly returns
     setMonthlyError(null);
-    apiClient.get<Record<string, number[]>>("/dashboard/monthly-returns", { params: { execution_mode: "live" } })
-      .then((r) => setMonthlyData(r.data))
+    fetchMonthlyReturns()
+      .then(setMonthlyData)
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "请求失败";
         setMonthlyError(`月度收益加载失败: ${msg}`);
@@ -97,8 +110,8 @@ export default function DashboardOverview() {
 
     // Industry distribution
     setIndustryError(null);
-    apiClient.get<IndustryItem[]>("/dashboard/industry-distribution", { params: { execution_mode: "live" } })
-      .then((r) => setIndustryDist(r.data))
+    fetchIndustryDistribution()
+      .then(setIndustryDist)
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "请求失败";
         setIndustryError(`行业分布加载失败: ${msg}`);
@@ -121,19 +134,8 @@ export default function DashboardOverview() {
       });
 
     // Factors list
-    apiClient.get<{ name: string; category: string; direction: string; status: string; ic_mean: number | null; ic_ir: number | null }[]>("/factors")
-      .then((r) => {
-        const rows: FactorRow[] = r.data.map((f) => ({
-          name: f.name,
-          cat: f.category ?? "未知",
-          ic: f.ic_mean ?? 0,
-          ir: f.ic_ir ?? 0,
-          dir: f.direction === "positive" ? "正向" : "反向",
-          status: f.status === "active" ? "active" : f.status === "candidate" ? "new" : "decay",
-          trend: [],
-        }));
-        setFactorData(rows);
-      })
+    fetchDashboardFactorRows()
+      .then(setFactorData)
       .catch(() => {
         setFactorData([]);
       });
@@ -149,21 +151,8 @@ export default function DashboardOverview() {
       .catch(() => setCalendarInfo(null));
 
     // Pipeline status → transform node_statuses to steps array
-    apiClient.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/pipeline/status")
-      .then((r) => {
-        const nodeMap = r.data.node_statuses ?? {};
-        const currentNode = r.data.current_node;
-        const pipelineStatus = r.data.status;
-        const steps: PipelineStep[] = Object.entries(nodeMap).map(([name, st]) => {
-          let status: string;
-          if (st === "completed") status = "done";
-          else if (name === currentNode && pipelineStatus === "running") status = "running";
-          else if (st === "pending") status = "pending";
-          else status = st;
-          return { name, status };
-        });
-        setPipelineSteps(steps);
-      })
+    fetchDashboardPipelineSteps()
+      .then(setPipelineSteps)
       .catch(() => {
         setPipelineSteps([]);
       });

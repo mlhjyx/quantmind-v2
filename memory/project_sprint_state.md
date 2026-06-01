@@ -1,13 +1,51 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 10.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 11.
 date: 2026-06-01 +08:00
-status: governance_batch_10_blocking_ci_parity_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_10.md
+status: governance_batch_11_dashboard_api_layer_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_11.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 10
+## Current Handoff - 2026-06-01 Batch 11
+
+Mode: full-project closure/governance remediation, batch 11 Dashboard API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited Dashboard frontend/API contract from code: `Dashboard/index.tsx` used page-level `apiClient` calls for alerts, monthly returns, industry distribution, factor rows, and pipeline status.
+- Confirmed this made `docs/API_COVERAGE.md` §3.4 stale because its methodology counts `frontend/src/api/*.ts`, while these consumers lived in the page.
+- Added typed wrappers in `frontend/src/api/dashboard.ts`: `fetchAlerts`, `fetchMonthlyReturns`, `fetchIndustryDistribution`, `fetchDashboardFactorRows`, and `fetchDashboardPipelineSteps`.
+- Centralized Dashboard display types in `frontend/src/types/dashboard.ts`; `MonthlyHeatmap` now accepts backend null months via `MonthlyReturns`.
+- Removed direct `apiClient` import and usage from `Dashboard/index.tsx`.
+- Added `frontend/src/__tests__/dashboard-api-contract.test.ts` to lock wrapper exports, endpoint params, response normalization, and the page boundary.
+- Updated `docs/API_COVERAGE.md` §12 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_11.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed before the fix on missing wrapper exports and the direct Dashboard page `apiClient` import.
+- GREEN targeted Dashboard contract -> 6 passed.
+- Broader frontend/API suite -> 20 passed.
+- Full frontend suite -> 106 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- In-app browser smoke opened `http://127.0.0.1:5173/dashboard`; the `驾驶舱` heading was visible and console errors were empty.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Other direct `apiClient` page/component imports remain candidates for follow-up only when a code-backed contract gap is confirmed.
+
+Next safe step:
+- Run final diff/check hygiene, commit/push Batch 11 into PR #523, wait for CI, then continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 10
 
 Mode: full-project closure/governance remediation, batch 10 blocking CI regression parity verified locally before final commit/CI.
 
