@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GPPanel } from "@/components/mining/GPPanel";
@@ -6,7 +6,6 @@ import { LLMPanel } from "@/components/mining/LLMPanel";
 import { BruteForcePanel } from "@/components/mining/BruteForcePanel";
 import { CandidateTable } from "@/components/mining/CandidateTable";
 import { AssistPanel } from "@/components/ai/AssistPanel";
-import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMiningStore } from "@/store/miningStore";
 import {
   startGPMining,
@@ -18,23 +17,13 @@ import {
 import type { GPConfig, LLMConfig, BruteForceConfig, CandidateFactor, MiningEngine } from "@/api/mining";
 
 type ModeTab = "gp" | "llm" | "bruteforce";
+const ACTIVE_TASK_POLL_MS = 5000;
 
 const MODE_TABS: { key: ModeTab; label: string; desc: string }[] = [
   { key: "gp", label: "GP遗传编程", desc: "自动进化因子表达式" },
   { key: "llm", label: "LLM生成", desc: "AI根据投资假设生成" },
   { key: "bruteforce", label: "暴力枚举", desc: "系统性参数网格搜索" },
 ];
-
-interface WsProgressMessage {
-  type: "progress" | "candidate" | "complete" | "error";
-  task_id: string;
-  generation?: number;
-  total_generations?: number;
-  best_fitness?: number;
-  avg_fitness?: number;
-  candidate?: CandidateFactor;
-  evolution_point?: { generation: number; best_fitness: number; avg_fitness: number };
-}
 
 export default function FactorLab() {
   const [activeMode, setActiveMode] = useState<ModeTab>("gp");
@@ -57,69 +46,47 @@ export default function FactorLab() {
   const isRunning = activeTask?.status === "running";
   const isPaused = activeTask?.status === "paused";
 
-  // WebSocket for active task
-  const wsEnabled = !!activeTaskId && (isRunning || isPaused);
-  const { on, off } = useWebSocket({
-    namespace: activeTaskId ? `/ws/factor-mine/${activeTaskId}` : "",
-    enabled: wsEnabled,
-  });
-
-  const handleWsMessage = useCallback(
-    (msg: WsProgressMessage) => {
-      if (!activeTaskId || msg.task_id !== activeTaskId) return;
-
-      if (msg.type === "progress") {
-        if (msg.generation !== undefined) setCurrentGeneration(msg.generation);
-        if (msg.total_generations !== undefined) setTotalGenerations(msg.total_generations);
-        if (msg.best_fitness !== undefined) setBestFitness(msg.best_fitness);
-        if (msg.evolution_point) {
-          setEvolutionHistory((prev) => [...prev, msg.evolution_point!]);
-        }
-        updateTask(activeTaskId, {
-          generation: msg.generation,
-          totalGenerations: msg.total_generations,
-          progress: msg.generation && msg.total_generations
-            ? Math.round((msg.generation / msg.total_generations) * 100)
-            : 0,
-        });
-      } else if (msg.type === "candidate" && msg.candidate) {
-        setCandidates((prev) => {
-          const exists = prev.some((c) => c.id === msg.candidate!.id);
-          if (exists) return prev.map((c) => c.id === msg.candidate!.id ? msg.candidate! : c);
-          return [msg.candidate!, ...prev];
-        });
-        updateTask(activeTaskId, {
-          discovered: (activeTask?.discovered ?? 0) + 1,
-        });
-      } else if (msg.type === "complete") {
-        updateTask(activeTaskId, { status: "completed", progress: 100 });
-      } else if (msg.type === "error") {
-        updateTask(activeTaskId, { status: "failed" });
-        setError("任务执行出错，请查看任务中心");
-      }
-    },
-    [activeTaskId, activeTask, updateTask]
-  );
-
-  useEffect(() => {
-    if (!wsEnabled) return;
-    on<WsProgressMessage>("message", handleWsMessage);
-    return () => off<WsProgressMessage>("message", handleWsMessage);
-  }, [wsEnabled, on, off, handleWsMessage]);
-
-  // Load candidates for active task on mount / task change
+  // Load and poll candidates for the active task through the supported REST contract.
   useEffect(() => {
     if (!activeTaskId) return;
-    getMiningTaskDetail(activeTaskId)
-      .then((detail) => {
+    let cancelled = false;
+
+    async function loadDetail() {
+      try {
+        const detail = await getMiningTaskDetail(activeTaskId!);
+        if (cancelled) return;
         setCandidates(detail.candidates ?? []);
         if (detail.evolution_history) setEvolutionHistory(detail.evolution_history);
         if (detail.generation !== undefined) setCurrentGeneration(detail.generation);
         if (detail.total_generations !== undefined) setTotalGenerations(detail.total_generations);
         if (detail.best_fitness !== undefined) setBestFitness(detail.best_fitness);
-      })
-      .catch(() => {/* task not found yet, ignore */});
-  }, [activeTaskId]);
+        updateTask(activeTaskId!, {
+          status: detail.status,
+          progress: detail.progress,
+          generation: detail.generation,
+          totalGenerations: detail.total_generations,
+          discovered: detail.discovered,
+          passed: detail.passed,
+          completedAt: detail.completed_at,
+        });
+      } catch {
+        // The task row can lag behind the Celery submission; keep the local running state.
+      }
+    }
+
+    void loadDetail();
+    if (!isRunning && !isPaused) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const timer = window.setInterval(loadDetail, ACTIVE_TASK_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeTaskId, isPaused, isRunning, updateTask]);
 
   // Handlers
   async function handleStartGP(config: GPConfig) {

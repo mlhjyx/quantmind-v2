@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ResponsiveContainer,
@@ -17,7 +17,6 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { CandidateTable } from "@/components/mining/CandidateTable";
-import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMiningStore } from "@/store/miningStore";
 import {
   getMiningTasks,
@@ -34,23 +33,9 @@ import type {
   MiningTaskDetail,
   EngineStats,
   MiningEngine,
-  CandidateFactor,
 } from "@/api/mining";
 
 // ---- Types ----
-
-interface WsProgressMessage {
-  type: "progress" | "candidate" | "complete" | "error";
-  task_id: string;
-  generation?: number;
-  total_generations?: number;
-  best_fitness?: number;
-  avg_fitness?: number;
-  discovered?: number;
-  passed?: number;
-  candidate?: CandidateFactor;
-  evolution_point?: { generation: number; best_fitness: number; avg_fitness: number };
-}
 
 // ---- Constants ----
 
@@ -217,10 +202,8 @@ export default function MiningTaskCenter() {
   const [actionLoading, setActionLoading] = useState<string | null>(null); // taskId being actioned
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
 
-  const { upsertTask, updateTask } = useMiningStore();
-
-  // Running task IDs for WebSocket
-  const runningIds = tasks.filter((t) => t.status === "running").map((t) => t.task_id);
+  const { upsertTask } = useMiningStore();
+  const runningTasks = tasks.filter((t) => t.status === "running");
 
   // Load tasks + stats
   async function loadData() {
@@ -259,50 +242,6 @@ export default function MiningTaskCenter() {
     const timer = setInterval(loadData, 15000);
     return () => clearInterval(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // WS for first running task (primary)
-  const primaryRunningId = runningIds[0] ?? null;
-  const { on, off } = useWebSocket({
-    namespace: primaryRunningId ? `/ws/factor-mine/${primaryRunningId}` : "",
-    enabled: !!primaryRunningId,
-  });
-
-  const handleWsMsg = useCallback(
-    (msg: WsProgressMessage) => {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.task_id !== msg.task_id) return t;
-          return {
-            ...t,
-            generation: msg.generation ?? t.generation,
-            total_generations: msg.total_generations ?? t.total_generations,
-            best_fitness: msg.best_fitness ?? t.best_fitness,
-            discovered: msg.discovered ?? t.discovered,
-            passed: msg.passed ?? t.passed,
-            progress:
-              msg.generation && msg.total_generations
-                ? Math.round((msg.generation / msg.total_generations) * 100)
-                : t.progress,
-            status: msg.type === "complete" ? "completed" : msg.type === "error" ? "failed" : t.status,
-          };
-        })
-      );
-      if (msg.task_id) {
-        updateTask(msg.task_id, {
-          generation: msg.generation,
-          totalGenerations: msg.total_generations,
-          status: msg.type === "complete" ? "completed" : msg.type === "error" ? "failed" : undefined,
-        });
-      }
-    },
-    [updateTask]
-  );
-
-  useEffect(() => {
-    if (!primaryRunningId) return;
-    on<WsProgressMessage>("message", handleWsMsg);
-    return () => off<WsProgressMessage>("message", handleWsMsg);
-  }, [primaryRunningId, on, off, handleWsMsg]);
 
   // Actions
   async function handlePause(taskId: string) {
@@ -667,16 +606,14 @@ export default function MiningTaskCenter() {
             )}
           </GlassCard>
 
-          {/* Running task live monitor */}
-          {runningIds.length > 0 && (
+          {/* Running task monitor */}
+          {runningTasks.length > 0 && (
             <GlassCard variant="glow">
               <div className="flex items-center gap-2 mb-3">
                 <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
                 <h3 className="text-sm font-semibold text-slate-200">实时监控</h3>
               </div>
-              {tasks
-                .filter((t) => t.status === "running")
-                .map((t) => (
+              {runningTasks.map((t) => (
                   <div key={t.task_id} className="mb-3 last:mb-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-mono text-slate-400">{t.task_id?.slice(0, 12) ?? "unknown"}...</span>

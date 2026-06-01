@@ -67,10 +67,6 @@ vi.mock("@/api/strategies", () => ({
   getStrategyDetail: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("@/hooks/useWebSocket", () => ({
-  useWebSocket: vi.fn().mockReturnValue({ connected: false, lastMessage: null }),
-}));
-
 // Mock ECharts（防止 canvas 相关报错）
 vi.mock("echarts-for-react", () => ({
   default: () => null,

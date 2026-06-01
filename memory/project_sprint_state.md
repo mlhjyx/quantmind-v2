@@ -1,13 +1,53 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 5.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 6.
 date: 2026-06-01 +08:00
-status: governance_batch_5_frontend_websocket_contract_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_5.md
+status: governance_batch_6_mining_websocket_contract_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_6.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 5
+## Current Handoff - 2026-06-01 Batch 6
+
+Mode: full-project closure/governance remediation, batch 6 mining transport fix verified locally before final smoke/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the mining transport contract from current code: backend mining exposes REST polling via `/api/mining/tasks` and `/api/mining/tasks/{task_id}`; no backend `/ws/factor-mine/{id}` Socket.IO namespace or native route exists.
+- Removed unsupported mining Socket.IO usage from `frontend/src/pages/FactorLab.tsx`.
+- Added active-task polling in `FactorLab` while the task is running or paused.
+- Removed unsupported mining Socket.IO usage from `frontend/src/pages/MiningTaskCenter.tsx`; its existing task-list polling remains the update source.
+- Deleted unused `frontend/src/hooks/useWebSocket.ts` after confirming it had no production callers.
+- Added `frontend/src/__tests__/mining-websocket-contract.test.tsx`.
+
+Verified so far:
+- RED: `npx vitest run src/__tests__/mining-websocket-contract.test.tsx` failed before the fix on `/ws/factor-mine/task-running-1` calls from both mining pages.
+- GREEN: `npx vitest run src/__tests__/mining-websocket-contract.test.tsx` -> 2 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest run src/__tests__/mining-websocket-contract.test.tsx src/__tests__/websocket-contract.test.tsx src/__tests__/pages.test.tsx src/__tests__/api.test.ts` -> 18 passed.
+- `npm run build` -> exit 0 with the existing Vite large chunk warning only.
+- `rg -n "/ws/factor-mine|factor-mine|useWebSocket" frontend\src backend\app backend\tests -S` -> only the new regression test references `/ws/factor-mine`; no production caller of `useWebSocket` remains.
+- `pytest -m "smoke and not live_tushare" -q` -> 90 passed, 2 skipped, 7003 deselected.
+- `git diff --check` -> exit 0 with CRLF normalization warnings only.
+- Banned-word sediment scan on the Batch 6 report and this new handoff section -> no hits.
+
+Still open:
+- Mining frontend/API backlog: backend task-detail candidates use `factor_name` / `factor_expr`, while the frontend table expects `name` / `expression`; normalize this before rendering and Gate submission.
+- Mining frontend/API backlog: `MiningTaskCenter` batch Gate submit still maps selected IDs into `factor_expr`; fetch detail and submit actual candidate DSL expressions instead.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final diff/smoke verification, commit/push Batch 6 into PR #523, wait for CI, then continue with the mining candidate normalization and selected-ID Gate payload closure.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 5
 
 Mode: full-project closure/governance remediation, batch 5 frontend contract fix verified locally before commit/CI.
 
