@@ -49,9 +49,7 @@ def run_sample():
 
     result = scanner.audit_repo(tmp_path, classification)
 
-    assert result.missing == [
-        "backend/app/api/sample.py|POST|/api/sample/run|run_sample"
-    ]
+    assert result.missing == ["backend/app/api/sample.py|POST|/api/sample/run|run_sample"]
     assert result.stale == []
     assert result.invalid == []
 

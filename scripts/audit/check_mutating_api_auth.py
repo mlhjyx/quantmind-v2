@@ -77,7 +77,9 @@ def _router_prefix(tree: ast.Module) -> str:
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        if not any(isinstance(target, ast.Name) and target.id == "router" for target in node.targets):
+        if not any(
+            isinstance(target, ast.Name) and target.id == "router" for target in node.targets
+        ):
             continue
         if not isinstance(node.value, ast.Call):
             continue
@@ -215,7 +217,9 @@ def audit_repo(
     """Audit current mutating API routes against the classification baseline."""
 
     api_dir = repo_root / "backend" / "app" / "api"
-    classifications = load_classifications(classification_path or repo_root / DEFAULT_CLASSIFICATION.relative_to(REPO_ROOT))
+    classifications = load_classifications(
+        classification_path or repo_root / DEFAULT_CLASSIFICATION.relative_to(REPO_ROOT)
+    )
     routes = scan_routes(api_dir=api_dir, repo_root=repo_root)
     no_admin_keys = {route.key for route in routes if not route.admin_gated}
     classified_keys = set(classifications)

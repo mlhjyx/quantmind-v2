@@ -1,13 +1,91 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 38.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 39.
 date: 2026-06-01 +08:00
-status: governance_batch_38_mutating_api_auth_guard_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_38.md
+status: governance_batch_39_hosted_precommit_format_fix_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_39.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 38
+## Current Handoff - 2026-06-01 Batch 39
+
+Mode: full-project closure/governance remediation, batch 39 hosted
+`pre_commit` format repair after Batch 38 guard push.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `81b12847` (`guard mutating api auth
+  inventory`).
+- PR #523 hosted checks on `81b12847`: `pre_push`, `regression`, and
+  `ci_matrix` passed; `pre_commit` failed.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Hosted `pre_commit` failed only because `ruff format --check .` would
+  reformat the two new Batch 38 Python files.
+- Local Windows full `ruff format --check backend scripts` also reports older
+  mixed-line-ending worktree copies for `backend/app/api/backtest.py` and
+  `backend/tests/test_param_system.py`.
+- Those older files were not edited: `git ls-files --eol` shows their index
+  entries are LF, and `backend/app/api/backtest.py` remains behind the project
+  redline precondition.
+
+Closed in this batch:
+- Formatted only:
+  - `backend/tests/test_mutating_api_auth_audit.py`
+  - `scripts/audit/check_mutating_api_auth.py`
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_39.md`.
+- Updated this handoff.
+
+Verification:
+- `ruff format --check scripts/audit/check_mutating_api_auth.py backend/tests/test_mutating_api_auth_audit.py`
+  -> 2 files already formatted.
+- `pytest backend/tests/test_mutating_api_auth_audit.py -q` -> 4 passed.
+- `python scripts/audit/check_mutating_api_auth.py` -> PASS with
+  58 mutating routes, 20 admin-gated, 38 classified no-admin routes.
+- `python scripts/_verify_account_oneshot.py` -> exit 1,
+  `broker.connect()` returned `-1`.
+- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke
+  92 passed, 2 skipped, 6987 deselected.
+- Pending: commit, push, PR body append, and PR #523 check watch.
+
+Still open:
+- Params admin-gate security fix remains blocked by
+  `python scripts/_verify_account_oneshot.py` failing with
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- The P0 admin-gate backlog remains: params, pipeline, strategies, factors,
+  mining, news ingest, and backtest resource-cost mutations.
+- P1/decision route groups remain: notification state/test send, system test
+  notification, report generation, and DingTalk inbound webhook control model.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Commit and push Batch 39, then watch PR #523 hosted checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 38
 
 Mode: full-project closure/governance remediation, batch 38 mechanized guard
 for mutating API auth classification.
