@@ -5,12 +5,12 @@
  * the response (no task_id capture, no feedback) AND did not consume the new
  * GET /api/reports/{sid}/latest + /list endpoints from iter 30+32.
  *
- * 3 wrappers covering iter 30/31/32 backend reports lifecycle:
+ * 5 wrappers covering report page + iter 30/31/32 backend reports lifecycle:
+ *   - listReportHistory: GET /api/reports/list -> backtest_run report rows
+ *   - fetchReportQuickStats: GET /api/reports/quick-stats -> period aggregate stats
  *   - generateReport: POST /api/reports/generate -> AsyncResult.id from iter 30 dispatch
  *   - getLatestReport: GET /api/reports/{sid}/latest -> single most-recent JSON artifact
  *   - listStrategyReports: GET /api/reports/{sid}/list -> historical artifacts metadata
- * Legacy GET /reports/list (backtest_run rows) NOT wrapped here — ReportCenter.tsx
- * consumes that inline via apiClient.get for the 报告列表 tab (sustained).
  *
  * Types mirror backend JSON shape per ADR-091/092/093 sediment.
  */
@@ -18,6 +18,42 @@
 import apiClient from "./client";
 
 // ---- Types ----
+
+export type ReportExecutionMode = "paper" | "live";
+
+export interface ReportHistoryItem {
+  run_id: string;
+  name: string;
+  status: string;
+  annual_return: number | null;
+  sharpe_ratio: number | null;
+  max_drawdown: number | null;
+  total_trades: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  created_at: string | null;
+}
+
+export interface ReportPeriodStats {
+  return: number;
+  trade_days: number;
+  avg_turnover: number;
+}
+
+export interface ReportQuickStats {
+  today: ReportPeriodStats;
+  week: ReportPeriodStats;
+  month: ReportPeriodStats;
+  year: ReportPeriodStats;
+  latest_position_count: number;
+  as_of: string;
+}
+
+export interface ReportQueryOptions {
+  strategy_id?: string;
+  execution_mode?: ReportExecutionMode;
+  limit?: number;
+}
 
 export interface ReportSummary {
   days: number;
@@ -54,7 +90,7 @@ export interface ReportTradeRow {
 export interface ReportArtifact {
   schema_version: string;
   strategy_id: string;
-  execution_mode: "paper" | "live";
+  execution_mode: ReportExecutionMode;
   target_date_shanghai: string;
   generated_at_utc: string;
   data_available: boolean;
@@ -69,7 +105,7 @@ export interface ReportArtifact {
 /** Listing row from GET /api/reports/{sid}/list (iter 32 ADR-093). */
 export interface ReportListingRow {
   strategy_id: string;
-  execution_mode: "paper" | "live";
+  execution_mode: ReportExecutionMode;
   target_date: string;
   artifact_path: string;
   mtime_utc: string;
@@ -84,10 +120,38 @@ export interface GenerateReportResponse {
   status: "dispatched";
   message: string;
   strategy_id: string;
-  execution_mode: "paper" | "live";
+  execution_mode: ReportExecutionMode;
 }
 
 // ---- Wrappers ----
+
+function buildReportParams(options?: ReportQueryOptions): Record<string, string | number> {
+  const params: Record<string, string | number> = {};
+  if (options?.strategy_id) {
+    params.strategy_id = options.strategy_id;
+  }
+  if (options?.execution_mode) {
+    params.execution_mode = options.execution_mode;
+  }
+  if (options?.limit !== undefined) {
+    params.limit = options.limit;
+  }
+  return params;
+}
+
+export async function listReportHistory(options?: ReportQueryOptions): Promise<ReportHistoryItem[]> {
+  const r = await apiClient.get<ReportHistoryItem[]>("/reports/list", {
+    params: buildReportParams(options),
+  });
+  return r.data;
+}
+
+export async function fetchReportQuickStats(options?: ReportQueryOptions): Promise<ReportQuickStats> {
+  const r = await apiClient.get<ReportQuickStats>("/reports/quick-stats", {
+    params: buildReportParams(options),
+  });
+  return r.data;
+}
 
 /**
  * Dispatch a strategy performance report Celery task.
@@ -95,7 +159,7 @@ export interface GenerateReportResponse {
  */
 export async function generateReport(
   strategy_id?: string,
-  execution_mode: "paper" | "live" = "paper",
+  execution_mode: ReportExecutionMode = "paper",
 ): Promise<GenerateReportResponse> {
   const params: Record<string, string> = { execution_mode };
   if (strategy_id) {
@@ -113,7 +177,7 @@ export async function generateReport(
  */
 export async function getLatestReport(
   strategy_id: string,
-  execution_mode: "paper" | "live" = "paper",
+  execution_mode: ReportExecutionMode = "paper",
 ): Promise<ReportArtifact> {
   const r = await apiClient.get<ReportArtifact>(`/reports/${strategy_id}/latest`, {
     params: { execution_mode },
@@ -128,7 +192,7 @@ export async function getLatestReport(
  */
 export async function listStrategyReports(
   strategy_id: string,
-  options?: { execution_mode?: "paper" | "live"; limit?: number },
+  options?: { execution_mode?: ReportExecutionMode; limit?: number },
 ): Promise<ReportListingRow[]> {
   const params: Record<string, string | number> = {};
   if (options?.execution_mode) {

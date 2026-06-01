@@ -1,13 +1,60 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 13.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 14.
 date: 2026-06-01 +08:00
-status: governance_batch_13_market_api_layer_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_13.md
+status: governance_batch_14_report_center_api_layer_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_14.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 13
+## Current Handoff - 2026-06-01 Batch 14
+
+Mode: full-project closure/governance remediation, batch 14 Report Center API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `0e628bc0` (`close market api layer contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 14 edits.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
+- Previous Batch 13 handoff still said commit/push/CI were open, but fresh git + PR state showed Batch 13 was already pushed and CI-clean at `0e628bc0`. This Batch 14 handoff corrects the top-level current state.
+
+Closed in this batch:
+- Audited `ReportCenter.tsx`, backend `report.py`, `frontend/src/api/reports.ts`, and `docs/API_COVERAGE.md`.
+- Confirmed `/api/reports/list` and `/api/reports/quick-stats` were implemented and consumed by the report page, but the page bypassed `frontend/src/api/*.ts` and the matrix still marked report rows 118-120 as unwired.
+- Added `listReportHistory` and `fetchReportQuickStats` wrappers to `frontend/src/api/reports.ts`.
+- Removed direct `apiClient` import and usage from `ReportCenter.tsx` for report history and quick-stats endpoints.
+- Added `frontend/src/__tests__/report-center-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §15 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_14.md`.
+
+Verification:
+- RED: `npx vitest --run src/__tests__/report-center-api-contract.test.ts` failed before the fix because wrappers were missing and `ReportCenter.tsx` imported `apiClient` directly.
+- GREEN targeted report-center contract -> 3 passed.
+- Focused compatibility suite -> 19 passed.
+- Broader frontend/API pack -> 38 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest --run` -> 116 tests passed across 22 files.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `http://127.0.0.1:5173/reports`; the `报告中心` heading and `报告列表` tab text were visible and console errors were empty. Existing dev server on port 5173 was reused and not stopped.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+- V3 banned-word diff scan -> no new hits; `git diff --check` -> exit 0 with Git line-ending warnings only.
+
+Still open:
+- Commit/push Batch 14 into PR #523, update PR body, and wait for CI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `RiskManagement.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- Commit/push Batch 14, update PR #523 body, and wait for GitHub checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 13
 
 Mode: full-project closure/governance remediation, batch 13 Market API-layer closure verified locally before final commit/CI.
 

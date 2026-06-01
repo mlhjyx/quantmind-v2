@@ -3,14 +3,17 @@ import { FileText, Download, TrendingUp, BarChart3, Shield, Brain, AlertCircle, 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons } from "@/components/shared";
-import apiClient from "@/api/client";
 import {
+  fetchReportQuickStats,
   generateReport,
   getLatestReport,
+  listReportHistory,
   listStrategyReports,
   type GenerateReportResponse,
   type ReportArtifact,
+  type ReportHistoryItem,
   type ReportListingRow,
+  type ReportQuickStats,
 } from "@/api/reports";
 import { getPaperStrategyId } from "@/api/system";
 
@@ -21,36 +24,6 @@ import { getPaperStrategyId } from "@/api/system";
 // getPaperStrategyId on mount and cached in react-query.
 const PLACEHOLDER_STRATEGY_ID = "default-strategy";
 const GENERATE_REFRESH_DELAY_MS = 3000;
-
-// ---- Types ----
-interface ReportItem {
-  run_id: string;
-  name: string;
-  status: string;
-  annual_return: number | null;
-  sharpe_ratio: number | null;
-  max_drawdown: number | null;
-  total_trades: number | null;
-  start_date: string | null;
-  end_date: string | null;
-  created_at: string | null;
-}
-
-interface PeriodStats {
-  return: number;
-  trade_days: number;
-  avg_turnover: number;
-}
-
-interface QuickStats {
-  today: PeriodStats;
-  week: PeriodStats;
-  month: PeriodStats;
-  year: PeriodStats;
-  latest_position_count: number;
-  as_of: string;
-}
-
 
 const templates = [
   { name: "策略绩效报告", icon: TrendingUp, desc: "净值曲线、收益归因、风险指标", color: C.up },
@@ -68,7 +41,7 @@ function fmtDate(s: string | null) {
   return s ? s.slice(0, 10) : "—";
 }
 
-const PERIOD_LABELS: Record<keyof Omit<QuickStats, "latest_position_count" | "as_of">, string> = {
+const PERIOD_LABELS: Record<keyof Omit<ReportQuickStats, "latest_position_count" | "as_of">, string> = {
   today: "今日",
   week: "本周",
   month: "本月",
@@ -86,15 +59,15 @@ export default function ReportCenter() {
   // null = nothing expanded. artifact_path is unique per (sid, date, mode).
   const [expandedArtifactPath, setExpandedArtifactPath] = useState<string | null>(null);
 
-  const { data: reports = [], isLoading: loadingReports, isError: errorReports } = useQuery<ReportItem[]>({
+  const { data: reports = [], isLoading: loadingReports, isError: errorReports } = useQuery<ReportHistoryItem[]>({
     queryKey: ["reports-list"],
-    queryFn: () => apiClient.get("/reports/list").then((r) => r.data),
+    queryFn: () => listReportHistory(),
     staleTime: 60_000,
   });
 
-  const { data: quickStats, isLoading: loadingStats, isError: errorStats } = useQuery<QuickStats>({
+  const { data: quickStats, isLoading: loadingStats, isError: errorStats } = useQuery<ReportQuickStats>({
     queryKey: ["reports-quick-stats"],
-    queryFn: () => apiClient.get("/reports/quick-stats").then((r) => r.data),
+    queryFn: () => fetchReportQuickStats(),
     staleTime: 60_000,
   });
 

@@ -608,9 +608,9 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 115 | `/api/realtime/market` | GET | realtime.ts:89 | ✅ |
 | 116 | `/api/v1/ping` | GET | — | ❌ |
 | 117 | `/api/v1/status` | GET | — | ❌ |
-| 118 | `/api/reports/list` | GET | — | ❌ |
-| 119 | `/api/reports/quick-stats` | GET | — | ❌ |
-| 120 | `/api/reports/generate` | POST | — | ❌ |
+| 118 | `/api/reports/list` | GET | reports.ts:143 | ✅ |
+| 119 | `/api/reports/quick-stats` | GET | reports.ts:150 | ✅ |
+| 120 | `/api/reports/generate` | POST | reports.ts:168 | ✅ |
 | 121 | `/api/risk/state/{strategy_id}` | GET | — | ❌ |
 | 122 | `/api/risk/history/{strategy_id}` | GET | — | ❌ |
 | 123 | `/api/risk/summary/{strategy_id}` | GET | — | ❌ |
@@ -683,7 +683,6 @@ snapshot.
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
-| 118–120 | `/api/reports/*` | Report generation not wired |
 | 121–129 | `/api/risk/*` (10 endpoints) | Risk framework dashboard not wired |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 | 144 | `/api/system/streams` | Streams viewer not wired |
@@ -968,7 +967,7 @@ API layer per LL-035.
 
 - `DashboardAstock.tsx` and `Portfolio.tsx` are closed in §13 for portfolio
   endpoint usage and sector-chart normalization.
-- `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`,
+- `PTGraduation.tsx`, `RiskManagement.tsx`,
   and a few shared widgets still import `apiClient`
   directly. They are candidates for follow-up API-layer contraction only when a
   code-backed page/API contract gap is confirmed.
@@ -1098,5 +1097,81 @@ Fresh evidence:
 - Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
   `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`, and
   `QMTStatusBadge.tsx`.
+- Continue selecting the next contraction only from current code evidence:
+  response conversion bug, coverage-matrix blind spot, or broken user workflow.
+
+## §15 Fresh verify — 2026-06-01 (report center API-layer closure)
+
+### §15.1 Finding
+
+`frontend/src/pages/ReportCenter.tsx` previously consumed two implemented
+report routes directly from the page while `docs/API_COVERAGE.md` rows 118–120
+still marked report endpoints as unwired:
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Report history tab | `/reports/list` | `listReportHistory()` |
+| Quick stats tab | `/reports/quick-stats` | `fetchReportQuickStats()` |
+| Generate report button | already wrapped | `generateReport()` |
+
+Risk: real report-page usage was hidden from the `frontend/src/api/*.ts`
+coverage methodology. `frontend/src/api/reports.ts` also carried an explicit
+comment saying the legacy list endpoint was intentionally inline, preserving
+the stale boundary.
+
+Active discovery at resume:
+- `memory/project_sprint_state.md` / §Current Handoff said Batch 13 still needed
+  commit/push/CI, but fresh `git log` + PR #523 state showed head `0e628bc0`
+  clean with all checks passing. Batch 14 handoff now corrects that drift.
+
+Fresh evidence:
+- `frontend/src/api/reports.ts:142-150` / §Report wrappers — history and quick
+  stats wrappers in place; fresh verify 2026-06-01 15:08 +08.
+- `frontend/src/pages/ReportCenter.tsx:64-70` / §ReportCenter queries —
+  page now calls wrappers; fresh verify 2026-06-01 15:08 +08.
+
+### §15.2 Closure
+
+- Added `listReportHistory()` and `fetchReportQuickStats()` to
+  `frontend/src/api/reports.ts`.
+- Exported typed report history / quick-stats contracts from the API layer.
+- Removed direct `apiClient` import and `/reports/*` calls from
+  `ReportCenter.tsx`.
+- Added `frontend/src/__tests__/report-center-api-contract.test.ts` to lock
+  endpoint params and the page boundary.
+- Updated rows 118–120 and removed `/api/reports/*` from §5D.
+
+### §15.3 Verification
+
+- RED: `npx vitest --run src/__tests__/report-center-api-contract.test.ts`
+  failed before the fix because the wrappers were missing and `ReportCenter.tsx`
+  imported `apiClient` directly.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/report-center-api-contract.test.ts`
+  -> 3 passed.
+- Focused compatibility suite:
+  `npx vitest --run src/__tests__/report-center-api-contract.test.ts src/__tests__/reports-api.test.ts src/__tests__/pages.test.tsx`
+  -> 19 passed.
+- Broader frontend/API pack:
+  `npx vitest --run src/__tests__/report-center-api-contract.test.ts src/__tests__/reports-api.test.ts src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 38 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 116 tests passed across 22 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/reports`;
+  heading `报告中心` and tab text `报告列表` were visible; console errors were
+  empty. Existing dev server on port 5173 was reused and not stopped.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+- Governance guards: V3 banned-word diff scan -> no new hits;
+  `git diff --check` -> exit 0 with Git line-ending warnings only.
+
+### §15.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `RiskManagement.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
 - Continue selecting the next contraction only from current code evidence:
   response conversion bug, coverage-matrix blind spot, or broken user workflow.
