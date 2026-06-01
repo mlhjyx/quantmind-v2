@@ -74,7 +74,6 @@ export default function PipelineConsole() {
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   // Track per-candidate action loading: factorId → "approving" | "rejecting" | null
   const [candidateActions, setCandidateActions] = useState<Record<number, "approving" | "rejecting" | null>>({});
-  const wsRef = useRef<WebSocket | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load pipeline status
@@ -162,35 +161,6 @@ export default function PipelineConsole() {
       loadLogs();
     }
   }, [activeTab, loadPending, loadCandidates, loadHistory, loadLogs, status?.run_id]);
-
-  // WebSocket connection when pipeline is running
-  useEffect(() => {
-    if (!status?.run_id || !status.is_running) {
-      wsRef.current?.close();
-      wsRef.current = null;
-      return;
-    }
-    const wsBase = (import.meta.env.VITE_WS_BASE_URL as string | undefined) ?? "ws://localhost:8000";
-    const ws = new WebSocket(`${wsBase}/ws/pipeline/${status.run_id}`);
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data as string) as { type: string; payload: unknown };
-        if (msg.type === "status_update") {
-          // iter 107 W14: guard prev nullable case (top-level guard prevents this
-          // in render but WS can fire during transient null window)
-          setStatus((prev) =>
-            prev ? { ...prev, ...(msg.payload as Partial<PipelineStatus>) } : prev
-          );
-        } else if (msg.type === "log") {
-          setLogs((prev) => [msg.payload as PipelineLogEntry, ...prev].slice(0, 200));
-        }
-      } catch {
-        // ignore malformed messages
-      }
-    };
-    wsRef.current = ws;
-    return () => ws.close();
-  }, [status?.run_id, status?.is_running]);
 
   // Handlers
   const handleTrigger = async () => {

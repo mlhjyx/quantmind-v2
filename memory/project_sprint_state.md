@@ -1,13 +1,48 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 4.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 5.
 date: 2026-06-01 +08:00
-status: governance_batch_4_service_reload_gate_blocked_ops_guarded
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_4.md
+status: governance_batch_5_frontend_websocket_contract_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_5.md
 ---
 
 # Project Sprint State
 
-## Current Handoff — 2026-06-01 Batch 4
+## Current Handoff - 2026-06-01 Batch 5
+
+Mode: full-project closure/governance remediation, batch 5 frontend contract fix verified locally before commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the backend WebSocket contract from code: Socket.IO is mounted at `/ws/socket.io`, with backtest room events `join_backtest` and `leave_backtest`.
+- Fixed `frontend/src/hooks/useBacktestProgress.ts` to connect through the backend Socket.IO path, use runtime/configurable origin, allow websocket plus polling transports, and emit the backend event names.
+- Removed the unsupported native `/ws/pipeline/{run_id}` connection from `frontend/src/pages/PipelineConsole.tsx`; the page keeps its existing polling path until a real backend live stream exists.
+- Added `frontend/src/__tests__/websocket-contract.test.tsx` to guard the contract.
+
+Verified so far:
+- RED: `npx vitest run src/__tests__/websocket-contract.test.tsx` failed before the fix on `/ws/backtest` and `/ws/pipeline/...`.
+- GREEN: `npx vitest run src/__tests__/websocket-contract.test.tsx` -> 2 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest run src/__tests__/websocket-contract.test.tsx src/__tests__/PipelineConsole.test.tsx src/__tests__/backtest-api.test.ts src/__tests__/pages.test.tsx` -> 18 passed.
+- `npm run build` -> exit 0 with the existing Vite large chunk warning only.
+- `pytest -m "smoke and not live_tushare" -q` -> 90 passed, 2 skipped, 7003 deselected.
+- `git diff --check` -> exit 0 with CRLF normalization warnings only.
+
+Still open:
+- Frontend/backend backlog: `FactorLab` and `MiningTaskCenter` still reference `/ws/factor-mine/{id}` through `useWebSocket`; backend support was not found in this batch.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final diff/smoke verification, commit/push Batch 5 into PR #523, wait for CI, then continue with the remaining `/ws/factor-mine/{id}` contract audit or the elevated ops reload handoff.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 4
 
 Mode: full-project closure/governance remediation, batch 4 completed code/docs guardrails; runtime reload remains ops-blocked.
 
