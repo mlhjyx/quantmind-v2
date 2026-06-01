@@ -1,53 +1,44 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 30.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 31.
 date: 2026-06-01 +08:00
-status: governance_batch_30_dashboard_matrix_reconciliation_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_30.md
+status: governance_batch_31_sse_matrix_closure_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_31.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 30
+## Current Handoff - 2026-06-01 Batch 31
 
-Mode: full-project closure/governance remediation, batch 30 dashboard coverage
-matrix reconciliation in progress.
+Mode: full-project closure/governance remediation, batch 31 SSE coverage
+matrix closure in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `bff3e03e` (`reclass backtest
-  sensitivity defer`), and PR #523 checks were clean before Batch 30 edits.
+- Latest pushed head before this batch is `63f24727` (`wire dashboard market
+  ticker`), and PR #523 checks were clean before Batch 31 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- API coverage rows 36-38 and 40-43 were stale matrix negatives: the Dashboard
-  wrappers already existed in `frontend/src/api/dashboard.ts`.
-- Row 39 `/api/dashboard/market-ticker` was the actual Dashboard gap: backend
-  route/service existed, but the frontend wrapper and page consumer were
-  missing.
-- Full Vitest initially exposed `pages.test.tsx` total-mock drift after the new
-  Dashboard import; adding the mock export removed the unhandled rejection.
+- API coverage row 131 `/api/sse/risk-events` was a stale backend-only marker.
+- The frontend consumes it through native `EventSource` in
+  `useRiskEventsSSE()`, and `RiskManagement.tsx` mounts that hook.
+- The coverage grep missed it because it is intentionally outside
+  `frontend/src/api/*.ts`.
 
 Closed in this batch:
-- Added `MarketTickerItem`, `fetchMarketTicker()`, and Dashboard market ticker
-  rendering.
-- Extended dashboard API contract coverage and the page-suite dashboard mock.
-- Updated `docs/API_COVERAGE.md` rows 36-43 and added §31.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_30.md`.
+- Added `frontend/src/__tests__/risk-events-sse-hook.test.tsx`.
+- Updated `docs/API_COVERAGE.md` row 131 and added §32.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_31.md`.
 
 Verification:
-- RED `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed
-  before implementation on missing `fetchMarketTicker()` and page references.
-- Targeted GREEN `npx vitest --run src/__tests__/dashboard-api-contract.test.ts`
-  -> 7 passed.
+- `npx vitest --run src/__tests__/risk-events-sse-hook.test.tsx` -> 1 passed.
 - `npx tsc -b --pretty false` -> exit 0.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 33 files passed, 160 tests passed.
+- `npx vitest --run` -> 34 files passed, 161 tests passed.
 - `npm run build` -> exit 0 with existing large `vendor-echarts` warning.
-- Browser smoke `/dashboard?smoke=batch30` rendered `驾驶舱`, showed ticker
-  content including `沪深300`, and had 0 console errors.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
@@ -58,8 +49,8 @@ Verification:
 Still open:
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Remaining §5D backlog: none after row 34 reclassification and dashboard row
-  reconciliation.
+- Remaining §5D backlog: none after row 34 reclassification, dashboard row
+  reconciliation, and row 131 SSE closure.
 - Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
 - Rows 135-136 strategy version create/rollback need a version-management UI
   design with diff preview, required changelog, rollback confirmation, audit

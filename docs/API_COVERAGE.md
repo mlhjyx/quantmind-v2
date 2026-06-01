@@ -647,7 +647,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 128 | `/api/risk/limits` | GET | risk.ts:268 | ✅ |
 | 129 | `/api/risk/stress-tests` | GET | risk.ts:277 | ✅ |
 | 130 | `/api/risk/dingtalk-webhook` | POST | — | ❌ |
-| 131 | `/api/sse/risk-events` | GET | — | ❌ |
+| 131 | `/api/sse/risk-events` | GET | useRiskEventsSSE.ts:92/96 | ✅ |
 | 132 | `/api/strategies` | GET | strategies.ts:238 | ✅ |
 | 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:243/252 | ✅ |
 | 134 | `/api/strategies/{strategy_id}/versions` | GET | strategies.ts:256 | ✅ |
@@ -680,7 +680,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 74 | `/api/health/qmt` | Wrapped by `fetchQmtHealth()` for `QMTStatusBadge`; badge is exported but not mounted by current frontend routes |
 | 116–117 | `/api/v1/ping`, `/api/v1/status` | Remote ops script (`remote_status.py`) — external monitoring |
 | 130 | `/api/risk/dingtalk-webhook` | DingTalk webhook receiver — not frontend-initiated |
-| 131 | `/api/sse/risk-events` | SSE stream — consumed via `EventSource` in frontend JS, not apiClient |
+| 131 | `/api/sse/risk-events` | Consumed by `useRiskEventsSSE()` through native `EventSource`; see §32 |
 | 83–85 | `/api/news/ingest*` | Script-triggered ingest, not user-facing UI |
 | 88 | `/api/notifications/unread-count` | Redundant for the panel because `GET /api/notifications` already returns `unread_count` |
 | 91 | `/api/notifications/test` | Admin test only |
@@ -2264,3 +2264,50 @@ No dashboard rows remain classified as backend-implemented/frontend-unwired in
 the API matrix. Further work should come from route semantics, runtime
 verification, or operator-workflow findings rather than the stale dashboard
 matrix labels.
+
+## §32 Fresh verify — 2026-06-01 (SSE EventSource row closure)
+
+### §32.1 Finding
+
+Row 131 `/api/sse/risk-events` was marked backend-only because the matrix grep
+only counted `frontend/src/api/*.ts` wrappers. That route is not an axios
+request: the frontend consumes it through the native browser `EventSource`
+contract in `useRiskEventsSSE()`, and `RiskManagement.tsx` mounts that hook for
+the live risk-events tab.
+
+Fresh evidence:
+- `backend/app/api/sse.py:159` / §SSE route — backend exposes
+  `GET /api/sse/risk-events`; fresh verify 2026-06-01 19:40 +08.
+- `frontend/src/hooks/useRiskEventsSSE.ts:92` and `:96` / §EventSource URL and
+  credentials — the hook builds `/sse/risk-events` URLs and opens
+  `EventSource` with credentials; fresh verify 2026-06-01 19:40 +08.
+- `frontend/src/pages/RiskManagement.tsx:37` and `:44` / §RiskManagement
+  consumer — the operator risk page imports and mounts `useRiskEventsSSE`;
+  fresh verify 2026-06-01 19:40 +08.
+- `frontend/src/__tests__/risk-events-sse-hook.test.tsx:76` and `:81` /
+  §contract guard — regression coverage locks the `/api/sse/risk-events`
+  subscription URL and credentialed EventSource options; fresh verify
+  2026-06-01 19:40 +08.
+
+### §32.2 Closure
+
+- Added `frontend/src/__tests__/risk-events-sse-hook.test.tsx` to lock SSE URL
+  derivation, credentialed subscription, event buffering, heartbeat parsing,
+  server-error surfacing, and cleanup.
+- Updated row 131 from backend-only to consumed with
+  `useRiskEventsSSE.ts:92/96`.
+- Clarified §5A so this row is no longer treated as an unintegrated frontend
+  gap.
+
+### §32.3 Verification
+
+- Targeted hook contract:
+  `npx vitest --run src/__tests__/risk-events-sse-hook.test.tsx` -> 1 passed.
+
+Full frontend/build/smoke/pre-push results are recorded in the Batch 31 status
+report.
+
+### §32.4 Remaining Work
+
+No SSE API coverage gap remains. Future SSE work should be driven by runtime
+latency/connection reliability findings, not the stale API wrapper matrix.
