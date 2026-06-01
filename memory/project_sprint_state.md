@@ -1,47 +1,45 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 18.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 19.
 date: 2026-06-01 +08:00
-status: governance_batch_18_pt_graduation_api_layer_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_18.md
+status: governance_batch_19_approval_queue_coverage_drift_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_19.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 18
+## Current Handoff - 2026-06-01 Batch 19
 
-Mode: full-project closure/governance remediation, batch 18 PTGraduation paper-trading API-layer closure verified locally before final commit/CI.
+Mode: full-project closure/governance remediation, batch 19 ApprovalQueue API coverage drift verified locally before final commit/CI.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `0a9aa23` (`close qmt status health api contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 18 edits.
-- This handoff records the Batch 18 local verification set. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
+- Latest pushed head before this batch is `aba3d0e` (`close pt graduation api contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 19 edits.
+- This handoff records the Batch 19 local verification set. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
 - SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
-- Previous Batch 17 handoff said commit/push/CI were open, but fresh git + PR state showed Batch 17 was already pushed and CI-clean at `0a9aa23`. Use git/PR state for branch truth after every push.
-- `PTGraduation.tsx` directly called `/paper-trading/graduation-status`, while `docs/API_COVERAGE.md` rows 94-96 still marked paper-trading page endpoints as backend-only.
-- Fresh review showed `/paper-trading/trades` and the `/paper-trading/positions` fallback were already wrapped in `frontend/src/api/dashboard.ts`; the remaining page bypass was the graduation-status request.
+- Previous Batch 18 handoff said commit/push/CI were open, but fresh git + PR state showed Batch 18 was already pushed and CI-clean at `aba3d0e`. Use git/PR state for branch truth after every push.
+- `docs/API_COVERAGE.md` rows 12-16 still marked approval detail/approve/reject/hold/history as unwired, but fresh code review showed the implementation already exists in `frontend/src/api/approval.ts` and `ApprovalQueue.tsx`.
+- `/approval-queue` is mounted in `frontend/src/router.tsx` and exposed in the sidebar, so this batch is documentation/governance drift closure rather than a production behavior change.
 
 Closed in this batch:
-- Audited `PTGraduation.tsx`, backend `paper_trading.py`, `frontend/src/api/dashboard.ts`, and `docs/API_COVERAGE.md`.
-- Added `PaperGraduationCriterion`, `PaperGraduationStatus`, and `fetchPaperGraduationStatus()` to `frontend/src/api/dashboard.ts`.
-- Removed direct `apiClient` usage from `PTGraduation.tsx`.
-- Added `frontend/src/__tests__/pt-graduation-api-contract.test.ts`.
-- Updated `docs/API_COVERAGE.md` §19 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_18.md`.
+- Audited `ApprovalQueue.tsx`, backend `approval.py`, `frontend/src/api/approval.ts`, route/nav wiring, and `docs/API_COVERAGE.md`.
+- Added `frontend/src/__tests__/approval-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` rows 12-16, removed the stale approval row from §5D, and added §20 evidence.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_19.md`.
 
 Verification:
-- RED: `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` failed before the fix because `fetchPaperGraduationStatus()` was missing and `PTGraduation.tsx` imported `apiClient` directly.
-- GREEN targeted PT graduation contract + trade panel -> 5 passed.
-- Focused frontend/API pack -> 23 passed.
+- Characterization contract + page guard:
+  `npx vitest --run src/__tests__/approval-api-contract.test.ts src/__tests__/ApprovalQueue.test.tsx` -> 9 passed.
 - `npx tsc -b --pretty false` -> exit 0.
-- `npx vitest --run` -> 130 tests passed across 25 files.
+- `npx vitest --run` -> 132 tests passed across 26 files.
 - `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- Production page/component direct `apiClient` grep -> no matches.
-- Browser smoke opened `http://127.0.0.1:5173/pt-graduation`; `PT 毕业评估` was visible with backend data and console errors empty.
+- Browser smoke opened `http://127.0.0.1:5173/approval-queue`; `因子审批队列`, `待审批`, and `历史` were visible, empty-state backend data loaded, and console errors were empty. No approval actions were clicked.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+- Still pending for this batch: pre-push and GitHub checks.
 
 Still open:
 - After this batch is pushed, fresh-read PR #523 checks and merge state before continuing.
@@ -50,9 +48,10 @@ Still open:
 - Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
 - Direct `apiClient` imports in production pages/components: none found by the current audit scan.
 - Paper-trading rows 92-93 remain unwrapped legacy endpoints until a current frontend workflow needs them.
+- Approval queue is no longer part of §5D after this batch.
 
 Next safe step:
-- If these Batch 18 edits are not yet on PR #523, stage/commit/push them and wait for GitHub checks. If they are already pushed and checks are clean, continue with the next evidence-backed governance slice.
+- Finish Batch 19 verification, stage/commit/push, then wait for GitHub checks before continuing.
 
 ---
 

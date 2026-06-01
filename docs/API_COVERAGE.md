@@ -502,11 +502,11 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 9 | `/api/agent/cost-summary` | GET | agent.ts:91 | ✅ |
 | 10 | `/api/agent/{name}/logs` | GET | agent.ts:96 | ✅ |
 | 11 | `/api/approval/queue` | GET | pipeline.ts:117 | ✅ |
-| 12 | `/api/approval/queue/{item_id}` | GET | — | ❌ |
-| 13 | `/api/approval/queue/{item_id}/approve` | POST | — | ❌ |
-| 14 | `/api/approval/queue/{item_id}/reject` | POST | — | ❌ |
-| 15 | `/api/approval/queue/{item_id}/hold` | POST | — | ❌ |
-| 16 | `/api/approval/history` | GET | — | ❌ |
+| 12 | `/api/approval/queue/{item_id}` | GET | approval.ts:92 | ✅ |
+| 13 | `/api/approval/queue/{item_id}/approve` | POST | approval.ts:98 | ✅ |
+| 14 | `/api/approval/queue/{item_id}/reject` | POST | approval.ts:110 | ✅ |
+| 15 | `/api/approval/queue/{item_id}/hold` | POST | approval.ts:122 | ✅ |
+| 16 | `/api/approval/history` | GET | approval.ts:134 | ✅ |
 | 17 | `/api/auth/admin-token` | POST | execution.ts:164 | ✅ |
 | 18 | `/api/auth/admin-token/clear` | POST | execution.ts:186 | ✅ |
 | 19 | `/api/auth/admin-token/status` | GET | execution.ts:204 | ✅ |
@@ -677,7 +677,6 @@ snapshot.
 
 | # | Endpoint | Priority |
 |---|----------|----------|
-| 12–16 | `/api/approval/queue/{item_id}` detail + approve/reject/hold + history | Approval workflow incomplete in frontend |
 | 24–32, 34–35 | `/api/backtest/{run_id}/nav`, `/trades`, `/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest detail views not yet connected |
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
@@ -1460,3 +1459,60 @@ Fresh evidence:
   current audit scan.
 - Rows 92-93 remain as a low-risk paper-trading API backlog until a current
   frontend workflow needs the legacy status/criteria endpoints.
+
+## §20 Fresh verify — 2026-06-01 (ApprovalQueue API coverage drift closure)
+
+### §20.1 Finding
+
+Rows 12-16 still classified approval detail, approve, reject, hold, and history
+as unwired, and §5D still described the approval workflow as incomplete. Fresh
+code review showed this was documentation drift: `frontend/src/api/approval.ts`
+already wraps all six approval endpoints, `ApprovalQueue.tsx` is mounted at
+`/approval-queue`, and the sidebar exposes it as `因子审批`.
+
+Fresh evidence:
+- `backend/app/api/approval.py:205`, `:234`, `:259`, `:290`, `:321`, and
+  `:353` / §approval router — queue list, detail, approve, reject, hold, and
+  history endpoints; fresh verify 2026-06-01 16:21 +08.
+- `frontend/src/api/approval.ts:84`, `:92`, `:98`, `:110`, `:122`, and `:134`
+  / §Approval API wrappers — all six endpoint wrappers; fresh verify
+  2026-06-01 16:21 +08.
+- `frontend/src/pages/ApprovalQueue.tsx:279`, `:450`, `:601`, `:607`, `:619`,
+  and `:631` / §ApprovalQueue page — pending, history, detail, approve, reject,
+  and hold consumers; fresh verify 2026-06-01 16:21 +08.
+- `frontend/src/router.tsx:82` and `frontend/src/components/layout/Sidebar.tsx:82`
+  / §Route + nav — `/approval-queue` mounted and reachable; fresh verify
+  2026-06-01 16:21 +08.
+
+### §20.2 Closure
+
+- Added `frontend/src/__tests__/approval-api-contract.test.ts` to lock the
+  endpoint mapping for queue reads and admin actions.
+- Updated rows 12-16 to covered.
+- Removed the stale approval workflow row from §5D.
+- No production behavior changed; this batch reduces audit noise and preserves
+  the existing ApprovalQueue implementation.
+
+### §20.3 Verification
+
+- Characterization contract + page guard:
+  `npx vitest --run src/__tests__/approval-api-contract.test.ts src/__tests__/ApprovalQueue.test.tsx`
+  -> 9 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 132 tests passed across 26 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened
+  `http://127.0.0.1:5173/approval-queue`; `因子审批队列`, `待审批`, and `历史`
+  were visible, the page returned the empty-state view, and console errors were
+  empty. No approval actions were clicked.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §20.4 Remaining API Governance Backlog
+
+- Approval queue is no longer part of §5D.
+- Admin action browser smoke should not click approve/reject/hold without a
+  separately scoped operator test fixture and explicit non-production target.
