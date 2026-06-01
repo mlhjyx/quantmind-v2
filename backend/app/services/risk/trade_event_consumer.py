@@ -62,7 +62,7 @@ def consume_fill_events(
     *,
     consumer_name: str = DEFAULT_CONSUMER_NAME,
     count: int = 100,
-    block_ms: int = 0,  # non-blocking by default
+    block_ms: int | None = None,  # None / <=0 = non-blocking
 ) -> list[dict[str, Any]]:
     """Read pending fill events via XREADGROUP.
 
@@ -78,7 +78,9 @@ def consume_fill_events(
         consumer_name: consumer identity within group (default = hostname+pid;
             stable per worker process for XPENDING/XCLAIM crash-recovery)
         count: max events per XREADGROUP call (default 100)
-        block_ms: blocking timeout in ms (default 0 = non-blocking immediate)
+        block_ms: blocking timeout in ms. None or <=0 means non-blocking
+            immediate read. Do not pass Redis BLOCK 0 here: Redis interprets
+            BLOCK 0 as wait forever, which stalls the Windows solo worker.
 
     Returns:
         list of {event_id: str, data: dict, stream: str} (empty if no pending)
@@ -86,12 +88,13 @@ def consume_fill_events(
     _ensure_consumer_group(r, STREAM_NAME, CONSUMER_GROUP)
 
     streams = {STREAM_NAME: ">"}  # ">" = only new messages for this consumer
+    redis_block = block_ms if block_ms is not None and block_ms > 0 else None
     raw = r.xreadgroup(
         CONSUMER_GROUP,
         consumer_name,
         streams,
         count=count,
-        block=block_ms,
+        block=redis_block,
     )
     if not raw:
         return []

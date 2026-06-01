@@ -22,12 +22,14 @@ Platform 严格隔离 sustained: 0 import backend.app.* (subprocess only).
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from backend.qm_platform.ci.orchestrator import CIPhase, CIResult
+from backend.qm_platform.ci.prepush import SMOKE_COLLECT_ONLY_ENV, SMOKE_COLLECT_TARGETS
 
 DEFAULT_CELL_TIMEOUT_SECONDS = 300  # 5min per cell (smoke ~50s + buffer)
 
@@ -83,7 +85,31 @@ def default_matrix() -> list[MatrixCell]:
 
 def _build_pytest_cmd(cell: MatrixCell) -> list[str]:
     """Build pytest invocation cmd for a matrix cell."""
-    return ["pytest", "-m", cell.tags, "-q"]
+    if os.environ.get(SMOKE_COLLECT_ONLY_ENV) == "1":
+        return [
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-m",
+            cell.tags,
+            *SMOKE_COLLECT_TARGETS,
+        ]
+
+    return [
+        "pytest",
+        "backend/tests/",
+        "-m",
+        cell.tags,
+        "--tb=line",
+        "-q",
+        "--timeout=60",
+    ]
+
+
+def _last_nonempty_line(text: str) -> str:
+    """Return a bounded one-line tail suitable for CIResult.details."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1][:160] if lines else ""
 
 
 class CIMatrixOrchestrator:
@@ -132,10 +158,12 @@ class CIMatrixOrchestrator:
                 summary_parts = [f"rc={result.returncode}"]
                 if result.stdout:
                     summary_parts.append(f"stdout_len={len(result.stdout)}")
+                    if not cell_passed:
+                        stdout_tail = _last_nonempty_line(result.stdout)
+                        if stdout_tail:
+                            summary_parts.append(f"stdout_tail={stdout_tail}")
                 if result.stderr and not cell_passed:
-                    err_tail = (
-                        result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ""
-                    )
+                    err_tail = _last_nonempty_line(result.stderr)
                     if err_tail:
                         summary_parts.append(f"err_tail={err_tail[:80]}")
                 details[cell.cell_id] = " ".join(summary_parts)

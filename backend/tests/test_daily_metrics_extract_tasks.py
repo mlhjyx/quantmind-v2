@@ -78,6 +78,7 @@ def test_extract_happy_path_commits_and_closes() -> None:
     mock_result.llm_cost_total = 1.5
 
     with (
+        patch("qm_platform.calendar.is_trading_day_today_or_skip", return_value=True),
         patch.object(dmt, "get_sync_conn", return_value=mock_conn),
         patch.object(dmt, "aggregate_daily_metrics", return_value=mock_result),
         patch.object(dmt, "upsert_daily_metrics", return_value=1),
@@ -99,6 +100,7 @@ def test_extract_exception_rolls_back_and_re_raises() -> None:
     mock_conn = MagicMock()
 
     with (
+        patch("qm_platform.calendar.is_trading_day_today_or_skip", return_value=True),
         patch.object(dmt, "get_sync_conn", return_value=mock_conn),
         patch.object(dmt, "aggregate_daily_metrics", side_effect=RuntimeError("pg down")),
         patch.object(dmt, "upsert_daily_metrics") as mock_upsert,
@@ -118,6 +120,7 @@ def test_extract_exception_rolls_back_and_re_raises() -> None:
 def test_extract_conn_failure_no_unbound_local() -> None:
     """get_sync_conn raises → no UnboundLocalError in finally (反 mask original)."""
     with (
+        patch("qm_platform.calendar.is_trading_day_today_or_skip", return_value=True),
         patch.object(dmt, "get_sync_conn", side_effect=ConnectionError("pg unreachable")),
     ):
         try:

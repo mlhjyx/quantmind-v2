@@ -71,9 +71,48 @@ export interface SystemHealth {
   data_freshness?: { latest_kline_date: string | null; days_stale: number };
 }
 
+export interface SystemStreamStatus {
+  stream: string;
+  length: number;
+  last_published_at: string | null;
+}
+
+export interface SystemStreamsResponse {
+  streams: SystemStreamStatus[];
+}
+
+export interface QmtAccountAsset {
+  total_asset: number;
+  cash: number;
+  market_value: number;
+}
+
+export interface QmtHealth {
+  execution_mode: string;
+  state: string;
+  account_id: string | null;
+  qmt_path?: string | null;
+  connected_at: string | null;
+  last_error: string | null;
+  is_healthy: boolean;
+  probe_error?: string;
+  account_asset?: QmtAccountAsset;
+}
+
 export interface NotificationParam {
   key: string;
   value: string;
+}
+
+interface ParamRowRaw {
+  key?: string;
+  param_name?: string;
+  value?: unknown;
+  param_value?: unknown;
+}
+
+interface ParamsResponseRaw {
+  params?: Record<string, ParamRowRaw[]>;
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────
@@ -163,11 +202,31 @@ export async function fetchSystemHealth(): Promise<SystemHealth> {
   return data;
 }
 
-export async function fetchNotificationParams(): Promise<NotificationParam[]> {
-  const { data } = await apiClient.get<NotificationParam[]>("/params", {
-    params: { category: "notification" },
-  });
+export async function fetchSystemStreams(): Promise<SystemStreamsResponse> {
+  const { data } = await apiClient.get<SystemStreamsResponse>("/system/streams");
   return data;
+}
+
+export async function fetchQmtHealth(): Promise<QmtHealth> {
+  const { data } = await apiClient.get<QmtHealth>("/health/qmt");
+  return data;
+}
+
+export async function fetchNotificationParams(): Promise<NotificationParam[]> {
+  const { data } = await apiClient.get<ParamsResponseRaw | ParamRowRaw[]>("/params", {
+    params: { module: "notification" },
+  });
+  const rows = Array.isArray(data) ? data : (data.params?.notification ?? []);
+  return rows
+    .map((row) => {
+      const key = row.key ?? row.param_name ?? "";
+      const rawValue = row.value ?? row.param_value;
+      return {
+        key,
+        value: rawValue === null || rawValue === undefined ? "" : String(rawValue),
+      };
+    })
+    .filter((row) => row.key.length > 0);
 }
 
 export async function saveNotificationParams(

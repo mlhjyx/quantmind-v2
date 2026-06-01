@@ -12,36 +12,14 @@ import {
 } from "recharts";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons, ChartTooltip, Sparkline } from "@/components/shared";
-import apiClient from "@/api/client";
-
-// ---- Types ----
-interface IndexItem {
-  code: string;
-  name: string;
-  close: number;
-  pre_close: number;
-  pct_change: number;
-  volume: number;
-  amount: number;
-  is_up: boolean;
-  trade_date: string | null;
-}
-
-interface SectorItem {
-  name: string;
-  pct_change: number;
-  stock_count: number;
-  amount: number;
-  is_up: boolean;
-}
-
-interface MoverItem {
-  code: string;
-  name: string;
-  industry: string;
-  close: number;
-  pct_change: number;
-}
+import {
+  fetchMarketIndices,
+  fetchMarketSectors,
+  fetchMarketTopMovers,
+  type MarketIndex,
+  type MarketSector,
+  type MarketTopMover,
+} from "@/api/market";
 
 
 // Static intraday chart (no intraday API endpoint yet)
@@ -67,7 +45,7 @@ function fmtAmount(a: number) {
   return (a / 1e8).toFixed(0) + "亿";
 }
 
-function spark(idx: IndexItem): number[] {
+function spark(idx: MarketIndex): number[] {
   const base = idx.pre_close;
   const end = idx.close;
   return Array.from({ length: 7 }, (_, i) =>
@@ -78,27 +56,27 @@ function spark(idx: IndexItem): number[] {
 export default function MarketData() {
   const [tab, setTab] = useState("行情概览");
 
-  const { data: indices = [], isLoading: loadingIndices, isError: errorIndices } = useQuery<IndexItem[]>({
+  const { data: indices = [], isLoading: loadingIndices, isError: errorIndices } = useQuery<MarketIndex[]>({
     queryKey: ["market-indices"],
-    queryFn: () => apiClient.get("/market/indices").then((r) => r.data),
+    queryFn: fetchMarketIndices,
     staleTime: 30_000,
   });
 
-  const { data: sectors = [], isLoading: loadingSectors, isError: errorSectors } = useQuery<SectorItem[]>({
+  const { data: sectors = [], isLoading: loadingSectors, isError: errorSectors } = useQuery<MarketSector[]>({
     queryKey: ["market-sectors"],
-    queryFn: () => apiClient.get("/market/sectors").then((r) => r.data),
+    queryFn: fetchMarketSectors,
     staleTime: 60_000,
   });
 
-  const { data: gainers = [], isLoading: loadingMovers, isError: errorMovers } = useQuery<MoverItem[]>({
+  const { data: gainers = [], isLoading: loadingMovers, isError: errorMovers } = useQuery<MarketTopMover[]>({
     queryKey: ["market-top-movers-up"],
-    queryFn: () => apiClient.get("/market/top-movers?direction=up&limit=5").then((r) => r.data),
+    queryFn: () => fetchMarketTopMovers("up", 5),
     staleTime: 30_000,
   });
 
-  const { data: losers = [] } = useQuery<MoverItem[]>({
+  const { data: losers = [] } = useQuery<MarketTopMover[]>({
     queryKey: ["market-top-movers-down"],
-    queryFn: () => apiClient.get("/market/top-movers?direction=down&limit=5").then((r) => r.data),
+    queryFn: () => fetchMarketTopMovers("down", 5),
     staleTime: 30_000,
   });
 

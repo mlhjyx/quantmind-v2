@@ -4,11 +4,13 @@
 .DESCRIPTION
     管理所有QuantMind Windows服务的启动、停止、重启和状态查询。
     服务启动顺序: Redis/PostgreSQL(原生) -> FastAPI -> Celery Worker -> Celery Beat
+    QMTData 需要显式 qmt/qmt-data 管理，不随 all 隐式启动。
 .EXAMPLE
     .\service_manager.ps1 status
     .\service_manager.ps1 start all
     .\service_manager.ps1 restart fastapi
     .\service_manager.ps1 stop worker
+    .\service_manager.ps1 restart celery-beat
 #>
 
 param(
@@ -17,7 +19,7 @@ param(
     [string]$Action,
 
     [Parameter(Position=1)]
-    [ValidateSet("all", "fastapi", "worker", "beat")]
+    [ValidateSet("all", "fastapi", "worker", "slow-worker", "beat", "celery", "celery-beat", "celerybeat", "qmt", "qmt-data", "qmtdata")]
     [string]$Service = "all"
 )
 
@@ -26,10 +28,21 @@ $ServyCli = "D:\tools\Servy\servy-cli.exe"
 # 服务定义（启动顺序）
 $Services = [ordered]@{
     fastapi = "QuantMind-FastAPI"
-    worker  = "QuantMind-Celery"
-    beat    = "QuantMind-CeleryBeat"
-    qmt     = "QuantMind-QMTData"
+    worker        = "QuantMind-Celery"
+    "slow-worker" = "QuantMind-CelerySlow"
+    beat          = "QuantMind-CeleryBeat"
+    qmt           = "QuantMind-QMTData"
 }
+
+$ServiceAliases = @{
+    "celery"      = "worker"
+    "celery-beat" = "beat"
+    "celerybeat"  = "beat"
+    "qmt-data"    = "qmt"
+    "qmtdata"     = "qmt"
+}
+
+$script:HadServiceActionFailure = $false
 
 # 原生服务（只查状态，不管理）
 $NativeServices = @("Redis", "PostgreSQL16")
@@ -40,6 +53,37 @@ function Write-ColorStatus {
     Write-Host "  $Name" -NoNewline
     Write-Host (" " * [Math]::Max(1, 30 - $Name.Length)) -NoNewline
     Write-Host $Status -ForegroundColor $color
+}
+
+function Resolve-ServiceKey {
+    param([string]$ServiceKey)
+
+    if ($ServiceAliases.ContainsKey($ServiceKey)) {
+        return $ServiceAliases[$ServiceKey]
+    }
+    return $ServiceKey
+}
+
+function Write-ServiceCliOutput {
+    param([object[]]$Output)
+
+    if (-not $Output) { return }
+
+    foreach ($line in $Output) {
+        if ($line) {
+            Write-Host "    $line" -ForegroundColor DarkGray
+        }
+    }
+}
+
+function Invoke-ServyCli {
+    param([string]$Command, [string]$ServiceName)
+
+    $output = & $ServyCli $Command --name="$ServiceName" --quiet 2>&1
+    return @{
+        ExitCode = $LASTEXITCODE
+        Output   = $output
+    }
 }
 
 function Get-ServiceDetail {
@@ -106,12 +150,14 @@ function Show-Status {
 function Invoke-ServiceAction {
     param([string]$ActionName, [string]$ServiceKey)
 
-    if ($ServiceKey -eq "all") {
-        # 停止时反序: qmt -> beat -> worker -> fastapi
+    $resolvedServiceKey = Resolve-ServiceKey $ServiceKey
+
+    if ($resolvedServiceKey -eq "all") {
+        # QMTData carries account/session side effects; manage it explicitly via qmt/qmt-data.
         $orderedKeys = if ($ActionName -eq "stop") {
-            @("qmt", "beat", "worker", "fastapi")
+            @("beat", "slow-worker", "worker", "fastapi")
         } else {
-            @("fastapi", "worker", "beat", "qmt")
+            @("fastapi", "worker", "slow-worker", "beat")
         }
 
         foreach ($key in $orderedKeys) {
@@ -120,38 +166,45 @@ function Invoke-ServiceAction {
         return
     }
 
-    $svcName = $Services[$ServiceKey]
+    $svcName = $Services[$resolvedServiceKey]
     if (-not $svcName) {
         Write-Host "Unknown service: $ServiceKey" -ForegroundColor Red
+        $script:HadServiceActionFailure = $true
         return
     }
 
     switch ($ActionName) {
         "start" {
             Write-Host "Starting $svcName..." -NoNewline
-            & $ServyCli start --name="$svcName" 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
+            $result = Invoke-ServyCli "start" $svcName
+            if ($result.ExitCode -eq 0) {
                 Write-Host " OK" -ForegroundColor Green
             } else {
                 Write-Host " FAILED" -ForegroundColor Red
+                $script:HadServiceActionFailure = $true
+                Write-ServiceCliOutput $result.Output
             }
         }
         "stop" {
             Write-Host "Stopping $svcName..." -NoNewline
-            & $ServyCli stop --name="$svcName" 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
+            $result = Invoke-ServyCli "stop" $svcName
+            if ($result.ExitCode -eq 0) {
                 Write-Host " OK" -ForegroundColor Green
             } else {
                 Write-Host " FAILED (may already be stopped)" -ForegroundColor Yellow
+                $script:HadServiceActionFailure = $true
+                Write-ServiceCliOutput $result.Output
             }
         }
         "restart" {
             Write-Host "Restarting $svcName..." -NoNewline
-            & $ServyCli restart --name="$svcName" 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
+            $result = Invoke-ServyCli "restart" $svcName
+            if ($result.ExitCode -eq 0) {
                 Write-Host " OK" -ForegroundColor Green
             } else {
                 Write-Host " FAILED" -ForegroundColor Red
+                $script:HadServiceActionFailure = $true
+                Write-ServiceCliOutput $result.Output
             }
         }
     }
@@ -166,4 +219,7 @@ if ($Action -eq "status") {
         Start-Sleep -Seconds 3
     }
     Show-Status
+    if ($script:HadServiceActionFailure) {
+        exit 1
+    }
 }

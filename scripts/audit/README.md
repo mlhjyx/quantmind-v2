@@ -22,6 +22,7 @@
 | `audit_orphan_factors.py` | 检查 factor_registry 中无对应 factor_values 的孤儿因子 | 0=clean, 1=orphans found |
 | `check_frontend_api_discipline.py` | 检查生产前端 raw axios 是否只存在于 `frontend/src/api/client.ts`，忽略注释和测试 mock | 0=clean, 1=violations found, 2=script error |
 | `check_insert_bypass.py` | 检查 production code 是否绕 DataPipeline 直 INSERT (铁律 17) | 0=no bypass, 1=bypass detected |
+| `check_mutating_api_auth.py` | 检查 mutating FastAPI routes 是否 admin-gated 或在 `mutating_api_auth_classification.json` 显式分类 | 0=clean, 1=classification drift, 2=script error |
 | `phase_c_freeze_baseline.py` | Phase C factor_engine 拆分前 baseline 冻结 | 0=success |
 | `phase_c_verify_split.py` | Phase C factor_engine 拆分后 verify | 0=match, 1=drift |
 | `scan_future_dates.py` | 扫 DB 表是否含未来日期 (PIT 违反) | 0=clean, 1=future dates found |
@@ -61,7 +62,7 @@ echo $?  # 0=全 applied, 1=missing
 
 **触发时点 (event-driven)**:
 - T0-19 Phase 2 PR merged 后立刻跑
-- emergency_close_all_positions.py 真跑前 (Phase 2 self-test)
+- emergency_close_all_positions.py 实际运行前 (Phase 2 self-test)
 - 批 2 P0 修启动前 / 完结后跑
 
 **跑法**:

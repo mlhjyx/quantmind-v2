@@ -411,15 +411,15 @@ class BudgetAwareRouter:
         # - is_capped=True + is_fallback=False → "budget_capped_routing_anomaly"
         #     (router 真**返 primary** but budget 真 capped — 反 silent inconsistency, 真**signal**
         #      _is_fallback substring drift / fallback alias rename / etc.)
-        # - is_capped=False + is_fallback=True → "primary_fail_fallback_engaged"
-        #     (LiteLLM Router internal fallback chain triggered)
+        # - is_capped=False + is_fallback=True → sanitized provider category when
+        #     LiteLLM exposes previous_models, else "primary_fail_fallback_engaged"
         # - is_capped=False + is_fallback=False → None (success path sustained)
         if is_capped and response.is_fallback:
             error_class = "budget_capped"
         elif is_capped and not response.is_fallback:
             error_class = "budget_capped_routing_anomaly"
         elif response.is_fallback:
-            error_class = "primary_fail_fallback_engaged"
+            error_class = response.fallback_error_class or "primary_fail_fallback_engaged"
         else:
             error_class = None
 

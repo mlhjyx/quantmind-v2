@@ -62,6 +62,44 @@ export interface Trade {
   order_type: number;
 }
 
+export interface PendingOrder {
+  id: string;
+  code: string;
+  name: string;
+  direction: string;
+  quantity: number;
+  target_price: number | null;
+  trade_date: string | null;
+  status: string;
+  reject_reason?: string | null;
+  created_at?: string | null;
+}
+
+export interface ExecutionLogEntry {
+  id: string;
+  code: string;
+  name: string;
+  direction: string;
+  quantity: number;
+  target_price?: number | null;
+  fill_price?: number | null;
+  slippage_bps?: number | null;
+  commission?: number | null;
+  stamp_tax?: number | null;
+  total_cost?: number | null;
+  trade_date: string | null;
+  status: string;
+  reject_reason?: string | null;
+  executed_at?: string | null;
+}
+
+export interface ExecutionTradeLogParams {
+  strategy_id?: string;
+  execution_mode?: "paper" | "live" | string;
+  date?: string;
+  limit?: number;
+}
+
 export interface DriftItem {
   code: string;
   name: string;
@@ -219,6 +257,12 @@ function authHeaders(): Record<string, string> {
   return token ? { "X-Admin-Token": token } : {};
 }
 
+function compactParams(params: ExecutionTradeLogParams = {}): Record<string, string | number> {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+  ) as Record<string, string | number>;
+}
+
 // ---------------------------------------------------------------------------
 // GET endpoints
 // ---------------------------------------------------------------------------
@@ -245,6 +289,24 @@ export async function getOrders(): Promise<Order[]> {
 
 export async function getTrades(): Promise<Trade[]> {
   const { data } = await apiClient.get<Trade[]>("/execution/trades");
+  return data;
+}
+
+export async function getPendingOrders(
+  params: Pick<ExecutionTradeLogParams, "strategy_id" | "execution_mode"> = {},
+): Promise<PendingOrder[]> {
+  const { data } = await apiClient.get<PendingOrder[]>("/execution/pending-orders", {
+    params: compactParams(params),
+  });
+  return data;
+}
+
+export async function getExecutionLog(
+  params: ExecutionTradeLogParams = {},
+): Promise<ExecutionLogEntry[]> {
+  const { data } = await apiClient.get<ExecutionLogEntry[]>("/execution/log", {
+    params: compactParams(params),
+  });
   return data;
 }
 

@@ -33,6 +33,12 @@ vi.mock("@/api/dashboard", () => ({
   fetchPositions: vi.fn().mockResolvedValue([]),
   fetchCircuitBreakerState: vi.fn().mockResolvedValue(null),
   fetchPendingActions: vi.fn().mockResolvedValue([]),
+  fetchAlerts: vi.fn().mockResolvedValue([]),
+  fetchMonthlyReturns: vi.fn().mockResolvedValue({}),
+  fetchIndustryDistribution: vi.fn().mockResolvedValue([]),
+  fetchMarketTicker: vi.fn().mockResolvedValue([]),
+  fetchDashboardFactorRows: vi.fn().mockResolvedValue([]),
+  fetchDashboardPipelineSteps: vi.fn().mockResolvedValue([]),
   fetchDashboardStrategies: vi.fn().mockResolvedValue([]),
   fetchPaperTrades: vi.fn().mockResolvedValue([]),
 }));
@@ -65,10 +71,6 @@ vi.mock("@/api/backtest", () => ({
 vi.mock("@/api/strategies", () => ({
   getStrategies: vi.fn().mockResolvedValue([]),
   getStrategyDetail: vi.fn().mockResolvedValue(null),
-}));
-
-vi.mock("@/hooks/useWebSocket", () => ({
-  useWebSocket: vi.fn().mockReturnValue({ connected: false, lastMessage: null }),
 }));
 
 // Mock ECharts（防止 canvas 相关报错）

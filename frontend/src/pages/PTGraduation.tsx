@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
-import apiClient from "@/api/client";
 import { useNavigate } from "react-router-dom";
 import NAVChart from "@/components/NAVChart";
 import type { NAVPoint, NAVPeriod, Trade } from "@/types/dashboard";
-import { fetchNAVSeries, fetchPaperTrades } from "@/api/dashboard";
+import {
+  fetchNAVSeries,
+  fetchPaperGraduationStatus,
+  fetchPaperTrades,
+  type PaperGraduationCriterion,
+  type PaperGraduationStatus,
+} from "@/api/dashboard";
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
@@ -257,36 +261,13 @@ export default function PTGraduation() {
   const [navData, setNavData] = useState<NAVPoint[]>([]);
 
   useEffect(() => {
-    type GraduationCriterion = {
-      id?: string;
-      name: string;
-      target: string;
-      actual: string;
-      passed: boolean;
-      current?: number | string;
-      progress?: number;
-      status?: "pass" | "warn" | "fail" | "observe";
-      unit?: string;
-      description?: string;
-    };
-    type GraduationStatusResp = {
-      days_running: number;
-      sharpe: number;
-      mdd: number;
-      slippage_deviation: number;
-      graduate_ready: boolean;
-      overall_status?: "on_track" | "at_risk" | "failing";
-      criteria: GraduationCriterion[];
-    };
-
-    apiClient.get<GraduationStatusResp>("/paper-trading/graduation-status", { params: { execution_mode: "live" } })
-      .then((r) => {
-        const resp = r.data;
+    fetchPaperGraduationStatus("live")
+      .then((resp: PaperGraduationStatus) => {
         const criteria = resp.criteria ?? [];
 
         // Map each criterion from the API response into GraduationMetric shape.
         // The API provides the full criteria array — use it directly without padding with mock data.
-        const metrics: GraduationMetric[] = criteria.map((c, idx) => ({
+        const metrics: GraduationMetric[] = criteria.map((c: PaperGraduationCriterion, idx) => ({
           id: c.id ?? `criterion_${idx}`,
           name: c.name,
           current: c.current ?? c.actual,

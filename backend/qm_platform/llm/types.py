@@ -58,6 +58,7 @@ class LLMResponse:
     - cost_usd 改 Decimal (沿用决议 — 金融金额 Decimal, S2.3 持久化要求)
     - 新增 decision_id (caller traceable, S2.3 audit_trail 5 condition 真依赖)
     - 新增 is_fallback (是否走 qwen3-local fallback, S2.2 budget 状态判定)
+    - 新增 fallback_error_class (provider failure category only, no raw error text)
 
     NOTE: 跟 deepseek_client LLMResponse cost_usd: float 真 cross-module type 漂移,
     跨模块汇总成本时 caller 需走 Decimal(str(...)) 转换. deepseek_client 真
@@ -72,6 +73,7 @@ class LLMResponse:
     latency_ms: float = 0.0
     decision_id: str | None = None  # S2.3 audit trail 真依赖
     is_fallback: bool = False  # S2.2 budget 状态判定 + S2.3 audit cite
+    fallback_error_class: str | None = None  # sanitized provider category for fallback rows
 
 
 class UnknownTaskError(ValueError):

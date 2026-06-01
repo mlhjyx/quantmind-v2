@@ -3,8 +3,8 @@
 批 2 P0 修 (2026-04-30) Commit 4.
 
 Coverage:
-- cache 0 keys → 1 RuleResult (P0 alert_only)
-- cache > 0 keys → [] (no trigger)
+- portfolio:* cache 0 keys → 1 RuleResult (P0 alert_only)
+- portfolio:* cache > 0 keys → [] (no trigger)
 - cache 1 key → no trigger (boundary)
 - metrics 字段完整性
 - rule_id / severity / action 契约
@@ -47,7 +47,7 @@ def test_rule_contract_immutable():
 
 
 def test_cache_0_keys_triggers_p0_alert():
-    """portfolio:current 0 keys → 1 RuleResult (LL-081 v2 fallback 触发)."""
+    """portfolio:* 0 keys → 1 RuleResult (LL-081 v2 fallback 触发)."""
     reader = MagicMock(spec=RedisCacheHealthReader)
     reader.get_portfolio_cache_key_count.return_value = 0
     rule = QMTFallbackTriggeredRule(cache_reader=reader)
@@ -60,14 +60,14 @@ def test_cache_0_keys_triggers_p0_alert():
     assert r.rule_id == "ll081_qmt_fallback_triggered"
     assert r.code == ""
     assert r.shares == 0
-    assert "portfolio:current" in r.reason
+    assert "portfolio:*" in r.reason
     assert "T0-15" in r.reason
     assert r.metrics["portfolio_cache_key_count"] == 0
     assert r.metrics["portfolio_nav_at_check"] == 993520.16
 
 
 def test_cache_positive_keys_no_trigger():
-    """portfolio:current > 0 keys → [] (qmt_data_service 正常 sync)."""
+    """portfolio:* > 0 keys → [] (qmt_data_service 正常 sync)."""
     reader = MagicMock(spec=RedisCacheHealthReader)
     reader.get_portfolio_cache_key_count.return_value = 19
     rule = QMTFallbackTriggeredRule(cache_reader=reader)

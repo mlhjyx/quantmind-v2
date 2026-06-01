@@ -339,7 +339,7 @@ def main():
             "additionalContext": issues_text,
         }
     }
-    print(json.dumps(result, ensure_ascii=False))
+    print(json.dumps(result, ensure_ascii=True))
     sys.exit(0)
 
 

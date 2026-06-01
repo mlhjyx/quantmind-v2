@@ -80,9 +80,13 @@ ALL NEGATIVE.
 **MVP 4.3 closeout (iter 72)**:
 - `.github/workflows/ci.yml` 4 jobs (pre_commit / pre_push / regression / ci_matrix)
 - `scripts/ci_run_phase.py` single CLI dispatcher (lazy-imports per phase)
-- regression + ci_matrix jobs run `scripts/ci_run_phase.py --advisory` until baseline
-  files + self-hosted runners ship; structured failures log `ADVISORY_FAIL` while
-  process exceptions still fail the job.
+- regression + ci_matrix jobs run `scripts/ci_run_phase.py` as blocking GitHub
+  checks; regression validates committed `cache/baseline/regression_result_*.json`
+  artifacts with recorded `max_diff=0` evidence.
+- `ci_matrix` local smoke execution uses `pytest backend/tests/ -m "smoke and not
+  live_tushare" --tb=line -q --timeout=60`; GitHub-hosted matrix sets
+  `QM_CI_SMOKE_COLLECT_ONLY=1` for the blocking collect/wiring contract until
+  self-hosted runtime services are available.
 - `pre_commit` now includes `scripts/audit/check_frontend_api_discipline.py`, a
   comment-aware raw axios scanner that keeps `frontend/src/api/client.ts` as the
   production axios SSOT without flagging tests or prose.

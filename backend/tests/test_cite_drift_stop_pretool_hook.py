@@ -109,6 +109,22 @@ def test_path_drift_warn_in_v3_path() -> None:
     assert "additionalContext" in stdout
 
 
+@pytest.mark.parametrize(
+    "file_path",
+    [
+        ".codex/agents/quantmind-risk-domain-expert.toml",
+        ".agents/skills/quantmind-v3-redline-verify/SKILL.md",
+    ],
+)
+def test_codex_agent_and_project_skill_paths_are_v3_scope(file_path: str) -> None:
+    """Current Codex agent + project skill paths must receive cite-drift warnings."""
+    content = "legacy `quantmind-cite-source-lock` reference"
+    rc, stdout, _ = _run_hook(file_path, content)
+    assert rc == 0
+    assert "cross_ref_drift" in stdout
+    assert "additionalContext" in stdout
+
+
 # ── ALLOW: non-V3 path (反 false positive) ──
 
 

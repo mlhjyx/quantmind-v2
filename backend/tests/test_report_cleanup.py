@@ -283,7 +283,7 @@ def test_beat_schedule_registers_reports_cleanup_weekly():
     assert entry["task"] == "app.tasks.report_tasks.cleanup_old_reports"
     assert entry["kwargs"]["max_age_days"] == 90
     assert entry["kwargs"]["keep_per_tuple"] == 20
-    assert entry["options"]["queue"] == "default"
+    assert entry["options"]["queue"] == "data_fetch"
 
 
 def test_beat_schedule_sunday_0430_crontab():

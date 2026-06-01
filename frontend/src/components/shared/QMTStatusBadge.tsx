@@ -1,20 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { C } from "@/theme";
-import apiClient from "@/api/client";
-
-interface QMTHealth {
-  execution_mode: string;
-  state: string;
-  account_id: string | null;
-  connected_at: string | null;
-  last_error: string | null;
-  is_healthy: boolean;
-  account_asset?: {
-    total_asset: number;
-    cash: number;
-    market_value: number;
-  };
-}
+import { fetchQmtHealth, type QmtHealth } from "@/api/system";
 
 const STATE_CONFIG: Record<string, { label: string; color: string }> = {
   connected: { label: "QMT 实盘", color: C.up },
@@ -25,9 +11,9 @@ const STATE_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 export function QMTStatusBadge() {
-  const { data } = useQuery<QMTHealth>({
+  const { data } = useQuery<QmtHealth>({
     queryKey: ["qmt-health"],
-    queryFn: () => apiClient.get("/health/qmt").then((r) => r.data),
+    queryFn: fetchQmtHealth,
     refetchInterval: 30_000,
     retry: 1,
   });

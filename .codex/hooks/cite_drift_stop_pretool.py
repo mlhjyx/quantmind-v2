@@ -115,9 +115,12 @@ PATH_DRIFT_PATTERNS: list[str] = [
 
 # V3 path scope filter — hook fires only on these paths.
 # 反 false positive on non-V3 context (backend/, scripts/, root .md, etc.).
+# Keep legacy .claude paths and active Codex/project skill layers in scope.
 V3_PATH_PATTERNS: list[str] = [
     r"\.claude[/\\]agents[/\\]quantmind-",
     r"\.claude[/\\]skills[/\\]quantmind-v3-",
+    r"\.codex[/\\]agents[/\\]quantmind-",
+    r"\.agents[/\\]skills[/\\]quantmind-v3-",
     r"docs[/\\]V3_",
     r"docs[/\\]audit[/\\]v3_orchestration[/\\]",
     r"project_sprint_state\.md",

@@ -23,6 +23,10 @@ import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { statusBadgeClasses } from "@/utils/statusBadgeClasses";
 import {
+  fetchPaperTradingStatus,
+  type PaperTradingStatus,
+} from "@/api/dashboard";
+import {
   fetchEnvState,
   fetchSystemHealth,
   fetchCalendarInfo,
@@ -56,6 +60,21 @@ function taskStatusBadge(status: SchedulerTaskLogEntry["status"]) {
 
 function healthBadge(ok: boolean) {
   return ok ? statusBadgeClasses("pass") : statusBadgeClasses("fail");
+}
+
+function formatMoney(value: number | undefined): string {
+  if (value === undefined) return "—";
+  return `¥${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
+}
+
+function formatDecimal(value: number | undefined, digits = 2): string {
+  if (value === undefined) return "—";
+  return value.toFixed(digits);
+}
+
+function formatPercent(value: number | undefined): string {
+  if (value === undefined) return "—";
+  return `${(value * 100).toFixed(2)}%`;
 }
 
 // ── S1 LifecycleCard ────────────────────────────────────────────────────────
@@ -96,7 +115,13 @@ function LifecycleCard({ data }: { data: CalendarInfo | undefined }) {
 
 // ── S2 TradingStateCard ─────────────────────────────────────────────────────
 
-function TradingStateCard({ env }: { env: EnvState | undefined }) {
+function TradingStateCard({
+  env,
+  ptStatus,
+}: {
+  env: EnvState | undefined;
+  ptStatus: PaperTradingStatus | undefined;
+}) {
   return (
     <section className="rounded-lg bg-slate-900/60 border border-slate-800 p-5">
       <h2 className="text-base font-semibold text-slate-100 mb-3">
@@ -110,6 +135,17 @@ function TradingStateCard({ env }: { env: EnvState | undefined }) {
         />
         <Metric label="QMT 账户" value={env?.qmt_account_id ?? "—"} />
         <Metric label="PT Top N" value={env?.pt_top_n?.toString() ?? "—"} />
+        <Metric label="PT NAV" value={formatMoney(ptStatus?.nav)} />
+        <Metric label="PT 持仓数" value={ptStatus?.position_count?.toString() ?? "—"} />
+        <Metric label="PT 运行日" value={ptStatus?.running_days?.toString() ?? "—"} />
+        <Metric label="最新数据日" value={ptStatus?.trade_date ?? "—"} />
+        <Metric label="PT Sharpe" value={formatDecimal(ptStatus?.sharpe)} />
+        <Metric label="PT MDD" value={formatPercent(ptStatus?.mdd)} />
+        <Metric label="累计收益" value={formatPercent(ptStatus?.total_return)} />
+        <Metric
+          label="毕业天数"
+          value={ptStatus?.graduation_ready === true ? "已满足" : "未满足"}
+        />
       </div>
     </section>
   );
@@ -364,13 +400,29 @@ export default function PtStatus() {
     queryFn: () => fetchSchedulerTaskLog(20),
     refetchInterval: 60_000,
   });
+  const ptStatusQ = useQuery({
+    queryKey: ["paper-trading-status"],
+    queryFn: () => fetchPaperTradingStatus(),
+    refetchInterval: 60_000,
+  });
 
   const anyLoading =
-    envQ.isLoading || healthQ.isLoading || calQ.isLoading || taskLogQ.isLoading;
+    envQ.isLoading ||
+    healthQ.isLoading ||
+    calQ.isLoading ||
+    taskLogQ.isLoading ||
+    ptStatusQ.isLoading;
   const firstError =
-    envQ.error || healthQ.error || calQ.error || taskLogQ.error;
+    envQ.error || healthQ.error || calQ.error || taskLogQ.error || ptStatusQ.error;
 
-  if (anyLoading && !envQ.data && !healthQ.data && !calQ.data && !taskLogQ.data) {
+  if (
+    anyLoading &&
+    !envQ.data &&
+    !healthQ.data &&
+    !calQ.data &&
+    !taskLogQ.data &&
+    !ptStatusQ.data
+  ) {
     return <PageSkeleton />;
   }
 
@@ -393,7 +445,7 @@ export default function PtStatus() {
       )}
 
       <LifecycleCard data={calQ.data} />
-      <TradingStateCard env={envQ.data} />
+      <TradingStateCard env={envQ.data} ptStatus={ptStatusQ.data} />
       <SystemHealthCard health={healthQ.data} />
       <RestartChecklistCard env={envQ.data} health={healthQ.data} cal={calQ.data} />
       <TaskHistoryTable data={taskLogQ.data} />

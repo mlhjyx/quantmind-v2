@@ -115,7 +115,7 @@ markers = [
     "integration: integration tests (mock or live DB, run separately from smoke). Plan v10 Phase P scaffold. Run with `pytest -m integration`.",
     "slow: tests requiring DB / network / heavy compute (e.g. ML data loading from PostgreSQL). Auto-deselected from quick runs. Run with `pytest -m slow`. iter 80 sediment (test_ml_engine.py:271 TestDataLoading).",
 ]
-testpaths = ["tests"]
+testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

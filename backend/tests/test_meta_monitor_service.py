@@ -363,7 +363,23 @@ def test_collect_litellm_window_param_and_counts() -> None:
     assert snapshot.now == _NOW
     # window is bounded both ends: [now - WINDOW, now]
     _sql, params = conn.executed[0]
-    assert params == (_NOW - timedelta(seconds=LITELLM_FAILURE_RATE_WINDOW_S), _NOW)
+    assert params == (
+        "budget_capped",
+        "budget_capped",
+        _NOW - timedelta(seconds=LITELLM_FAILURE_RATE_WINDOW_S),
+        _NOW,
+    )
+
+
+def test_collect_litellm_excludes_budget_cap_from_api_failure_rate_query() -> None:
+    """budget_capped is intentional cost-control fallback, not API outage evidence."""
+    conn = _MockConn(litellm_row=(0, 0))
+    MetaMonitorService._collect_litellm(conn, _NOW)
+
+    sql, params = conn.executed[0]
+    assert "error_class IS DISTINCT FROM %s" in sql
+    assert "error_class <> %s" in sql
+    assert params[:2] == ("budget_capped", "budget_capped")
 
 
 def test_collect_litellm_null_row_defaults_zero() -> None:

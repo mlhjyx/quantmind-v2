@@ -1,0 +1,47 @@
+{
+  "chain_sharpe": 0.8665,
+  "combined_oos_sharpe": 0.8978,
+  "total_oos_days": 1250,
+  "neg_folds": 0,
+  "dsr": 0.7959,
+  "dsr_interpretation": "可疑: 可能部分来自过拟合",
+  "folds": [
+    {
+      "fold": 0,
+      "oos_sharpe": 1.618,
+      "oos_mdd": -0.117,
+      "oos_annual_return": 0.3429,
+      "test_days": 250
+    },
+    {
+      "fold": 1,
+      "oos_sharpe": 0.2607,
+      "oos_mdd": -0.1078,
+      "oos_annual_return": 0.0278,
+      "test_days": 250
+    },
+    {
+      "fold": 2,
+      "oos_sharpe": 0.1926,
+      "oos_mdd": -0.1391,
+      "oos_annual_return": 0.0153,
+      "test_days": 250
+    },
+    {
+      "fold": 3,
+      "oos_sharpe": 0.4754,
+      "oos_mdd": -0.0884,
+      "oos_annual_return": 0.0615,
+      "test_days": 250
+    },
+    {
+      "fold": 4,
+      "oos_sharpe": 1.7858,
+      "oos_mdd": -0.0664,
+      "oos_annual_return": 0.2295,
+      "test_days": 250
+    }
+  ],
+  "elapsed_s": 181.8,
+  "run_date": "2026-06-01"
+}

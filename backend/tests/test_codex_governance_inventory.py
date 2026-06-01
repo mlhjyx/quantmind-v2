@@ -100,3 +100,16 @@ def test_explicit_project_skill_path_references_resolve() -> None:
     assert refs, "expected explicit project skill path references"
     missing = sorted(ref for ref in refs if not (SKILLS_DIR / ref / "SKILL.md").is_file())
     assert missing == []
+
+
+def test_hook_behavior_tests_target_active_codex_layer() -> None:
+    """Hook behavior tests must execute `.codex/hooks`, not the historical `.claude` mirror."""
+    hook_tests = [
+        REPO_ROOT / "backend" / "tests" / "test_iron_law_enforce_hook.py",
+        REPO_ROOT / "backend" / "tests" / "test_protect_critical_files_hook.py",
+    ]
+
+    for path in hook_tests:
+        text = path.read_text(encoding="utf-8")
+        assert '".codex" / "hooks"' in text, f"{path.name} should target active Codex hooks"
+        assert '".claude" / "hooks"' not in text, f"{path.name} still targets historical mirror"

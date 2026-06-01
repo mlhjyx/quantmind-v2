@@ -84,6 +84,30 @@ class TestRealtimeRiskTickHappyPath:
         # engine.on_tick NOT called when stale (skip path)
         fake_engine.on_tick.assert_not_called()
 
+    def test_qmt_cache_unavailable_reason_is_preserved(self):
+        """PositionSourceError.reason is preserved in scheduler/audit result_json."""
+        from app.tasks import realtime_risk_tasks as task_mod  # noqa: PLC0415
+
+        fake_engine = MagicMock(name="engine")
+        fake_builder = MagicMock(name="builder")
+        fake_builder.build_context.side_effect = PositionSourceError(
+            "missing portfolio cache",
+            reason="qmt_cache_unavailable",
+        )
+
+        with (
+            patch.object(task_mod, "_get_engine", return_value=fake_engine),
+            patch.object(task_mod, "_get_context_builder", return_value=fake_builder),
+            patch.object(task_mod, "_write_scheduler_log_safe") as mock_audit,
+        ):
+            result = task_mod.realtime_risk_tick.apply(args=[]).get()
+
+        assert result["ok"] is False
+        assert result["reason"] == "qmt_cache_unavailable"
+        assert "missing portfolio cache" in result["error"]
+        assert mock_audit.call_args[0][2] == "skipped"
+        fake_engine.on_tick.assert_not_called()
+
 
 class TestEngineLazySingleton:
     """Verify engine instantiated once + 10 rules registered."""

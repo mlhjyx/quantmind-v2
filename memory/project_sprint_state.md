@@ -1,11 +1,1027 @@
 ---
-description: Codex remediation handoff updated after runtime, Agent LLM, CI, attribution, mining, and GP feedback remediation.
-date: 2026-05-29 +08:00
-status: governance_runtime_remediation_in_progress
-source_report: docs/audit/FULL_PROJECT_CLOSURE_AND_GOVERNANCE_AUDIT_2026_05_27.md
+description: Codex remediation handoff updated after 2026-06-01 governance batch 39.
+date: 2026-06-01 +08:00
+status: governance_batch_39_hosted_precommit_format_fix_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_39.md
 ---
 
 # Project Sprint State
+
+## Current Handoff - 2026-06-01 Batch 39
+
+Mode: full-project closure/governance remediation, batch 39 hosted
+`pre_commit` format repair after Batch 38 guard push.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `81b12847` (`guard mutating api auth
+  inventory`).
+- PR #523 hosted checks on `81b12847`: `pre_push`, `regression`, and
+  `ci_matrix` passed; `pre_commit` failed.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Hosted `pre_commit` failed only because `ruff format --check .` would
+  reformat the two new Batch 38 Python files.
+- Local Windows full `ruff format --check backend scripts` also reports older
+  mixed-line-ending worktree copies for `backend/app/api/backtest.py` and
+  `backend/tests/test_param_system.py`.
+- Those older files were not edited: `git ls-files --eol` shows their index
+  entries are LF, and `backend/app/api/backtest.py` remains behind the project
+  redline precondition.
+
+Closed in this batch:
+- Formatted only:
+  - `backend/tests/test_mutating_api_auth_audit.py`
+  - `scripts/audit/check_mutating_api_auth.py`
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_39.md`.
+- Updated this handoff.
+
+Verification:
+- `ruff format --check scripts/audit/check_mutating_api_auth.py backend/tests/test_mutating_api_auth_audit.py`
+  -> 2 files already formatted.
+- `pytest backend/tests/test_mutating_api_auth_audit.py -q` -> 4 passed.
+- `python scripts/audit/check_mutating_api_auth.py` -> PASS with
+  58 mutating routes, 20 admin-gated, 38 classified no-admin routes.
+- `python scripts/_verify_account_oneshot.py` -> exit 1,
+  `broker.connect()` returned `-1`.
+- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke
+  92 passed, 2 skipped, 6987 deselected.
+- Pending: commit, push, PR body append, and PR #523 check watch.
+
+Still open:
+- Params admin-gate security fix remains blocked by
+  `python scripts/_verify_account_oneshot.py` failing with
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- The P0 admin-gate backlog remains: params, pipeline, strategies, factors,
+  mining, news ingest, and backtest resource-cost mutations.
+- P1/decision route groups remain: notification state/test send, system test
+  notification, report generation, and DingTalk inbound webhook control model.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Commit and push Batch 39, then watch PR #523 hosted checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 38
+
+Mode: full-project closure/governance remediation, batch 38 mechanized guard
+for mutating API auth classification.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `3e7f18f9` (`record mutating api auth
+  inventory`), and PR #523 checks were clean after Batch 37.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 37 route inventory needed a machine guard; documentation alone would
+  not catch a newly added mutating route.
+- The new audit script parses `backend/app/api/*.py` with AST and requires each
+  no-admin mutating route to have an explicit JSON classification.
+- The current-repo check is marked `smoke`, so the existing pre-push guard will
+  fail if a new mutating route is added without classification.
+
+Closed in this batch:
+- Added `scripts/audit/check_mutating_api_auth.py`.
+- Added `scripts/audit/mutating_api_auth_classification.json`.
+- Added `backend/tests/test_mutating_api_auth_audit.py` with RED/GREEN TDD
+  coverage.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_38.md`.
+- Registered the script in `scripts/audit/README.md`.
+
+Verification:
+- RED: `pytest backend/tests/test_mutating_api_auth_audit.py -q` failed because
+  `scripts.audit.check_mutating_api_auth` did not exist.
+- GREEN: `pytest backend/tests/test_mutating_api_auth_audit.py -q` -> 4 passed.
+- `ruff check scripts/audit/check_mutating_api_auth.py backend/tests/test_mutating_api_auth_audit.py`
+  -> all checks passed.
+- `python scripts/audit/check_mutating_api_auth.py` -> PASS with
+  58 mutating routes, 20 admin-gated, 38 classified no-admin routes.
+- `pytest -m "smoke and not live_tushare"` -> 91 passed, 2 skipped,
+  7031 deselected; the new mutating-route guard test was selected by `smoke`.
+- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke
+  92 passed, 2 skipped, 6987 deselected.
+- Pending: banned-word scan, commit, push, PR body append, and PR #523 check
+  watch.
+
+Still open:
+- Params admin-gate security fix remains blocked by
+  `python scripts/_verify_account_oneshot.py` failing with
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- The P0 admin-gate backlog remains: params, pipeline, strategies, factors,
+  mining, news ingest, and backtest resource-cost mutations.
+- P1/decision route groups remain: notification state/test send, system test
+  notification, report generation, and DingTalk inbound webhook control model.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run full smoke/pre-push, commit and push Batch 38, then continue a non-redline
+  audit surface or retry params admin-gate only after read-only account
+  verification is available or explicitly waived.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 37
+
+Mode: full-project closure/governance remediation, batch 37 docs-only
+mutating API admin-gate inventory.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `7ea8c259` (`record params admin gate
+  blocker`), and PR #523 checks were clean after Batch 36.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 36 params blocker is a representative case, not the full auth backlog.
+- Fresh AST scan over `backend/app/api/*.py` found 58 mutating routes:
+  20 with admin-token dependency and 38 without function-level admin-token
+  dependency.
+- P0 route groups for the next fix waves: params, pipeline, strategies,
+  factors, mining, news ingest, and backtest resource-cost mutations.
+- P1/decision route groups: notification state/test send, system test
+  notification, report generation, and DingTalk inbound webhook control model.
+
+Closed in this batch:
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_37.md` with
+  route inventory, triage, proposed fix batches, acceptance criteria, and the
+  active-discovery finding.
+- No production code was edited while the Batch 36 redline precondition remains
+  blocked.
+
+Verification:
+- `git status --short` before edits showed only unrelated
+  `reports/28fc37e5-2d32-4ada-92e0-41c11a5103d0_2026-06-01_paper.json`.
+- Inline AST scan over `backend/app/api/*.py` completed:
+  `total_mutating=58`, `admin_gated=20`, `no_admin_dependency=38`.
+- Pending: banned-word scan, commit, push, PR body append, and PR #523 check
+  watch.
+
+Still open:
+- Params admin-gate security fix remains blocked by
+  `python scripts/_verify_account_oneshot.py` failing with
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Stage/commit/push the Batch 37 inventory report and handoff, then continue a
+  non-redline audit surface or retry params admin-gate only after read-only
+  account verification is available or explicitly waived.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 36
+
+Mode: full-project closure/governance remediation, batch 36 params admin-gate
+security follow-up blocked by redline precondition.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `8ef358e8` (`close api matrix hard
+  gaps`), and PR #523 checks were clean after Batch 35.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Params mutation endpoints remain public in `backend/app/api/params.py`.
+- Existing audit history flags `PUT /api/params/{key}` and
+  `POST /api/params/init-defaults` as runtime-configuration mutation surfaces.
+- Intended fix is to add `verify_admin_token` to params mutation endpoints, but
+  this requires a production-code edit under the project redline SOP.
+
+Closed in this batch:
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_36.md` with
+  evidence, blocker, proposed fix batch, and acceptance criteria.
+- No production code was edited after the redline check failed.
+
+Verification:
+- `python scripts/_verify_account_oneshot.py` -> exit 1,
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- Pending: commit, push, PR body append, and PR #523 check watch.
+
+Still open:
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Remaining §5D backlog: none after row 34 reclassification, dashboard row
+  reconciliation, row 131 SSE closure, and Batch 32 taxonomy cleanup.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Stage/commit/push the blocked-security status report, then continue a
+  non-redline audit surface or retry params admin-gate only after read-only
+  account verification is available or explicitly waived.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 35
+
+Batch 35 removed the last hard `❌` markers from `docs/API_COVERAGE.md`, added
+direct strategy backtest route coverage, added `docs/API_COVERAGE.md` §36, and
+pushed commit `8ef358e8` (`close api matrix hard gaps`). PR #523 checks passed
+after the push.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 34
+
+Batch 34 fixed the notification settings params wrapper contract, added
+`frontend/src/__tests__/system-api-contract.test.ts`, added backend route tests
+for params changelog/init-defaults, reclassified rows 97-101, added
+`docs/API_COVERAGE.md` §35, and pushed commit `de82df38` (`fix params settings
+contract`). PR #523 checks passed after the push.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 33
+
+Batch 33 reclassified API coverage rows 83-86 as news ops-ingest/diagnostics
+taxonomy rows, added `backend/tests/test_news_api_manual_endpoints.py`, added
+`docs/API_COVERAGE.md` §34, and pushed commit `fe746aa5` (`classify news ops
+endpoints`). PR #523 checks passed after the push.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 32
+
+Batch 32 reclassified API coverage rows 72-73, 91, 116-117, and 130 as
+external-monitor/admin-test/inbound-webhook taxonomy rows, added
+`docs/API_COVERAGE.md` §33, and pushed commit `7f5f472d` (`reclass external api
+rows`). PR #523 checks passed after the push.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 28
+
+Batch 28 closed strategy rows 134 and 140 through typed wrappers and
+`StrategyWorkspace.tsx` route-id consumption, fixed strategy create/update
+request-shape drift, and reclassified rows 135-136 plus 141. Commit `2c37d474`
+pushed as `wire strategy workspace metadata`; PR #523 checks passed before
+Batch 29 edits.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 27
+
+Batch 27 closed paper-trading row 92 by wiring `/api/paper-trading/status` into
+`PtStatus.tsx` S2 and reclassified row 93 as superseded by fixed-standard
+`/api/paper-trading/graduation-status`. Commit `a23f762b` pushed as `wire pt
+status summary`; PR #523 checks passed before Batch 28 edits.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 26
+
+Batch 26 closed execution rows 44-45 through read-only DB fallback tables on the
+Execution page and reclassified row 46 legacy display-only plus row 62 backend
+no-op. Commit `081296d9` pushed as `wire execution db fallback`; PR #523 checks
+passed before Batch 27 edits.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 25
+
+Batch 25 closed notification detail row 89 and reclassified row 88 unread-count
+as redundant because the notification list already returns `unread_count`.
+Commit `2dc316c7` pushed as `wire notification detail view`; PR #523 checks
+passed before Batch 26 edits.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 24
+
+Batch 24 closed row 69 `/api/factors/{name}` as API coverage documentation
+drift. `fetchFactorIcSeries()` already wrapped the endpoint and
+`IcMonitoring.tsx` already consumed it. Commit `29529dc1` pushed as `close
+factor name coverage drift`; PR #523 checks passed before Batch 25 edits.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 21
+
+Mode: full-project closure/governance remediation, batch 21 backtest detail
+endpoint schema/runtime contract locally verified before final commit/push.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `7b849f09` (`close backtest compare trade diff`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 21 edits.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 20 browser/runtime verification exposed an adjacent backend issue: backtest detail endpoints documented as backend-implemented were querying stale columns and could return 500s or Decimal/date/UUID shapes.
+- DDL/writer verification showed `backtest_daily_nav` has `benchmark_nav` but no `benchmark_return`, `backtest_trades` has `trade_id` but no `id`, and `backtest_holdings` has no stored `market_value` or `pnl`.
+- Direct app startup was intentionally avoided for runtime proof to avoid QMT manager startup side effects; instead, direct endpoint functions were exercised against the real DB with read-only rollback.
+
+Closed in this batch:
+- Hardened `backend/app/api/backtest.py` detail endpoints:
+  `_safe_query()` now fails loud on undefined columns; NAV/report derive `benchmark_return`; trades use `trade_id AS id`; holdings derive market value/PnL; detail payloads normalize Decimal/date/UUID.
+- Updated `frontend/src/api/backtest.ts` so `BacktestTradeRow.id` accepts UUID string IDs.
+- Added `backend/tests/test_backtest_detail_endpoint_contract.py`.
+- Updated `docs/API_COVERAGE.md` §22 and §5D, and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_21.md`.
+- While sedimenting §22, corrected stale `cancelBacktest()` orphan text: it maps to `POST /api/backtest/{run_id}/cancel` in `backtest.py`.
+- Surfaced broader API coverage aggregate-count drift: raw route grep now reports 170 backend routes across 25 router files and 18 frontend API modules; header counts were updated, while row-level non-backtest remapping remains backlog.
+
+Verification:
+- RED: `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` initially failed on the new contract guards.
+- GREEN targeted: `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7 passed.
+- Existing compatibility: `pytest backend/tests/test_a4_a6.py::TestA6BacktestNavEndpoint backend/tests/test_backtest_api.py -q` -> 33 passed.
+- `ruff check backend/app/api/backtest.py backend/tests/test_backtest_detail_endpoint_contract.py` -> PASS.
+- `python -m py_compile backend/app/api/backtest.py` -> PASS.
+- `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` -> 3 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Full frontend suite/build: `npx vitest --run` -> 135 passed; `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size warning.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020 deselected.
+- Pre-push guard: `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91 passed, 2 skipped, 6976 deselected.
+- Real DB read-only runtime against run `2c91bd92-ee0f-4f52-9244-795365cc1037`: nav, trades, holdings summary, annual, monthly, attribution, market-state, cost-sensitivity, live-compare, and report all returned without runtime errors; report temp file removed.
+
+Still open:
+- Stage/commit/push Batch 21, then wait for GitHub checks.
+- Backtest rows 26-32 and 35 are backend-runtime-hardened but still need frontend wrappers/deep-dive UI integration before marking them consumed.
+- Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred by existing ADR tracking.
+- API coverage row-level mappings outside backtest need a dedicated refresh against the 170-route / 18-module aggregate count.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Stage/commit/push Batch 21, then wait for GitHub checks before continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 20
+
+Mode: full-project closure/governance remediation, batch 20 BacktestCompare S5 trade diff locally verified before final commit/push.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `7c4ccdf` (`close approval api coverage drift`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 20 edits.
+- This handoff records the Batch 20 local verification set before commit/push. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
+- Previous Batch 19 handoff said commit/push/CI were open, but fresh git + PR state showed Batch 19 was already pushed and CI-clean at `7c4ccdf`. Use git/PR state for branch truth after every push.
+- `docs/mvp/MVP_5_3_backtest_compare.md` and `BacktestCompare.tsx` both promised lazy S5 trade diff, but current page code only implemented S1-S4.
+- `docs/API_COVERAGE.md` row 24 `/api/backtest/{run_id}/nav` was stale because `getNavSeries()` already consumed it; row 25 `/trades` was a real missing wrapper/UI gap.
+- Browser runtime verification exposed an additional API-contract bug: live `/api/backtest/compare` Decimal metrics arrived as strings, but `MetricRow` called `toFixed()` directly and crashed before S5 could be exercised.
+
+Closed in this batch:
+- Audited `BacktestCompare.tsx`, backend `backtest.py`, `frontend/src/api/backtest.ts`, `docs/API_COVERAGE.md`, and `docs/mvp/MVP_5_3_backtest_compare.md`.
+- Added `frontend/src/__tests__/backtest-compare-trade-contract.test.ts`.
+- Added `BacktestTradeRow`, `BacktestTradesResponse`, `BacktestTradesParams`, and `getBacktestTrades()` to `frontend/src/api/backtest.ts`.
+- Normalized `compareBacktests()` numeric fields so live Decimal strings render safely in `BacktestCompare.tsx`.
+- Added collapsed-by-default `TradeListDiff` S5 section to `BacktestCompare.tsx`.
+- Updated `docs/API_COVERAGE.md` rows 24-25 and §21, added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_20.md`, and added a governance note to MVP 5.3.
+
+Verification:
+- RED: `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` failed because `getBacktestTrades()` and `TradeListDiff` were missing.
+- GREEN targeted: `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` -> 3 passed.
+- `npx tsc -b --pretty false` first caught nullable aggregate indexing; after fix it exited 0.
+- Browser smoke opened `http://127.0.0.1:5173/backtest/compare?runs=2c91bd92-ee0f-4f52-9244-795365cc1037,3d7ecc84-0536-4d26-ac07-3eca4d53bdc4`, verified S5 collapsed, expanded it, saw read-only per-run `无交易记录` states, and fresh console errors were empty.
+- Full frontend suite: `npx vitest --run` -> 135 passed across 27 files.
+- `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size warning.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+- Still pending for this batch: local diff hygiene, pre-push, and GitHub checks.
+
+Still open:
+- After this batch is pushed, fresh-read PR #523 checks and merge state before continuing.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Direct `apiClient` imports in production pages/components: none found by the current audit scan.
+- Paper-trading rows 92-93 remain unwrapped legacy endpoints until a current frontend workflow needs them.
+- Approval queue is no longer part of §5D after this batch.
+- Backtest rows 26-32 and 34-35 remain backend-only until dedicated deep-dive views need them.
+
+Next safe step:
+- Run diff hygiene, stage/commit/push Batch 20, then wait for GitHub checks before continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 14
+
+Mode: full-project closure/governance remediation, batch 14 Report Center API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `0e628bc0` (`close market api layer contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 14 edits.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
+- Previous Batch 13 handoff still said commit/push/CI were open, but fresh git + PR state showed Batch 13 was already pushed and CI-clean at `0e628bc0`. This Batch 14 handoff corrects the top-level current state.
+
+Closed in this batch:
+- Audited `ReportCenter.tsx`, backend `report.py`, `frontend/src/api/reports.ts`, and `docs/API_COVERAGE.md`.
+- Confirmed `/api/reports/list` and `/api/reports/quick-stats` were implemented and consumed by the report page, but the page bypassed `frontend/src/api/*.ts` and the matrix still marked report rows 118-120 as unwired.
+- Added `listReportHistory` and `fetchReportQuickStats` wrappers to `frontend/src/api/reports.ts`.
+- Removed direct `apiClient` import and usage from `ReportCenter.tsx` for report history and quick-stats endpoints.
+- Added `frontend/src/__tests__/report-center-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §15 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_14.md`.
+
+Verification:
+- RED: `npx vitest --run src/__tests__/report-center-api-contract.test.ts` failed before the fix because wrappers were missing and `ReportCenter.tsx` imported `apiClient` directly.
+- GREEN targeted report-center contract -> 3 passed.
+- Focused compatibility suite -> 19 passed.
+- Broader frontend/API pack -> 38 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest --run` -> 116 tests passed across 22 files.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `http://127.0.0.1:5173/reports`; the `报告中心` heading and `报告列表` tab text were visible and console errors were empty. Existing dev server on port 5173 was reused and not stopped.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+- V3 banned-word diff scan -> no new hits; `git diff --check` -> exit 0 with Git line-ending warnings only.
+
+Still open:
+- Commit/push Batch 14 into PR #523, update PR body, and wait for CI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `RiskManagement.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- Commit/push Batch 14, update PR #523 body, and wait for GitHub checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 13
+
+Mode: full-project closure/governance remediation, batch 13 Market API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited `MarketData.tsx` against backend `market.py` and `docs/API_COVERAGE.md`.
+- Confirmed `/api/market/indices`, `/api/market/sectors`, and `/api/market/top-movers` were implemented and consumed by the market page, but the page bypassed `frontend/src/api/*.ts` and the matrix still marked rows 75-77 as unconsumed.
+- Added `frontend/src/api/market.ts` wrappers: `fetchMarketIndices`, `fetchMarketSectors`, and `fetchMarketTopMovers`.
+- Removed direct `apiClient` import and usage from `MarketData.tsx` for market endpoints.
+- Added `frontend/src/__tests__/market-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §14 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_13.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/market-api-contract.test.ts` failed before the fix because `src/api/market.ts` did not exist and `MarketData.tsx` imported `apiClient` directly.
+- GREEN targeted market contract -> 3 passed.
+- Broader frontend/API suite -> 27 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite -> 113 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `/market`; heading `行情数据` and tab `行情概览` were visible and console errors were empty. Temporary Vite dev server was stopped after verification.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+
+Still open:
+- Commit/push Batch 13 into PR #523 and wait for CI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- Run final diff/check hygiene, commit/push Batch 13 into PR #523, wait for CI, then continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 12
+
+Mode: full-project closure/governance remediation, batch 12 Portfolio API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited Portfolio and A-share dashboard frontend/API contracts from code: `Portfolio.tsx` and `DashboardAstock.tsx` used page-level `apiClient` calls for `/portfolio/sector-distribution`, `/portfolio/daily-pnl`, and `/portfolio/holdings`.
+- Confirmed the backend portfolio route returns sector `pct` as percentage and `value` as market value, while chart consumers treated `value` as the percentage field.
+- Added `frontend/src/api/portfolio.ts` wrappers: `fetchPortfolioSectorDistribution`, `fetchPortfolioDailyPnl`, `fetchPortfolioHoldings`, and `fetchHoldingDaysMap`.
+- Normalized sector rows so chart-facing `value` equals backend `pct`, while preserving backend market value as `marketValue` and adding deterministic colors.
+- Removed direct `apiClient` import and usage from `Portfolio.tsx` and `DashboardAstock.tsx` for portfolio endpoints.
+- Added `frontend/src/__tests__/portfolio-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §13 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_12.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/portfolio-api-contract.test.ts` failed before the fix because `@/api/portfolio` did not exist.
+- GREEN targeted portfolio contract -> 4 passed.
+- Broader frontend/API suite -> 24 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite -> 110 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `/portfolio` and `/dashboard/astock`; headings were visible and console errors were empty.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`, `MarketData.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- Run full frontend/build/API-discipline/backend-smoke verification, commit/push Batch 12 into PR #523, wait for CI, then continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 11
+
+Mode: full-project closure/governance remediation, batch 11 Dashboard API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited Dashboard frontend/API contract from code: `Dashboard/index.tsx` used page-level `apiClient` calls for alerts, monthly returns, industry distribution, factor rows, and pipeline status.
+- Confirmed this made `docs/API_COVERAGE.md` §3.4 stale because its methodology counts `frontend/src/api/*.ts`, while these consumers lived in the page.
+- Added typed wrappers in `frontend/src/api/dashboard.ts`: `fetchAlerts`, `fetchMonthlyReturns`, `fetchIndustryDistribution`, `fetchDashboardFactorRows`, and `fetchDashboardPipelineSteps`.
+- Centralized Dashboard display types in `frontend/src/types/dashboard.ts`; `MonthlyHeatmap` now accepts backend null months via `MonthlyReturns`.
+- Removed direct `apiClient` import and usage from `Dashboard/index.tsx`.
+- Added `frontend/src/__tests__/dashboard-api-contract.test.ts` to lock wrapper exports, endpoint params, response normalization, and the page boundary.
+- Updated `docs/API_COVERAGE.md` §12 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_11.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed before the fix on missing wrapper exports and the direct Dashboard page `apiClient` import.
+- GREEN targeted Dashboard contract -> 6 passed.
+- Broader frontend/API suite -> 20 passed.
+- Full frontend suite -> 106 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- In-app browser smoke opened `http://127.0.0.1:5173/dashboard`; the `驾驶舱` heading was visible and console errors were empty.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Other direct `apiClient` page/component imports remain candidates for follow-up only when a code-backed contract gap is confirmed.
+
+Next safe step:
+- Run final diff/check hygiene, commit/push Batch 11 into PR #523, wait for CI, then continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 10
+
+Mode: full-project closure/governance remediation, batch 10 blocking CI regression parity verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited GitHub CI from code and workflow: `regression` and `ci_matrix` still used `scripts/ci_run_phase.py --advisory`, so workflow failures could be masked as advisory output.
+- Reproduced the underlying regression issue: default regression pairs pointed at nonexistent `cache/baseline/backtest_*_{baseline,actual}.json` files, while committed artifacts are `cache/baseline/regression_result_5yr.json` and `cache/baseline/regression_result_12yr.json`.
+- Updated `RegressionOrchestrator.default_pairs()` to use the committed regression result artifacts.
+- Added recorded `max_diff` validation for same-file committed artifacts while preserving baseline-vs-actual pair comparison for custom callers.
+- Removed advisory masking from GitHub `regression` and `ci_matrix` jobs.
+- Added `backend/tests/test_github_ci_workflow.py` and included it in bounded pre-commit collect coverage.
+- Followed the first GitHub blocking failure: `ci_matrix` failed while `regression`, `pre_commit`, and `pre_push` passed, exposing that matrix smoke used a bare pytest command and hid the pytest tail.
+- Aligned `CIMatrixOrchestrator` smoke execution with the passing pre-push smoke scope and added bounded stdout-tail detail for failed matrix cells.
+- Followed the second GitHub blocking failure: the tail showed selected smoke tests ended with `3 errors` on GitHub-hosted runners, which matches the workflow's documented no-local-runtime constraint.
+- Added `QM_CI_SMOKE_COLLECT_ONLY=1` support to `CIMatrixOrchestrator` and set the hosted `ci_matrix` job to the same blocking collect/wiring contract as pre-push; local matrix still runs full smoke when the env var is absent.
+- Updated `docs/mvp/MVP_4_3_cicd.md` and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_10.md`.
+
+Verified so far:
+- RED: focused regression/workflow tests failed before the fix on nonexistent default paths, same-artifact nonzero `max_diff` passing, default regression failing, and workflow `--advisory` usage.
+- GREEN focused contract tests -> 4 passed.
+- CI regression/test pack -> 54 passed.
+- `python scripts/ci_run_phase.py --phase regression` -> PASS, both default artifacts reported `max_diff=0.0`.
+- `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
+- `python scripts/ci_run_phase.py --phase pre_commit` -> PASS.
+- GitHub first blocking run: `regression`, `pre_commit`, and `pre_push` passed; `ci_matrix` failed and was fixed in the follow-up commit.
+- Matrix command/tail RED tests failed before the follow-up fix; full matrix orchestrator tests -> 18 passed after the fix.
+- `ruff check backend/qm_platform/ci/ci_matrix.py backend/tests/test_qm_platform_ci_matrix.py` -> PASS.
+- Follow-up `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
+- Hosted collect-only RED test failed before env support; full matrix orchestrator tests -> 19 passed after the fix.
+- Hosted collect-only `python scripts/ci_run_phase.py --phase ci_matrix` with `QM_CI_SMOKE_COLLECT_ONLY=1` -> PASS.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Notification detail, cleanup, and preferences endpoints remain backend/admin-only unless they become explicit operator workflows.
+
+Next safe step:
+- Run final smoke/diff checks, commit/push Batch 10 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 9
+
+Mode: full-project closure/governance remediation, batch 9 notification panel API closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the notification UI/backend contract from code: backend `/api/notifications` routes existed, but `NotificationProvider` seeded local mock notifications and never called the backend.
+- Added `frontend/src/api/notifications.ts` wrappers for list, per-row read, and read-all endpoints with response normalization.
+- Refactored `NotificationProvider` to load backend rows, expose loading/error state, keep toast behavior, update unread counts, and avoid backend calls for already-read rows.
+- Updated `NotificationPanel` loading/empty/error/data states.
+- Removed the nested provider/toast mount from `Layout.tsx`; `main.tsx` remains the single app-level notification provider.
+- Updated `docs/API_COVERAGE.md` and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_9.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx` failed before the fix on missing API module, zero backend fetch calls, seeded mock rows, missing backend states, and missing backend mark-all call.
+- RED edge: `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "already-read"` failed before the guard because read rows still called the mark-read endpoint.
+- GREEN targeted notification contracts -> 10 passed.
+- `npx vitest --run` -> 100 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7005 deselected.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Notification detail, cleanup, and preferences endpoints remain backend/admin-only unless they become explicit operator workflows.
+
+Next safe step:
+- Run final diff/check hygiene, commit/push Batch 9 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 8
+
+Mode: full-project closure/governance remediation, batch 8 LLM fallback audit category durability verified locally before final smoke/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the LLM fallback audit path from code: `LiteLLMRouter` detected fallback, but `LLMResponse` did not expose a sanitized primary-provider failure category.
+- Confirmed `BudgetAwareRouter._audit_log()` persisted only the broad `primary_fail_fallback_engaged` label for non-capped fallback success rows.
+- Added `LLMResponse.fallback_error_class` with fixed category-only values.
+- Added LiteLLM metadata extraction from `previous_models` containers without persisting raw provider error strings.
+- Updated audit row construction to write the sanitized category for primary-fail fallback rows while keeping `budget_capped` and `budget_capped_routing_anomaly` behavior unchanged.
+- Added router/audit regression tests for authentication fallback metadata and no raw key-fragment persistence.
+
+Verified so far:
+- RED: `pytest backend/tests/test_litellm_router_core.py::test_fallback_response_records_sanitized_provider_error_class backend/tests/test_litellm_audit.py::test_aware_router_audit_persists_sanitized_primary_error_category -q` failed before the fix on missing `fallback_error_class` and broad audit labeling.
+- GREEN targeted tests -> 2 passed.
+- `pytest backend/tests/test_litellm_router_core.py backend/tests/test_litellm_audit.py -q` -> 52 passed.
+- `pytest backend/tests/test_litellm_budget.py backend/tests/test_meta_monitor_service.py -q` -> 61 passed.
+- `pytest backend/tests/test_market_regime_service.py backend/tests/test_news_classifier_service.py backend/tests/test_news_classifier_rag_wire.py backend/tests/test_rag_consumer_smoke.py backend/tests/test_regime_rag_wire.py -q` -> 97 passed, 2 skipped.
+- `ruff check backend/qm_platform/llm backend/tests/test_litellm_router_core.py backend/tests/test_litellm_audit.py` -> pass.
+- `ruff format --check backend/qm_platform/llm backend/tests/test_litellm_router_core.py backend/tests/test_litellm_audit.py` -> pass.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final smoke/diff checks, commit/push Batch 8 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 7
+
+Mode: full-project closure/governance remediation, batch 7 mining candidate normalization and Gate payload closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited current backend mining task-detail output: candidates arrive as `factor_name` / `factor_expr` / `status` / `gate_report`, while the frontend table and Gate submit path expect normalized `CandidateFactor` fields.
+- Added normalization in `frontend/src/api/mining.ts` for task summaries and task details, including task counters/progress and candidate metrics/status fields.
+- Added shared `buildCandidateGatePayloads()` fail-loud helper to resolve selected IDs to factor expressions and names.
+- Updated `FactorLab` to use the shared helper.
+- Updated `MiningTaskCenter` detail modal to submit selected IDs together with loaded detail candidates, then send expression-based Gate payloads.
+- Added `frontend/src/__tests__/mining-api-contract.test.ts`.
+
+Verified so far:
+- RED: `npx vitest run src/__tests__/mining-api-contract.test.ts` failed before the fix on missing normalized fields, missing helper, and missing fail-loud expression guard.
+- GREEN: `npx vitest run src/__tests__/mining-api-contract.test.ts` -> 3 passed.
+- `npx vitest run src/__tests__/mining-websocket-contract.test.tsx src/__tests__/mining-api-contract.test.ts` -> 5 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest run src/__tests__` -> 90 passed.
+- `npm run build` -> exit 0 with the existing Vite large chunk warning only.
+- `pytest -m "smoke and not live_tushare" -q` -> 90 passed, 2 skipped, 7003 deselected.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final diff checks, commit/push Batch 7 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 6
+
+Mode: full-project closure/governance remediation, batch 6 mining transport fix verified locally before final smoke/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the mining transport contract from current code: backend mining exposes REST polling via `/api/mining/tasks` and `/api/mining/tasks/{task_id}`; no backend `/ws/factor-mine/{id}` Socket.IO namespace or native route exists.
+- Removed unsupported mining Socket.IO usage from `frontend/src/pages/FactorLab.tsx`.
+- Added active-task polling in `FactorLab` while the task is running or paused.
+- Removed unsupported mining Socket.IO usage from `frontend/src/pages/MiningTaskCenter.tsx`; its existing task-list polling remains the update source.
+- Deleted unused `frontend/src/hooks/useWebSocket.ts` after confirming it had no production callers.
+- Added `frontend/src/__tests__/mining-websocket-contract.test.tsx`.
+
+Verified so far:
+- RED: `npx vitest run src/__tests__/mining-websocket-contract.test.tsx` failed before the fix on `/ws/factor-mine/task-running-1` calls from both mining pages.
+- GREEN: `npx vitest run src/__tests__/mining-websocket-contract.test.tsx` -> 2 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest run src/__tests__/mining-websocket-contract.test.tsx src/__tests__/websocket-contract.test.tsx src/__tests__/pages.test.tsx src/__tests__/api.test.ts` -> 18 passed.
+- `npm run build` -> exit 0 with the existing Vite large chunk warning only.
+- `rg -n "/ws/factor-mine|factor-mine|useWebSocket" frontend\src backend\app backend\tests -S` -> only the new regression test references `/ws/factor-mine`; no production caller of `useWebSocket` remains.
+- `pytest -m "smoke and not live_tushare" -q` -> 90 passed, 2 skipped, 7003 deselected.
+- `git diff --check` -> exit 0 with CRLF normalization warnings only.
+- Banned-word sediment scan on the Batch 6 report and this new handoff section -> no hits.
+
+Still open:
+- Mining frontend/API backlog: backend task-detail candidates use `factor_name` / `factor_expr`, while the frontend table expects `name` / `expression`; normalize this before rendering and Gate submission.
+- Mining frontend/API backlog: `MiningTaskCenter` batch Gate submit still maps selected IDs into `factor_expr`; fetch detail and submit actual candidate DSL expressions instead.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final diff/smoke verification, commit/push Batch 6 into PR #523, wait for CI, then continue with the mining candidate normalization and selected-ID Gate payload closure.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 5
+
+Mode: full-project closure/governance remediation, batch 5 frontend contract fix verified locally before commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the backend WebSocket contract from code: Socket.IO is mounted at `/ws/socket.io`, with backtest room events `join_backtest` and `leave_backtest`.
+- Fixed `frontend/src/hooks/useBacktestProgress.ts` to connect through the backend Socket.IO path, use runtime/configurable origin, allow websocket plus polling transports, and emit the backend event names.
+- Removed the unsupported native `/ws/pipeline/{run_id}` connection from `frontend/src/pages/PipelineConsole.tsx`; the page keeps its existing polling path until a real backend live stream exists.
+- Added `frontend/src/__tests__/websocket-contract.test.tsx` to guard the contract.
+
+Verified so far:
+- RED: `npx vitest run src/__tests__/websocket-contract.test.tsx` failed before the fix on `/ws/backtest` and `/ws/pipeline/...`.
+- GREEN: `npx vitest run src/__tests__/websocket-contract.test.tsx` -> 2 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest run src/__tests__/websocket-contract.test.tsx src/__tests__/PipelineConsole.test.tsx src/__tests__/backtest-api.test.ts src/__tests__/pages.test.tsx` -> 18 passed.
+- `npm run build` -> exit 0 with the existing Vite large chunk warning only.
+- `pytest -m "smoke and not live_tushare" -q` -> 90 passed, 2 skipped, 7003 deselected.
+- `git diff --check` -> exit 0 with CRLF normalization warnings only.
+
+Still open:
+- Frontend/backend backlog: `FactorLab` and `MiningTaskCenter` still reference `/ws/factor-mine/{id}` through `useWebSocket`; backend support was not found in this batch.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final diff/smoke verification, commit/push Batch 5 into PR #523, wait for CI, then continue with the remaining `/ws/factor-mine/{id}` contract audit or the elevated ops reload handoff.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 4
+
+Mode: full-project closure/governance remediation, batch 4 completed code/docs guardrails; runtime reload remains ops-blocked.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Attempted scoped Celery/Beat reload for Batch 3 runtime verification; Servy restart and direct Windows service stop are blocked by current process permissions.
+- Confirmed running Celery still uses pre-Batch-3 code: `realtime_risk_tick` rows at `2026-06-01 12:14-12:16 +08` still report `success` with zero positions/nav and no `qmt_cache_unavailable` reason.
+- Hardened `scripts/service_manager.ps1`: documented aliases work, `all` no longer implicitly manages QMTData, Servy failure output is printed, and failed service actions exit nonzero.
+- Added static regression tests for service-manager behavior.
+- Fixed duplicate YAML delimiter at the top of this handoff file.
+- Updated `AGENTS.md` service-manager quick reference to document core-services-only `all` plus explicit QMTData management.
+
+Verified:
+- `pytest backend/tests/test_service_manager_script.py -q`: 4 passed.
+- `pytest -m "smoke and not live_tushare" -q`: 90 passed, 2 skipped, 7003 deselected.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\service_manager.ps1 status`: exit 0, core services running, QMTData stopped/manual.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\service_manager.ps1 restart celery`: exit 1 and surfaces `Failed to restart service.`
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Commit/push Batch 4 into PR #523, wait for CI, then continue with either elevated ops handoff verification or another code-only governance closure batch.
+
+---
+
+## Previous Handoff — 2026-06-01 Batch 3
+
+Mode: full-project closure/governance remediation, batch 3 verified locally.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the L1 realtime risk and QMT cache input chain from code plus read-only service, Redis, and DB evidence.
+- Fixed realtime risk context ambiguity: empty positions without `portfolio:nav` now raises `PositionSourceError(reason="qmt_cache_unavailable")` instead of returning a clean empty context.
+- Preserved the source error reason in `realtime_risk_tick` audit output so missing QMT cache is visible in `scheduler_task_log.result_json`.
+- Wired the existing `QMTFallbackTriggeredRule` into `build_intraday_risk_engine()` with a new read-only `RedisPortfolioCacheHealthReader`.
+- Chose `portfolio:*` key counting so a clean empty account with fresh `portfolio:nav` does not false-fire the cache fallback guard.
+
+Runtime evidence:
+- `QuantMind-QMTData` was stopped/manual; no service restart was performed.
+- Redis `EXISTS portfolio:nav portfolio:current risk:l1_heartbeat qmt:connection_status` returned `0`.
+- DB read-only query showed 120 recent `realtime_risk_tick` rows in 2 hours, latest at `2026-06-01 11:56:00+08`, with zero positions/evaluations/triggers.
+- `trade_event_risk_consumer` rows were current and successful but consumed/processed 0 events.
+
+Verified:
+- `ruff format` on touched Python files.
+- `ruff check` on touched Python files: PASS.
+- `pytest backend/tests/test_realtime_context_builder.py backend/tests/test_realtime_risk_tasks.py backend/tests/test_risk_wiring.py backend/tests/test_qmt_fallback_rule.py -q`: 56 passed.
+- `pytest backend/tests/test_daily_pipeline_multi_strategy.py backend/tests/test_risk_rules_intraday.py -q`: 41 passed.
+- `pytest -m "smoke and not live_tushare" -q`: 90 passed, 2 skipped, 6999 deselected.
+
+Still open:
+- Ops deployment: FastAPI/Celery/Celery Beat reload is needed before runtime rows reflect the new `qmt_cache_unavailable` path.
+- QMTData runtime: `QuantMind-QMTData` remains stopped/manual; restart was intentionally not performed in this code batch.
+- Direct miniQMT read-only account probe failed at broker connect return code `-1`; cash/position direct account verification is still blocked by local QMT availability.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Push this batch to PR #523, then continue with either the ops-readiness plan for deploying/rechecking the QMT cache guards or another code-only governance closure batch. Keep service restarts and account-probe remediation as explicit ops work.
+
+---
+description: Codex remediation handoff updated after 2026-06-01 governance batch 2.
+date: 2026-06-01 +08:00
+status: governance_batch_2_meta_monitor_verified_open_secret_backlog
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_2.md
+---
+
+# Project Sprint State
+
+## Current Handoff — 2026-06-01 Batch 2
+
+Mode: full-project closure/governance remediation, batch 2 verified.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker calls, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT startup unless specifically required.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Diagnosed GB1-B1 `meta_alert:litellm_failure_rate` from runtime evidence rather than the stale-looking `alert_dedup` row alone.
+- Confirmed the alert condition cleared after the 2026-06-01 11:15 Asia/Shanghai fire: `meta_monitor` rows at 11:20, 11:25, 11:30, 11:35, and 11:40 all reported `triggered=0`.
+- Root cause remains primary DeepSeek authentication rejection in `logs/celery-slow-stderr.log`, followed by LiteLLM fallback to local Qwen; `.env` / secret rotation was not performed.
+- Fixed latent meta-monitor noise: `_collect_litellm` now excludes intentional `budget_capped` local fallback from both API-attempt denominator and failure numerator.
+- Added regression coverage in `backend/tests/test_meta_monitor_service.py`.
+
+Verified:
+- Focused collector regression: 3 passed.
+- `ruff check` on touched files: PASS.
+- `pytest backend/tests/test_meta_monitor_service.py backend/tests/test_meta_alert_rules.py -q`: 106 passed.
+- Read-only live SQL at 11:39-11:40: recent 1-hour API-attempt classification remained 13 failures / 13 attempts / 0 budget-cap rows; latest 5-minute window had 0 calls and 0 failures.
+
+Still open:
+- P0 runtime blocker: DeepSeek primary provider credential is rejected; requires user/operator secret rotation or provider-side account fix. Acceptance: controlled primary LiteLLM call succeeds, `llm_call_log` primary rows show `error_class IS NULL`, and `meta_monitor` stays `triggered=0` across at least two 5-minute ticks with LLM traffic.
+- P1 observability backlog: fallback-success rows only persist `primary_fail_fallback_engaged`; sanitized provider error category is not durable after logs rotate.
+- Batch-1 runtime backlog remains: realtime risk/QMT input path verification is still open and was not touched.
+
+Next safe step:
+- Continue with either the realtime risk/QMT runtime-input audit (read-only until an explicit ops touchpoint is chosen) or a frontend/API contract closure batch. Do not mutate secrets autonomously.
+
+## Current Handoff — 2026-06-01
+
+Mode: full-project closure/governance remediation, batch 1 verified.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+- User authorized autonomous remediation, but continue to avoid broker calls, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT startup unless specifically required.
+- Read-only account verification was attempted with `python scripts/_verify_account_oneshot.py`; miniQMT connect returned `-1`, so account-state verification is not complete in this shell.
+
+Closed in this batch:
+- Fixed pytest discovery drift: `pyproject.toml` now uses `backend/tests`, with `backend/tests/test_pytest_config.py` guarding the setting.
+- Wired local pre-commit collect-only coverage to active governance inventory and hook behavior tests.
+- Moved hook behavior tests from stale `.claude` mirror paths to active `.codex/hooks`.
+- Extended cite-drift hook V3 path scope to active `.codex/agents` and repo `.agents/skills`.
+- Fixed active `iron_law_enforce.py` Windows redirected-stdout crash by emitting ASCII-safe JSON and parsing hook JSON in tests.
+- Removed frontend circuit-breaker `/risk/*/default` usage; `SafetyControlPanel` and `RiskManagement` now use configured `PAPER_STRATEGY_ID` through UUID-keyed `src/api/risk.ts` wrappers.
+
+Verified:
+- `python scripts/ci_run_phase.py --phase pre_commit` PASS.
+- Governance/hook pytest subset: 120 passed.
+- Smoke: 91 passed, 2 skipped.
+- Frontend risk/API/page Vitest subset: 21 passed.
+- `npm run build` PASS, with chunk-size warning only.
+- Manual active-hook PT warning probe returned rc=0 JSON.
+
+Still open:
+- P0 runtime backlog: active LLM failure-rate meta alert and realtime risk path not exercising portfolio/QMT inputs remain unresolved.
+- P1 frontend/API backlog: websocket route mismatch, notification mock seeding, mining selected-ID placeholder, and CI/GitHub governance parity need next batches.
+- Backup/GP/backtest first-fire evidence from the 2026-05-29 handoff remains relevant unless superseded by newer runtime proof.
+
+Next safe step:
+- Continue with a second remediation batch focused on either runtime meta-monitor/LLM failure-rate diagnosis or frontend/API contract closure. Avoid starting QMT/Servy ops until an explicit runtime touchpoint is chosen.
 
 ## Current Handoff — 2026-05-29
 
@@ -49,6 +1065,8 @@ Closed in this batch:
 - Closed 2026-05-29 `signal_phase` data-gap runtime failure: Tushare later had same-day data; controlled fetch wrote 5,477 `klines_daily` / 5,477 `daily_basic` / 5,477 `stock_status_daily` rows, rerun wrote 131,448 `factor_values` rows and 5 paper `signals`, and latest `scheduler_task_log.signal_phase` is `success`.
 - Added a T-day data readiness guard in `scripts/run_paper_trading.py` so future same-day data outages fail at `klines_daily` / `daily_basic` readiness instead of misleadingly surfacing as empty factor generation.
 - Closed Celery backup PG CLI precondition drift: Platform backup tasks now resolve `pg_dump.exe` / `pg_restore.exe` from `PG_BIN` or known Windows install paths, pass `PGPASSWORD` into subprocesses, and runtime probe resolves both tools under `D:\pgsql\bin`.
+- Closed Celery fake-alive / queue-stall runtime defect: `/api/system/health` now checks Redis queue backlog, `scripts/ops/celery_queue_hygiene.py` safely purges expired Redis Celery messages, Windows Workers disable gossip/mingle/heartbeat, `QuantMind-Celery` consumes only `default`, new `QuantMind-CelerySlow` consumes `data_fetch,factor_calc`, slow Beat entries are routed off core queue, and `consume_fill_events` no longer sends Redis `BLOCK 0`.
+- Runtime recovery applied on 2026-05-29: installed/imported `QuantMind-CelerySlow`, imported updated Worker/Beat Servy configs, restarted Worker/Slow/Beat/FastAPI, and verified 125s of Beat operation with `default=0`, `data_fetch=0`, `factor_calc=0`; `/api/system/health` reports `worker_count=2` and `queue_status.max_depth=0`.
 - Removed the manual-test attribution noise row for the old placeholder strategy.
 - Reclassified `QM-SmokeTest` scheduler failure as a disabled-task stale LastResult false positive; scheduler API/UI now carries disabled status.
 - Repaired `QM-DailyBackup` guardrails: backup writes to `.dump.tmp`, rejects undersized dumps, verifies size before restore-list, and uses current Parquet snapshot columns.
@@ -65,6 +1083,7 @@ Still open:
 - Backup Beat entries still need their next scheduled first-fire observed after the new audit envelope; the PG binary/env precondition is now closed.
 - QMT Data Service remains stopped by design; do not start it without an explicit PT/QMT ops reason.
 - 2026-05-29 Tushare `daily_basic` had high `pe_ttm` / `dv_ttm` null-ratio warnings during controlled fetch; DataPipeline logged the warning and still upserted valid rows. Treat as data-quality signal, not a signal-chain blocker after successful factor/signal rerun.
+- `/api/system/health` process fallback now reports the new 2-worker topology, but `celery inspect ping` remains skipped on Windows solo Worker by design.
 
 Next safe step:
 - Observe the next scheduled backup first-fire evidence, a controlled GP next-run feedback consumption proof after DEAP installation, and a controlled Backtest API worker first-fire; otherwise continue design-doc implementation-gap audit, now focusing on runtime first-fire evidence and optional batched migration of allowlisted historical research scripts with reproducibility checks.

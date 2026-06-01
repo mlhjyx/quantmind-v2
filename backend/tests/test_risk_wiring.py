@@ -16,6 +16,7 @@ import pytest
 from app.services.risk_wiring import (
     DingTalkRiskNotifier,
     LoggingSellBroker,
+    RedisPortfolioCacheHealthReader,
     build_pms_thresholds,
 )
 from backend.qm_platform.risk.rules.pms import PMSThreshold
@@ -35,6 +36,7 @@ _DEFAULT_INTRADAY_RULES: list[str] = [
     "intraday_portfolio_drop_5pct",
     "intraday_portfolio_drop_8pct",
     "qmt_disconnect",
+    "ll081_qmt_fallback_triggered",
     "single_stock_stoploss",
 ]
 
@@ -185,7 +187,7 @@ class TestBuildRiskEngine:
     ):
         """reviewer 采纳: 改名 keeps_pms_only → keeps_default_rules.
 
-        Session 44 PR #139/#147/#148 后 factory 默认从 1 → 4 rules, 旧 "pms_only"
+        Session 44 PR #139/#147/#148 后 factory 默认从 1 → 多 rule, 旧 "pms_only"
         命名误导 (期望 1 list 实际 4). 新名表达 "extra=None 保持默认全集" 语义.
         """
         mock_get_qmt.return_value = MagicMock()
@@ -227,7 +229,7 @@ class TestBuildIntradayRiskEngine:
     def test_factory_registers_intraday_rules(
         self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
     ):
-        """批 2 factory 注册 4 条 intraday 规则 + Phase 1 SingleStockStopLoss (intraday 5min 复用).
+        """批 2 factory 注册 intraday rules + Phase 1 SingleStockStopLoss (intraday 5min 复用).
 
         Session 44 PR #139: build_intraday_risk_engine 在 4 条原 intraday 后挂
         SingleStockStopLossRule (与 build_risk_engine 双频, daily 14:30 + intraday 5min).
@@ -356,6 +358,28 @@ class TestIntradayAlertDedup:
         key = IntradayAlertDedup._build_key("r", "s", "paper")
         today_cn = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
         assert today_cn in key, f"key {key} does not contain China tz date {today_cn}"
+
+
+class TestRedisPortfolioCacheHealthReader:
+    def test_counts_portfolio_pattern_keys(self):
+        redis_mock = MagicMock()
+        redis_mock.scan_iter.return_value = iter(["portfolio:nav", "portfolio:current"])
+
+        reader = RedisPortfolioCacheHealthReader(redis_client=redis_mock)
+
+        assert reader.get_portfolio_cache_key_count() == 2
+        redis_mock.scan_iter.assert_called_once_with(match="portfolio:*")
+
+    def test_returns_zero_on_redis_error(self, caplog: pytest.LogCaptureFixture):
+        redis_mock = MagicMock()
+        redis_mock.scan_iter.side_effect = RuntimeError("Redis down")
+        reader = RedisPortfolioCacheHealthReader(redis_client=redis_mock)
+
+        with caplog.at_level("ERROR", logger="app.services.risk_wiring"):
+            result = reader.get_portfolio_cache_key_count()
+
+        assert result == 0
+        assert any("portfolio cache health read failed" in rec.message for rec in caplog.records)
 
 
 class TestLoadPrevCloseNav:

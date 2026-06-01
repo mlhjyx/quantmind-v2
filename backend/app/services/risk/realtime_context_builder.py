@@ -27,12 +27,17 @@ logger = logging.getLogger(__name__)
 
 
 class PositionSourceError(Exception):
-    """Raised when Redis position / market data is stale or unavailable.
+    """Raised when Redis position / NAV / market data is stale or unavailable.
 
     iter 153 mitigation: TTL check on `market:latest:*` keys — if all
     latest tick data is > 120s stale, raise this exception. Caller (Beat
     task in Chunk 2) catches + logs + skips this tick (no false rule fire).
     """
+
+    def __init__(self, message: str, *, reason: str = "stale_market_data") -> None:
+        """Create source error with a scheduler/audit friendly reason code."""
+        super().__init__(message)
+        self.reason = reason
 
 
 class RealtimeRiskContextBuilder:
@@ -85,7 +90,15 @@ class RealtimeRiskContextBuilder:
         nav_dict = self._qmt.get_nav()  # {cash, total_value, ...} or None
 
         if not positions_raw:
-            # Empty portfolio is a valid state (post-清仓 sustained)
+            # Empty portfolio is valid only when QMT Data Service also wrote
+            # the NAV heartbeat. Without portfolio:nav, cache expiry / service
+            # stoppage is indistinguishable from a clean empty book.
+            if nav_dict is None:
+                raise PositionSourceError(
+                    "No portfolio:nav cache while portfolio:current is empty. "
+                    "QMT Data Service may be stopped or Redis cache expired.",
+                    reason="qmt_cache_unavailable",
+                )
             portfolio_nav = float(nav_dict.get("cash", 0.0)) if nav_dict else 0.0
             return RiskContext(
                 strategy_id=sid,

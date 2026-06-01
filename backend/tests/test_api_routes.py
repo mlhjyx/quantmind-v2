@@ -194,10 +194,12 @@ def _make_strategy_service_mock(
     detail: dict | None = None,
     create_version_result: dict | None = None,
     rollback_result: dict | None = None,
+    trigger_backtest_result: dict | None = None,
     list_strategies_result: list[dict] | None = None,
     detail_returns_none: bool = False,
     create_version_raises: Exception | None = None,
     rollback_raises: Exception | None = None,
+    trigger_backtest_raises: Exception | None = None,
 ) -> MagicMock:
     """创建StrategyService mock。"""
     svc = MagicMock()
@@ -235,6 +237,15 @@ def _make_strategy_service_mock(
         svc.rollback = AsyncMock(
             return_value=rollback_result
             or {"strategy_id": "s1", "rolled_back_to": 1, "previous_version": 2}
+        )
+
+    # trigger_backtest
+    if trigger_backtest_raises:
+        svc.trigger_backtest = AsyncMock(side_effect=trigger_backtest_raises)
+    else:
+        svc.trigger_backtest = AsyncMock(
+            return_value=trigger_backtest_result
+            or {"strategy_id": "s1", "run_id": "run-1", "status": "queued"}
         )
 
     return svc
@@ -355,6 +366,7 @@ def _override_strategy_service_not_found():
         detail_returns_none=True,
         create_version_raises=ValueError("策略不存在: nonexistent"),
         rollback_raises=ValueError("策略不存在: nonexistent"),
+        trigger_backtest_raises=ValueError("策略不存在: nonexistent"),
     )
     app.dependency_overrides[_get_strategy_service] = lambda: mock_svc
     yield mock_svc
@@ -779,6 +791,47 @@ class TestStrategiesAPI:
             json={"target_version": 0},
         )
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_trigger_strategy_backtest(self, client, _override_strategy_service):
+        """正常路径: direct strategy backtest trigger returns queued run id."""
+        resp = await client.post(
+            "/api/strategies/s1/backtest",
+            json={
+                "start_date": "2026-01-01",
+                "end_date": "2026-03-31",
+                "top_n": 5,
+                "rebalance_freq": "monthly",
+                "extra": {"benchmark": "000300.SH"},
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["run_id"] == "run-1"
+        _override_strategy_service.trigger_backtest.assert_awaited_once_with(
+            "s1",
+            {
+                "start_date": "2026-01-01",
+                "end_date": "2026-03-31",
+                "top_n": 5,
+                "rebalance_freq": "monthly",
+                "benchmark": "000300.SH",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_trigger_strategy_backtest_not_found(
+        self, client, _override_strategy_service_not_found
+    ):
+        """异常路径: direct strategy backtest trigger maps missing strategy to 404."""
+        resp = await client.post(
+            "/api/strategies/nonexistent/backtest",
+            json={
+                "start_date": "2026-01-01",
+                "end_date": "2026-03-31",
+            },
+        )
+        assert resp.status_code == 404
 
 
 # ============================================================================

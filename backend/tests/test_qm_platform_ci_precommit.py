@@ -58,6 +58,23 @@ def test_pytest_collect_uses_lightweight_targets():
     assert pytest_check.cmd[3:] == PYTEST_COLLECT_TARGETS
 
 
+def test_pytest_collect_includes_active_governance_inventory_and_hooks():
+    """Blocking collect must include active Codex governance inventory + hook behavior tests."""
+    required = {
+        "backend/tests/test_codex_governance_inventory.py",
+        "backend/tests/test_iron_law_enforce_hook.py",
+        "backend/tests/test_protect_critical_files_hook.py",
+        "backend/tests/test_cite_drift_stop_pretool_hook.py",
+        "backend/tests/test_redline_pretool_block_hook.py",
+        "backend/tests/test_sediment_poststop_hook.py",
+        "backend/tests/test_verify_completion_hook.py",
+        "backend/tests/test_session_context_inject_hook.py",
+        "backend/tests/test_github_ci_workflow.py",
+    }
+
+    assert required.issubset(set(PYTEST_COLLECT_TARGETS))
+
+
 def test_precommit_check_frozen():
     """PreCommitCheck frozen — 反 silent mutation."""
     import dataclasses

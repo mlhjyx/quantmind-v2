@@ -127,7 +127,7 @@ def _send_alert_via_dingtalk(result: RuleResult) -> bool:
             conn=None,
         )
         return bool(outcome.get("sent") or outcome.get("reason") == "dedup_suppressed")
-    except Exception as e:  # noqa: BLE001 — sustained Chunk 4 fail-soft
+    except Exception as e:  # noqa: BLE001 — Chunk 4 fail-soft
         # silent_ok: failure to deliver should NOT crash the realtime_risk_tick task
         # (engine evaluation already complete; alert delivery is best-effort).
         # AlertDispatcher.dispatch counts as send_failed but task continues.
@@ -170,7 +170,7 @@ def _get_engine() -> RealtimeRiskEngine:
     if _engine is None:
         _engine = RealtimeRiskEngine()
         register_all_realtime_rules(_engine)
-        # iter 155 Chunk 3: wire DynamicThreshold cache (S7→S5 sustained)
+        # iter 155 Chunk 3: wire DynamicThreshold cache (S7→S5)
         threshold_cache = RedisThresholdCache()  # lazy redis init, DI-compatible
         _engine.set_threshold_cache(threshold_cache)
         logger.info(
@@ -281,11 +281,12 @@ def realtime_risk_tick() -> dict[str, Any]:
         try:
             ctx = builder.build_context()
         except PositionSourceError as e:
-            # Stale Redis market data — log + skip this tick (no false fire)
-            logger.warning("[realtime-risk-beat] stale data, skip tick: %s", e)
+            # Position source unavailable/stale — log + skip this tick (no false fire)
+            reason = getattr(e, "reason", "stale_market_data")
+            logger.warning("[realtime-risk-beat] source data unavailable, skip tick: %s", e)
             result: dict[str, Any] = {
                 "ok": False,
-                "reason": "stale_market_data",
+                "reason": reason,
                 "error": str(e),
                 "at": _audit_start.isoformat(),
             }

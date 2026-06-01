@@ -32,6 +32,19 @@ def test_consume_fill_events_returns_empty_on_no_new_messages():
     assert result == []
 
 
+def test_consume_fill_events_default_does_not_block_forever():
+    """Default read must be non-blocking; Redis BLOCK 0 means block forever."""
+    from app.services.risk.trade_event_consumer import consume_fill_events
+
+    r = MagicMock()
+    r.xreadgroup.return_value = []
+    r.xgroup_create.return_value = None
+
+    consume_fill_events(r)
+
+    assert r.xreadgroup.call_args.kwargs["block"] is None
+
+
 def test_consume_fill_events_parses_payload_dict():
     """XREADGROUP returns 1 message → consumer parses JSON payload + returns dict."""
     from app.services.risk.trade_event_consumer import consume_fill_events

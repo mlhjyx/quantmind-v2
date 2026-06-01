@@ -1,6 +1,6 @@
 # MVP 5.3 — 回测结果对比页 (Tier B Wave 5 sub-MVP 3/5)
 
-> **Status**: iter 205 design doc start (sibling MVP 5.1/5.2 pattern, 4-iter chain target)
+> **Status**: iter 205 design doc start; governance Batch 20 (2026-06-01) verified and closed the C4 lazy trade-diff implementation gap.
 > **Sprint**: Tier B Wave 5 Operator UI (QPB v1.17 L1152, 3-5 days effort)
 > **ADR refs**: ADR-012 D5 (Wave 5 start) / ADR-084 候选 (react-query) / 铁律 15 (reproducibility)
 > **Provenance**: §v9.69 multi-agent fan-out (Explore + architect parallel ~217s wallclock iter 205)
@@ -72,6 +72,17 @@ BacktestCompare.tsx (new) — route /backtest/compare
 | **C2** | Frontend: `BacktestCompare.tsx` scaffold + route `/backtest/compare` + sidebar "回测对比" entry under 策略 group + RunSelector (multi-select dropdown from `/history`, max 3) + MetricComparisonTable + ReproducibilitySeal | ~280 | 207 | C1 (extended compare) | Manual: page loads, run selector works, metric+seal renders |
 | **C3** | Frontend: NavOverlayChart (ECharts multi-series, 2-3 lines + benchmark) + DrawdownOverlayChart (sibling area series) + `getNavSeries` API wrapper if not exist | ~220 | 208 | C2 scaffold | Manual: 2 runs overlay correctly, dataZoom works, tooltip shows all |
 | **C4** | Frontend: TradeListDiff (lazy-on-expand, per-run table side-by-side) + top-10 divergent positions client-summary + TabCompare → link soft-deprecation + closure STATUS_REPORT | ~200 | 209 | C2 + C3 | Manual: lazy fetch works, divergence summary correct |
+
+**Governance note 2026-06-01 Batch 20**: Fresh code review found C4 was still
+missing from `BacktestCompare.tsx` although this design and the page header
+promised lazy trade diff. Batch 20 added `getBacktestTrades()` and an S5
+collapsed-by-default `TradeListDiff` section with per-run first-page trade
+tables plus signed-share difference summary. The same batch normalized live
+Decimal-string compare metrics in the frontend API wrapper after browser
+verification found metric rendering could crash before S5 appeared. The
+remaining "top-10 divergent positions" wording is implemented as first-page
+trade-share divergence; a
+holdings-based position-diff view remains a separate deep-dive if needed.
 
 **Batched-iter eligible**: C2+C3+C4 batchable in 1-2 iter per user efficiency directive + sibling MVP 5.2 iter 203 4-chunk-in-1-iter precedent. Target: **3-iter ship** (C1 / C2+C3+C4 batched / closure).
 

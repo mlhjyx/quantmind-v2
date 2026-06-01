@@ -7,7 +7,8 @@
 """
 
 import tempfile
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -127,10 +128,37 @@ async def _safe_query(
         return [dict(r) for r in result.mappings().all()]
     except Exception as exc:
         err_msg = str(exc).lower()
-        if "does not exist" in err_msg or "relation" in err_msg:
+        if "relation" in err_msg and "does not exist" in err_msg:
             logger.warning("查询失败（表可能不存在）: %s", err_msg[:200])
             return []
         raise
+
+
+def _to_float(value: Any) -> float | None:
+    """将 DB numeric/Decimal 转为 JSON 与计算可用的 float。"""
+    if value is None:
+        return None
+    return float(value)
+
+
+def _jsonable(value: Any) -> Any:
+    """递归转换 SQLAlchemy row 中的 Decimal/date/UUID。"""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+def _jsonable_row(row: dict[str, Any]) -> dict[str, Any]:
+    """转换 SQL row 为 FastAPI JSON-friendly dict。"""
+    return {k: _jsonable(v) for k, v in row.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +475,7 @@ async def get_nav_series(
         raise
     except Exception as exc:
         err_msg = str(exc).lower()
-        if "does not exist" in err_msg or "relation" in err_msg:
+        if "relation" in err_msg and "does not exist" in err_msg:
             logger.warning("backtest_run表可能不存在: %s", err_msg[:200])
             return []
         raise
@@ -455,15 +483,27 @@ async def get_nav_series(
     rows = await _safe_query(
         session,
         """
+        WITH nav_rows AS (
+            SELECT trade_date, nav, cash, market_value,
+                   daily_return, benchmark_nav, excess_return, drawdown
+            FROM backtest_daily_nav
+            WHERE run_id = :rid
+        )
         SELECT trade_date, nav, cash, market_value,
-               daily_return, benchmark_nav, benchmark_return, excess_return
-        FROM backtest_daily_nav
-        WHERE run_id = :rid
+               daily_return,
+               benchmark_nav,
+               CASE
+                   WHEN benchmark_nav IS NULL THEN NULL
+                   ELSE benchmark_nav / NULLIF(LAG(benchmark_nav) OVER (ORDER BY trade_date), 0) - 1
+               END AS benchmark_return,
+               excess_return,
+               drawdown
+        FROM nav_rows
         ORDER BY trade_date
         """,
         {"rid": str(run_id)},
     )
-    return [{**r, "trade_date": str(r["trade_date"])} for r in rows]
+    return [_jsonable_row(r) for r in rows]
 
 
 @router.get("/{run_id}/trades")
@@ -496,7 +536,7 @@ async def get_trades(
         raise
     except Exception as exc:
         err_msg = str(exc).lower()
-        if "does not exist" in err_msg or "relation" in err_msg:
+        if "relation" in err_msg and "does not exist" in err_msg:
             logger.warning("backtest_run表可能不存在: %s", err_msg[:200])
             return {"total": 0, "page": page, "page_size": page_size, "items": []}
         raise
@@ -527,9 +567,9 @@ async def get_trades(
         rows_res = await session.execute(
             text(
                 f"""
-                SELECT id, signal_date, exec_date, stock_code, side, shares,
-                       target_price, exec_price, slippage_bps,
-                       commission, stamp_tax, transfer_fee, total_cost,
+                SELECT trade_id AS id, signal_date, exec_date, stock_code, side, shares,
+                       CAST(NULL AS NUMERIC) AS target_price, exec_price, slippage_bps,
+                       commission, stamp_tax, CAST(NULL AS NUMERIC) AS transfer_fee, total_cost,
                        reject_reason
                 FROM backtest_trades
                 WHERE {where_sql}
@@ -541,18 +581,14 @@ async def get_trades(
         )
     except Exception as exc:
         err_msg = str(exc).lower()
-        if "does not exist" in err_msg or "relation" in err_msg:
+        if "relation" in err_msg and "does not exist" in err_msg:
             logger.warning("backtest_trades表可能不存在: %s", err_msg[:200])
             return {"total": 0, "page": page, "page_size": page_size, "items": []}
         raise
 
     items = []
     for r in rows_res.mappings().all():
-        row = dict(r)
-        for dk in ("signal_date", "exec_date"):
-            if row.get(dk) is not None:
-                row[dk] = str(row[dk])
-        items.append(row)
+        items.append(_jsonable_row(dict(r)))
 
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
@@ -583,7 +619,13 @@ async def get_holdings(
             text(
                 """
                 SELECT trade_date, stock_code, shares, cost_basis,
-                       market_price, market_value, weight, pnl,
+                       market_price,
+                       shares * market_price AS market_value,
+                       weight,
+                       CASE
+                           WHEN market_price IS NULL OR cost_basis IS NULL THEN NULL
+                           ELSE (market_price - cost_basis) * shares
+                       END AS pnl,
                        buy_date, industry_code
                 FROM backtest_holdings
                 WHERE run_id = :rid AND trade_date = :td
@@ -599,7 +641,7 @@ async def get_holdings(
                 """
                 SELECT trade_date,
                        COUNT(*) AS holding_count,
-                       SUM(market_value) AS total_market_value
+                       SUM(COALESCE(shares * market_price, 0)) AS total_market_value
                 FROM backtest_holdings
                 WHERE run_id = :rid
                 GROUP BY trade_date
@@ -610,7 +652,7 @@ async def get_holdings(
         )
 
     rows = result.mappings().all()
-    return [{**dict(r), "trade_date": str(r["trade_date"])} for r in rows]
+    return [_jsonable_row(dict(r)) for r in rows]
 
 
 @router.get("/{run_id}/annual")
@@ -665,17 +707,17 @@ async def get_annual_breakdown(
     rows = result.mappings().all()
     annual_data = []
     for r in rows:
-        avg_ret = r["avg_daily_return"] or 0
-        std_ret = r["std_daily_return"] or 1
+        avg_ret = _to_float(r["avg_daily_return"]) or 0
+        std_ret = _to_float(r["std_daily_return"]) or 1
         trading_days = r["trading_days"] or 1
         sharpe = (avg_ret / std_ret * (trading_days**0.5)) if std_ret > 0 else 0
         annual_data.append(
             {
                 "year": r["year"],
-                "annual_return": r["annual_return"],
+                "annual_return": _to_float(r["annual_return"]),
                 "sharpe_ratio": round(sharpe, 4),
                 "trading_days": trading_days,
-                "worst_day": r["worst_day"],
+                "worst_day": _to_float(r["worst_day"]),
             }
         )
 
@@ -735,7 +777,7 @@ async def get_monthly_heatmap(
         ),
         {"rid": str(run_id)},
     )
-    return [dict(r) for r in result.mappings().all()]
+    return [_jsonable_row(dict(r)) for r in result.mappings().all()]
 
 
 @router.get("/{run_id}/attribution")
@@ -764,7 +806,12 @@ async def get_brinson_attribution(
                 COALESCE(industry_code, 'unknown') AS industry,
                 COUNT(DISTINCT stock_code) AS stock_count,
                 SUM(weight) AS total_weight,
-                AVG(pnl) AS avg_pnl
+                AVG(
+                    CASE
+                        WHEN market_price IS NULL OR cost_basis IS NULL THEN NULL
+                        ELSE (market_price - cost_basis) * shares
+                    END
+                ) AS avg_pnl
             FROM backtest_holdings
             WHERE run_id = :rid
               AND trade_date = (
@@ -778,7 +825,7 @@ async def get_brinson_attribution(
         ),
         {"rid": str(run_id)},
     )
-    industries = [dict(r) for r in result.mappings().all()]
+    industries = [_jsonable_row(dict(r)) for r in result.mappings().all()]
 
     return {
         "run_id": str(run_id),
@@ -857,11 +904,11 @@ async def get_market_state_performance(
     states = []
     for r in result.mappings().all():
         row = dict(r)
-        avg_ret = row["avg_daily_return"] or 0
-        std_ret = row["std_daily_return"] or 1
+        avg_ret = _to_float(row["avg_daily_return"]) or 0
+        std_ret = _to_float(row["std_daily_return"]) or 1
         days = row["trading_days"] or 1
         row["sharpe_estimate"] = round((avg_ret / std_ret * (days**0.5)) if std_ret > 0 else 0, 4)
-        states.append(row)
+        states.append(_jsonable_row(row))
 
     return {
         "run_id": str(run_id),
@@ -890,10 +937,10 @@ async def get_cost_sensitivity(
 
     # 获取基准绩效
     base_metrics = {
-        "annual_return": run.get("annual_return"),
-        "sharpe_ratio": run.get("sharpe_ratio"),
-        "max_drawdown": run.get("max_drawdown"),
-        "calmar_ratio": run.get("calmar_ratio"),
+        "annual_return": _to_float(run.get("annual_return")),
+        "sharpe_ratio": _to_float(run.get("sharpe_ratio")),
+        "max_drawdown": _to_float(run.get("max_drawdown")),
+        "calmar_ratio": _to_float(run.get("calmar_ratio")),
     }
 
     # 获取日收益率序列用于重算
@@ -1009,9 +1056,18 @@ async def get_quantstats_report(
     nav_result = await session.execute(
         text(
             """
-            SELECT trade_date, daily_return, benchmark_return
-            FROM backtest_daily_nav
-            WHERE run_id = :rid
+            WITH nav_rows AS (
+                SELECT trade_date, daily_return, benchmark_nav
+                FROM backtest_daily_nav
+                WHERE run_id = :rid
+            )
+            SELECT trade_date,
+                   daily_return,
+                   CASE
+                       WHEN benchmark_nav IS NULL THEN NULL
+                       ELSE benchmark_nav / NULLIF(LAG(benchmark_nav) OVER (ORDER BY trade_date), 0) - 1
+                   END AS benchmark_return
+            FROM nav_rows
             ORDER BY trade_date
             """
         ),
@@ -1258,9 +1314,9 @@ async def get_live_compare(
     return {
         "run_id": str(run_id),
         "backtest": {
-            "annual_return": run.get("annual_return"),
-            "sharpe_ratio": run.get("sharpe_ratio"),
-            "max_drawdown": run.get("max_drawdown"),
+            "annual_return": _to_float(run.get("annual_return")),
+            "sharpe_ratio": _to_float(run.get("sharpe_ratio")),
+            "max_drawdown": _to_float(run.get("max_drawdown")),
         },
         "live": None,  # Phase 0: Paper Trading 未启动时为 None
         "note": "实盘数据在 Paper Trading 达到毕业标准后可用",

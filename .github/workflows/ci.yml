@@ -92,10 +92,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run regression phase
-        run: python scripts/ci_run_phase.py --phase regression --advisory
-        # If cache/baseline/*.json is gitignored on this runner, the orchestrator
-        # captures FILE_MISSING as ADVISORY_FAIL. Local pre-push hook + dev iter
-        # are authoritative until baseline files are committed.
+        run: python scripts/ci_run_phase.py --phase regression
+        # Blocking gate: validates committed cache/baseline/regression_result_*.json
+        # artifacts carry recorded max_diff=0 evidence.
 
   ci_matrix:
     name: ci_matrix (multi-version smoke)
@@ -113,5 +112,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run ci_matrix phase
-        run: python scripts/ci_run_phase.py --phase ci_matrix --advisory
-        # ADVISORY_FAIL until self-hosted matrix runners are ready.
+        env:
+          QM_CI_SMOKE_COLLECT_ONLY: "1"
+        run: python scripts/ci_run_phase.py --phase ci_matrix

@@ -275,6 +275,39 @@ class TestParamAPI:
             app.dependency_overrides.pop(dep_key, None)
 
     @pytest.mark.asyncio
+    async def test_get_changelog(self) -> None:
+        """GET /api/params/changelog returns repository audit rows."""
+        svc = _make_param_service_with_mock()
+        svc.repo.get_change_log = AsyncMock(
+            return_value=[
+                {
+                    "id": 1,
+                    "param_name": "signal.top_n",
+                    "old_value": 30,
+                    "new_value": 25,
+                    "changed_by": "manual",
+                    "reason": "operator change",
+                    "created_at": "2026-06-01T10:00:00+08:00",
+                }
+            ]
+        )
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/params/changelog?key=signal.top_n&limit=1")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data[0]["param_name"] == "signal.top_n"
+            svc.repo.get_change_log.assert_awaited_once_with(
+                param_name="signal.top_n",
+                limit=1,
+            )
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
     async def test_get_nonexistent_param_404(self) -> None:
         """GET /api/params/{key} 不存在的参数返回404。"""
         svc = _make_param_service_with_mock()
@@ -347,6 +380,23 @@ class TestParamAPI:
                     json={"value": 25},
                 )
             assert resp.status_code == 422, "缺少必填字段reason应返回422"
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
+    async def test_init_defaults_endpoint(self) -> None:
+        """POST /api/params/init-defaults returns initialized count."""
+        svc = _make_param_service_with_mock()
+        svc.init_defaults = AsyncMock(return_value=3)
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post("/api/params/init-defaults")
+            assert resp.status_code == 200
+            assert resp.json() == {"initialized_count": 3}
+            svc.init_defaults.assert_awaited_once()
         finally:
             app.dependency_overrides.pop(dep_key, None)
 

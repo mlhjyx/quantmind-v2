@@ -69,6 +69,39 @@ def test_matrix_cell_default_tags():
     assert c.tags == "smoke and not live_tushare"
 
 
+def test_default_cmd_builder_matches_prepush_smoke_scope():
+    """Matrix smoke uses the same bounded target/flags as the pre-push smoke gate."""
+    runner = MagicMock(return_value=_mk_completed(returncode=0))
+    orch = CIMatrixOrchestrator(matrix=default_matrix(), runner=runner)
+
+    orch.run_phase(CIPhase.CI_MATRIX)
+
+    assert runner.call_args.args[0] == [
+        "pytest",
+        "backend/tests/",
+        "-m",
+        "smoke and not live_tushare",
+        "--tb=line",
+        "-q",
+        "--timeout=60",
+    ]
+
+
+def test_collect_only_env_uses_prepush_smoke_collect_targets(monkeypatch: pytest.MonkeyPatch):
+    """Hosted CI can run matrix as a blocking collect/wiring gate."""
+    monkeypatch.setenv("QM_CI_SMOKE_COLLECT_ONLY", "1")
+    runner = MagicMock(return_value=_mk_completed(returncode=0))
+    orch = CIMatrixOrchestrator(matrix=default_matrix(), runner=runner)
+
+    orch.run_phase(CIPhase.CI_MATRIX)
+
+    cmd = runner.call_args.args[0]
+    assert cmd[:4] == ["pytest", "--collect-only", "-q", "-m"]
+    assert cmd[4] == "smoke and not live_tushare"
+    assert "backend/tests/smoke/" in cmd
+    assert "backend/tests/test_realtime_risk_beat_smoke.py" in cmd
+
+
 # ────────────────────────────────────────────────────────────
 # CIMatrixOrchestrator.run_phase scenarios
 # ────────────────────────────────────────────────────────────
@@ -106,6 +139,22 @@ def test_one_cell_fail_aggregate_false():
     result = orch.run_phase(CIPhase.CI_MATRIX)
     assert result.passed is False
     assert "rc=1" in result.details["py3_12_pg16_8"]
+
+
+def test_cell_failure_includes_stdout_tail_for_debugging():
+    """Failure details include a bounded stdout tail, not only stdout length."""
+    runner = MagicMock(
+        return_value=_mk_completed(
+            returncode=2,
+            stdout="line one\npytest collection failed\n",
+        )
+    )
+    orch = CIMatrixOrchestrator(matrix=default_matrix(), runner=runner)
+
+    result = orch.run_phase(CIPhase.CI_MATRIX)
+
+    assert result.passed is False
+    assert "stdout_tail=pytest collection failed" in result.details["py3_11_pg16_8"]
 
 
 def test_empty_matrix_vacuous_pass():

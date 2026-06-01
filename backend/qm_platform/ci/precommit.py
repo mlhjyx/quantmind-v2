@@ -31,6 +31,14 @@ from backend.qm_platform.ci.orchestrator import CIPhase, CIResult
 DEFAULT_TIMEOUT_SECONDS = 30
 PYTEST_COLLECT_TIMEOUT_SECONDS = 300
 PYTEST_COLLECT_TARGETS = [
+    "backend/tests/test_codex_governance_inventory.py",
+    "backend/tests/test_iron_law_enforce_hook.py",
+    "backend/tests/test_protect_critical_files_hook.py",
+    "backend/tests/test_cite_drift_stop_pretool_hook.py",
+    "backend/tests/test_redline_pretool_block_hook.py",
+    "backend/tests/test_sediment_poststop_hook.py",
+    "backend/tests/test_verify_completion_hook.py",
+    "backend/tests/test_session_context_inject_hook.py",
     "backend/tests/test_qm_platform_ci_orchestrator.py",
     "backend/tests/test_qm_platform_ci_precommit.py",
     "backend/tests/test_qm_platform_ci_prepush.py",
@@ -38,6 +46,7 @@ PYTEST_COLLECT_TARGETS = [
     "backend/tests/test_qm_platform_ci_regression.py",
     "backend/tests/test_qm_platform_ci_review.py",
     "backend/tests/test_qm_platform_ci_entry_script.py",
+    "backend/tests/test_github_ci_workflow.py",
     "backend/tests/test_frontend_api_discipline_audit.py",
     "backend/tests/test_backtest_runner_bypass_audit.py",
     "backend/tests/test_platform_skeleton.py",

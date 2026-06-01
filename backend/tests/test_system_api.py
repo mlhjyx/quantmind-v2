@@ -221,6 +221,54 @@ class TestHealthEndpoint:
         assert result["ok"] is False
         assert result["available_gb"] == 7.0
 
+    def test_check_celery_queue_backlog_marks_critical(self):
+        """A dead worker with a large Redis queue must not be reported healthy."""
+        from app.api import system as system_mod
+
+        fake_redis = MagicMock()
+        fake_redis.llen.side_effect = lambda name: {
+            "default": 15000,
+            "factor_calc": 0,
+            "data_fetch": 0,
+        }[name]
+
+        with patch("app.api.system.redis_lib.Redis", return_value=fake_redis):
+            result = system_mod._check_celery_queues()
+
+        assert result["ok"] is False
+        assert result["severity"] == "critical"
+        assert result["max_depth"] == 15000
+
+    def test_check_celery_fails_fast_on_queue_backlog(self):
+        """Windows process fallback cannot mask a critical queue backlog."""
+        from app.api import system as system_mod
+
+        with (
+            patch(
+                "app.api.system._check_celery_worker_processes",
+                return_value={
+                    "worker_count": 1,
+                    "process_count": 2,
+                    "workers": [{"name": "worker-main@XIN", "pid": 123}],
+                },
+            ),
+            patch(
+                "app.api.system._check_celery_queues",
+                return_value={
+                    "ok": False,
+                    "queues": [{"name": "default", "depth": 15000}],
+                    "max_depth": 15000,
+                    "severity": "critical",
+                    "error": "Celery queue backlog exceeds critical threshold: 15000",
+                },
+            ),
+        ):
+            result = system_mod._check_celery()
+
+        assert result["ok"] is False
+        assert result["method"] == "queue_backlog"
+        assert result["worker_count"] == 1
+
     @pytest.mark.asyncio
     async def test_overall_ok_when_all_pass(self):
         """所有组件正常时 overall_status 应为 ok。"""
@@ -412,6 +460,10 @@ class TestHealthEndpoint:
         with (
             patch("app.api.system.platform.system", return_value="Windows"),
             patch("app.api.system.subprocess.run") as mock_run,
+            patch(
+                "app.api.system._check_celery_queues",
+                return_value={"ok": True, "queues": [], "max_depth": 0, "severity": "ok"},
+            ),
             patch(
                 "app.api.system.psutil.process_iter",
                 return_value=[fake_proc_parent, fake_proc_child],

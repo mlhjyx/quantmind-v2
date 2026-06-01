@@ -1,3 +1,5 @@
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
 [mcp_servers.weixin-reader]
 args = ["C:/Users/hd/Desktop/wx-mcp/src/server.py"]
 command = "python"

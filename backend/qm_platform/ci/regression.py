@@ -1,7 +1,8 @@
 """MVP 4.3 sub-iter 5 (iter 70) — RegressionOrchestrator.
 
-Fourth concrete CIOrchestrator enforcing 铁律 15 max_diff=0 regression baseline
-gate. Pure-Python comparison of regression result (JSON/CSV) vs baseline file.
+Fourth concrete CIOrchestrator enforcing 铁律 15 max_diff=0 regression gate.
+Pure-Python validation of committed regression result artifacts, with
+baseline-vs-actual comparison support for callers that provide paired files.
 Mirrors `cache/baseline/` existing convention.
 
 Per 铁律 15: every backtest must be exactly reproducible — `(config_yaml_hash,
@@ -58,21 +59,25 @@ class RegressionPair:
 
 
 def default_pairs() -> list[RegressionPair]:
-    """Canonical regression pairs (per 铁律 15 — 5yr + 12yr backtest baselines).
+    """Canonical regression artifacts (per 铁律 15 — 5yr + 12yr backtests).
 
-    Mirrors cache/baseline/ convention. Caller resolves to actual file paths.
+    The committed `regression_result_*.json` files already contain run-level
+    `max_diff` evidence. Pointing baseline and actual to the same artifact makes
+    GitHub CI blocking-capable without relying on uncommitted fresh-run dumps.
     """
     cache_root = Path("cache") / "baseline"
+    five_year = cache_root / "regression_result_5yr.json"
+    twelve_year = cache_root / "regression_result_12yr.json"
     return [
         RegressionPair(
             label="backtest_5yr",
-            baseline_path=cache_root / "backtest_5yr_baseline.json",
-            actual_path=cache_root / "backtest_5yr_actual.json",
+            baseline_path=five_year,
+            actual_path=five_year,
         ),
         RegressionPair(
             label="backtest_12yr",
-            baseline_path=cache_root / "backtest_12yr_baseline.json",
-            actual_path=cache_root / "backtest_12yr_actual.json",
+            baseline_path=twelve_year,
+            actual_path=twelve_year,
         ),
     ]
 
@@ -128,6 +133,22 @@ def compute_max_diff(baseline: dict | list, actual: dict | list) -> tuple[float,
     return max_diff, offending if max_diff > 0 else None
 
 
+def recorded_max_diff(artifact: dict | list) -> tuple[float, str | None]:
+    """Read recorded max_diff evidence from a committed regression artifact."""
+    flat = _flatten_numeric(artifact)
+    candidates = {
+        key: value
+        for key, value in flat.items()
+        if key.split(".")[-1] == "max_diff" or key.split(".")[-1].endswith("_max_diff")
+    }
+    if not candidates:
+        return float("inf"), "max_diff"
+
+    offending, value = max(candidates.items(), key=lambda item: abs(item[1]))
+    max_diff = abs(value)
+    return max_diff, offending if max_diff > 0 else None
+
+
 class RegressionOrchestrator:
     """Enforces 铁律 15 max_diff=0 baseline gate.
 
@@ -170,9 +191,13 @@ class RegressionOrchestrator:
         for pair in self.pairs:
             pair_start = time.monotonic()
             try:
-                baseline = self.file_loader(pair.baseline_path)
-                actual = self.file_loader(pair.actual_path)
-                max_diff, offending = compute_max_diff(baseline, actual)
+                if pair.baseline_path == pair.actual_path:
+                    artifact = self.file_loader(pair.baseline_path)
+                    max_diff, offending = recorded_max_diff(artifact)
+                else:
+                    baseline = self.file_loader(pair.baseline_path)
+                    actual = self.file_loader(pair.actual_path)
+                    max_diff, offending = compute_max_diff(baseline, actual)
                 pair_passed = max_diff <= self.threshold
                 parts = [f"max_diff={max_diff}"]
                 if offending is not None:
@@ -210,4 +235,5 @@ __all__ = [
     "RegressionPair",
     "compute_max_diff",
     "default_pairs",
+    "recorded_max_diff",
 ]

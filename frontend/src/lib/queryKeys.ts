@@ -15,6 +15,8 @@ export const queryKeys = {
   executionAsset: ["execution-asset"] as const,
   executionOrders: ["execution-orders"] as const,
   executionTrades: ["execution-trades"] as const,
+  executionPendingOrders: ["execution-pending-orders"] as const,
+  executionLog: ["execution-log"] as const,
   executionDrift: ["execution-drift"] as const,
   executionAuditLog: ["execution-audit-log"] as const,
   tradingPaused: ["trading-paused"] as const,
@@ -22,6 +24,8 @@ export const queryKeys = {
   // ── Strategies ──
   strategies: ["strategies"] as const,
   strategyDetail: (id: string) => ["strategies", id] as const,
+  strategyVersions: (id: string) => ["strategies", id, "versions"] as const,
+  strategyFactors: (id: string) => ["strategies", id, "factors"] as const,
 
   // ── Backtests ──
   backtestHistory: ["backtest-history"] as const,

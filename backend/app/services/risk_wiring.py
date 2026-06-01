@@ -6,7 +6,8 @@
 
 工厂函数:
   - build_risk_engine() (批 1): PMS L1/L2/L3 日检, daily_pipeline.risk_check 14:30
-  - build_intraday_risk_engine() (批 2): + 4 intraday rules (3/5/8% + QMT disconnect),
+  - build_intraday_risk_engine() (批 2): + intraday rules (3/5/8% + QMT disconnect
+    + QMT cache fallback),
     daily_pipeline.intraday_risk_check 5min 盘中
   - IntradayAlertDedup (批 2): Redis 24h TTL 同 rule_id 同日限 1 次告警防泛滥
 
@@ -39,6 +40,7 @@ from backend.qm_platform.risk.rules.intraday import (
 )
 from backend.qm_platform.risk.rules.new_position import NewPositionVolatilityRule
 from backend.qm_platform.risk.rules.pms import PMSRule, PMSThreshold
+from backend.qm_platform.risk.rules.qmt_fallback import QMTFallbackTriggeredRule
 from backend.qm_platform.risk.rules.single_stock import SingleStockStopLossRule
 from backend.qm_platform.risk.sources import DBPositionSource, QMTPositionSource
 
@@ -49,7 +51,7 @@ logger = logging.getLogger(__name__)
 _CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
 
-# ---------- Broker Adapter (批 1: logging-only, 批 2 接真 QMT/Paper) ----------
+# ---------- Broker Adapter (批 1: logging-only, 批 2 接 real QMT/Paper) ----------
 
 
 class LoggingSellBroker:
@@ -57,7 +59,7 @@ class LoggingSellBroker:
 
     决策背景: 老 `pms_engine.pms_daily_check_task` 也只调 `record_trigger` 不 sell
     (历史实现 sell 由 StreamBus 下游消费, 现 F27 去重已废). 批 1 保持老语义, 批 2 接
-    真 broker 时换 QMTSellBroker / PaperBrokerSellAdapter, RiskRule + Engine 代码不动
+    real broker 时换 QMTSellBroker / PaperBrokerSellAdapter, RiskRule + Engine 代码不动
     (铁律 23 独立可执行 + Protocol DI 解耦).
 
     符合 engine.BrokerProtocol.sell 契约.
@@ -67,7 +69,7 @@ class LoggingSellBroker:
         """批 1 占位: 不实盘, 返 status='logged_only'. risk_event_log 仍记录完整触发."""
         logger.warning(
             "[risk-wiring] LoggingSellBroker placeholder: code=%s shares=%d reason=%s "
-            "(批 1 仅记录, 批 2 接真 broker)",
+            "(批 1 仅记录, 批 2 接 real broker)",
             code,
             shares,
             reason,
@@ -154,7 +156,7 @@ def build_risk_engine(
     reviewer P2-1 采纳 (architect): `extra_rules` 可选参为批 2/3 铺路.
       - 批 2 加 IntradayMonitorRule: `build_risk_engine(extra_rules=[IntradayMonitorRule(...)])`
       - 批 3 加 CircuitBreakerRule adapter 同上
-      - 集成测试可注入 mock rule 绕真 PMSRule 路径
+      - 集成测试可注入 mock rule 绕 actual PMSRule 路径
     不采纳 hardcoded register 改造 (铁律 23 独立可执行, 批 1 最小改动).
 
     Args:
@@ -328,16 +330,48 @@ class IntradayAlertDedup:
             )
 
 
+class RedisPortfolioCacheHealthReader:
+    """Read-only Redis portfolio-cache probe for QMTFallbackTriggeredRule.
+
+    Counts `portfolio:*` keys rather than hash fields. A clean empty portfolio
+    still has `portfolio:nav` while QMTData is healthy, but an expired/stopped
+    QMTData cache has no portfolio keys at all.
+    """
+
+    _PATTERN = "portfolio:*"
+
+    def __init__(self, redis_client: redis.Redis | None = None):
+        """Args:
+        redis_client: Optional injection for tests; defaults to settings.REDIS_URL.
+        """
+        if redis_client is None:
+            redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._redis = redis_client
+
+    def get_portfolio_cache_key_count(self) -> int:
+        """Return count of live Redis `portfolio:*` keys; Redis errors fail closed."""
+        try:
+            return sum(1 for _ in self._redis.scan_iter(match=self._PATTERN))
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "[risk-wiring] portfolio cache health read failed: %s: %s",
+                type(e).__name__,
+                e,
+            )
+            return 0
+
+
 def build_intraday_risk_engine(
     extra_rules: list[RiskRule] | None = None,
 ) -> PlatformRiskEngine:
-    """构造 MVP 3.1 批 2 intraday PlatformRiskEngine (4 rules 已注册).
+    """构造 MVP 3.1 批 2 intraday PlatformRiskEngine (cache guard included).
 
     规则 (ADR-010 D5 迁移表批 2 行):
       - IntradayPortfolioDrop3PctRule (P2)
       - IntradayPortfolioDrop5PctRule (P1)
       - IntradayPortfolioDrop8PctRule (P0)
       - QMTDisconnectRule (P0, 注入 QMTClient.is_connected)
+      - QMTFallbackTriggeredRule (P0, portfolio:* cache vanished)
 
     调用方 (daily_pipeline.intraday_risk_check_task): build → context → run → dedup → execute.
 
@@ -347,7 +381,7 @@ def build_intraday_risk_engine(
         extra_rules: 可选附加 RiskRule list (批 3 CB adapter 可注入).
 
     Returns:
-        PlatformRiskEngine, 已 register 4 intraday rules + extra_rules.
+        PlatformRiskEngine, 已 register intraday rules + extra_rules.
     """
     qmt_client = get_qmt_client()
     primary = QMTPositionSource(reader=qmt_client, conn_factory=get_sync_conn)
@@ -365,6 +399,7 @@ def build_intraday_risk_engine(
     engine.register(IntradayPortfolioDrop5PctRule())
     engine.register(IntradayPortfolioDrop8PctRule())
     engine.register(QMTDisconnectRule(qmt_reader=qmt_client))
+    engine.register(QMTFallbackTriggeredRule(cache_reader=RedisPortfolioCacheHealthReader()))
     # MVP 3.1b Phase 1 (Session 44): 单股止损规则补全 (intraday 5min 高频复用).
     # 与 build_risk_engine (daily 14:30) 双频检查 — 任一频率触发都告警.
     # 卓然 -29% 真生产事件如果 SingleStockStopLossRule 已上线 → intraday 5min 必触发 P0.

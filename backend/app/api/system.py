@@ -25,6 +25,9 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 
 _HEALTH_DB_TIMEOUT_SEC = 3.0
 _HEALTH_SYNC_TIMEOUT_SEC = 6.0
+_CELERY_QUEUE_WARN_THRESHOLD = 500
+_CELERY_QUEUE_CRITICAL_THRESHOLD = 5000
+_CELERY_HEALTH_QUEUES = ("default", "factor_calc", "data_fetch")
 
 # ---------------------------------------------------------------------------
 # 数据源状态配置（表名 → 显示名 + 日期字段）
@@ -113,11 +116,22 @@ def _check_celery() -> dict[str, Any]:
         包含 ok 布尔值、worker_count 和可选 error 字符串的字典。
     """
     process_fallback = _check_celery_worker_processes()
+    queue_status = _check_celery_queues()
+    if not queue_status["ok"]:
+        return {
+            "ok": False,
+            **process_fallback,
+            "method": "queue_backlog",
+            "queue_status": queue_status,
+            "error": queue_status["error"],
+        }
+
     if platform.system() == "Windows" and process_fallback["worker_count"] > 0:
         return {
             "ok": True,
             **process_fallback,
             "method": "process_fallback",
+            "queue_status": queue_status,
             "warning": "celery inspect skipped for Windows solo worker",
         }
 
@@ -143,12 +157,18 @@ def _check_celery() -> dict[str, Any]:
         if "pong" in output.lower():
             # 统计存活 worker 数
             worker_count = output.lower().count("pong")
-            return {"ok": True, "worker_count": worker_count, "method": "inspect"}
+            return {
+                "ok": True,
+                "worker_count": worker_count,
+                "method": "inspect",
+                "queue_status": queue_status,
+            }
         if process_fallback["worker_count"] > 0:
             return {
                 "ok": True,
                 **process_fallback,
                 "method": "process_fallback",
+                "queue_status": queue_status,
                 "warning": "celery inspect returned no workers",
             }
         return {"ok": False, "worker_count": 0, "error": "No workers responded"}
@@ -158,12 +178,59 @@ def _check_celery() -> dict[str, Any]:
                 "ok": True,
                 **process_fallback,
                 "method": "process_fallback",
+                "queue_status": queue_status,
                 "warning": "celery inspect timeout",
             }
         return {"ok": False, "worker_count": 0, "error": "inspect timeout"}
     except Exception as exc:
         logger.exception("Celery worker检查失败")
         return {"ok": False, "worker_count": 0, "error": str(exc)}
+
+
+def _check_celery_queues() -> dict[str, Any]:
+    """Check Redis-backed Celery queue depth so dead workers do not look healthy."""
+    try:
+        r = redis_lib.Redis(
+            host="localhost",
+            port=6379,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            decode_responses=True,
+        )
+        queues = []
+        max_depth = 0
+        for queue_name in _CELERY_HEALTH_QUEUES:
+            depth = int(r.llen(queue_name))
+            max_depth = max(max_depth, depth)
+            queues.append({"name": queue_name, "depth": depth})
+
+        if max_depth >= _CELERY_QUEUE_CRITICAL_THRESHOLD:
+            return {
+                "ok": False,
+                "queues": queues,
+                "max_depth": max_depth,
+                "threshold": _CELERY_QUEUE_CRITICAL_THRESHOLD,
+                "severity": "critical",
+                "error": f"Celery queue backlog exceeds critical threshold: {max_depth}",
+            }
+        if max_depth >= _CELERY_QUEUE_WARN_THRESHOLD:
+            return {
+                "ok": True,
+                "queues": queues,
+                "max_depth": max_depth,
+                "threshold": _CELERY_QUEUE_WARN_THRESHOLD,
+                "severity": "warning",
+            }
+        return {
+            "ok": True,
+            "queues": queues,
+            "max_depth": max_depth,
+            "threshold": _CELERY_QUEUE_WARN_THRESHOLD,
+            "severity": "ok",
+        }
+    except Exception as exc:
+        logger.exception("Celery queue backlog check failed")
+        return {"ok": False, "queues": [], "max_depth": None, "error": str(exc)}
 
 
 def _check_celery_worker_processes() -> dict[str, Any]:

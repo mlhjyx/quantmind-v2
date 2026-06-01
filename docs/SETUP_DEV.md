@@ -58,12 +58,13 @@ git config core.hooksPath config/hooks
 
 ### 3. Servy 服务 `StartupDirectory` = 项目根 (非 `backend/`)
 
-MVP 1.1b Shadow Fix 要求. 配置已入 git: `config/servy/QuantMind-{FastAPI,Celery,CeleryBeat,QMTData}.json`.
+MVP 1.1b Shadow Fix 要求. 配置已入 git: `config/servy/QuantMind-{FastAPI,Celery,CelerySlow,CeleryBeat,QMTData}.json`.
 
 **导入**:
 ```powershell
 D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMind-FastAPI.json --config=json
 D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMind-Celery.json --config=json
+D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMind-CelerySlow.json --config=json --install --quiet
 D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMind-CeleryBeat.json --config=json
 D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMind-QMTData.json --config=json
 ```

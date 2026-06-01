@@ -175,6 +175,20 @@ export interface RunBacktestResponse {
   message?: string;
 }
 
+function nullableNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function numberOrZero(value: unknown): number {
+  return nullableNumber(value) ?? 0;
+}
+
+function stringOrEmpty(value: unknown): string {
+  return value == null ? "" : String(value);
+}
+
 export function buildRunBacktestPayload(form: BacktestConfigFormPayload): RunBacktestPayload {
   const rebalanceFreq =
     form.execution.rebalance_freq === "custom" ? "monthly" : form.execution.rebalance_freq;
@@ -290,9 +304,9 @@ export async function listBacktestHistory(strategyId?: string): Promise<Backtest
     status: r.status,
     created_at: r.created_at,
     completed_at: r.completed_at ?? r.finished_at ?? null,
-    sharpe: r.sharpe ?? (r.sharpe_ratio != null ? Number(r.sharpe_ratio) : null),
-    mdd: r.mdd ?? (r.max_drawdown != null ? Number(r.max_drawdown) : null),
-    annual_return: r.annual_return != null ? Number(r.annual_return) : null,
+    sharpe: nullableNumber(r.sharpe ?? r.sharpe_ratio),
+    mdd: nullableNumber(r.mdd ?? r.max_drawdown),
+    annual_return: nullableNumber(r.annual_return),
   }));
 }
 
@@ -332,10 +346,37 @@ export interface CompareRunSummary {
  * normalized typed list for BacktestCompare page consumption.
  */
 export async function compareBacktests(runIds: string[]): Promise<CompareRunSummary[]> {
-  const res = await apiClient.post<CompareRunSummary[]>("/backtest/compare", {
+  const res = await apiClient.post<unknown[]>("/backtest/compare", {
     run_ids: runIds,
   });
-  return res.data;
+  const rows = Array.isArray(res.data) ? res.data : [];
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    const factorList = r.factor_list;
+    return {
+      run_id: String(r.run_id ?? ""),
+      strategy_id: r.strategy_id == null ? null : String(r.strategy_id),
+      run_name: r.run_name == null ? null : String(r.run_name),
+      status: String(r.status ?? ""),
+      start_date: String(r.start_date ?? ""),
+      end_date: String(r.end_date ?? ""),
+      annual_return: nullableNumber(r.annual_return),
+      sharpe_ratio: nullableNumber(r.sharpe_ratio),
+      max_drawdown: nullableNumber(r.max_drawdown),
+      calmar_ratio: nullableNumber(r.calmar_ratio),
+      total_turnover: nullableNumber(r.total_turnover),
+      win_rate: nullableNumber(r.win_rate),
+      annual_turnover: nullableNumber(r.annual_turnover),
+      sortino_ratio: nullableNumber(r.sortino_ratio),
+      factor_list: Array.isArray(factorList)
+        ? factorList.map(String)
+        : typeof factorList === "string"
+          ? factorList.split(",").map((v) => v.trim()).filter(Boolean)
+          : [],
+      config_yaml_hash: r.config_yaml_hash == null ? null : String(r.config_yaml_hash),
+      git_commit: r.git_commit == null ? null : String(r.git_commit),
+    };
+  });
 }
 
 export interface BacktestNavPoint {
@@ -349,10 +390,373 @@ export interface BacktestNavPoint {
   drawdown: number | null;
 }
 
+export type BacktestTradeSide = "buy" | "sell" | string;
+
+export interface BacktestTradeRow {
+  id: string | number;
+  signal_date: string | null;
+  exec_date: string | null;
+  stock_code: string;
+  side: BacktestTradeSide;
+  shares: number;
+  target_price: number | null;
+  exec_price: number | null;
+  slippage_bps: number | null;
+  commission: number | null;
+  stamp_tax: number | null;
+  transfer_fee: number | null;
+  total_cost: number | null;
+  reject_reason: string | null;
+}
+
+export interface BacktestTradesResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: BacktestTradeRow[];
+}
+
+export interface BacktestTradesParams {
+  page?: number;
+  pageSize?: number;
+  stockCode?: string;
+  side?: BacktestTradeSide;
+}
+
+export interface BacktestAnnualRow {
+  year: number;
+  annual_return: number | null;
+  sharpe_ratio: number | null;
+  trading_days: number;
+  worst_day: number | null;
+}
+
+export interface BacktestHoldingSummaryRow {
+  trade_date: string;
+  holding_count: number;
+  total_market_value: number | null;
+}
+
+export interface BacktestHoldingDetailRow {
+  trade_date: string;
+  stock_code: string;
+  shares: number;
+  cost_basis: number | null;
+  market_price: number | null;
+  market_value: number | null;
+  weight: number | null;
+  pnl: number | null;
+  buy_date: string | null;
+  industry_code: string | null;
+}
+
+export interface BacktestAttributionIndustry {
+  industry: string;
+  stock_count: number;
+  total_weight: number | null;
+  avg_pnl: number | null;
+}
+
+export interface BacktestAttributionResponse {
+  run_id: string | null;
+  method: string;
+  note: string | null;
+  industries: BacktestAttributionIndustry[];
+}
+
+export interface BacktestMarketStateRow {
+  market_state: string;
+  trading_days: number;
+  avg_daily_return: number | null;
+  std_daily_return: number | null;
+  cumulative_return: number | null;
+  worst_day: number | null;
+  best_day: number | null;
+  sharpe_estimate: number | null;
+}
+
+export interface BacktestMarketStateResponse {
+  run_id: string | null;
+  method: string;
+  states: BacktestMarketStateRow[];
+}
+
+export interface BacktestCostSensitivityRow {
+  cost_multiplier: number;
+  label: string | null;
+  annual_return: number | null;
+  sharpe_ratio: number | null;
+  max_drawdown: number | null;
+  calmar_ratio: number | null;
+}
+
+export interface BacktestCostSensitivityResponse {
+  run_id: string | null;
+  total_cost_base: number | null;
+  trade_count: number;
+  rows: BacktestCostSensitivityRow[];
+  warning: string | null;
+}
+
+export interface BacktestLiveCompareMetrics {
+  annual_return: number | null;
+  sharpe_ratio: number | null;
+  max_drawdown: number | null;
+}
+
+export interface BacktestLiveCompareResponse {
+  run_id: string | null;
+  backtest: BacktestLiveCompareMetrics;
+  live: BacktestLiveCompareMetrics | null;
+  note: string | null;
+}
+
 /** Fetch full NAV series for a single backtest run (used by BacktestCompare S3/S4). */
 export async function getNavSeries(runId: string): Promise<BacktestNavPoint[]> {
   const res = await apiClient.get<BacktestNavPoint[]>(
     `/backtest/${runId}/nav`,
   );
   return res.data;
+}
+
+/** Fetch paged trade rows for a single backtest run (used by BacktestCompare S5). */
+export async function getBacktestTrades(
+  runId: string,
+  params: BacktestTradesParams = {},
+): Promise<BacktestTradesResponse> {
+  const requestParams: Record<string, string | number> = {
+    page: params.page ?? 1,
+    page_size: params.pageSize ?? 100,
+  };
+  if (params.stockCode) requestParams.stock_code = params.stockCode;
+  if (params.side) requestParams.side = params.side;
+
+  const res = await apiClient.get<BacktestTradesResponse>(
+    `/backtest/${runId}/trades`,
+    { params: requestParams },
+  );
+  return res.data;
+}
+
+export async function getBacktestMonthlyReturns(runId: string): Promise<MonthlyReturn[]> {
+  const res = await apiClient.get<unknown[]>(`/backtest/${runId}/monthly`);
+  return (Array.isArray(res.data) ? res.data : []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      year: Number(r.year),
+      month: Number(r.month),
+      return: numberOrZero(r.monthly_return),
+    };
+  });
+}
+
+export async function getBacktestHoldingSummary(
+  runId: string,
+): Promise<BacktestHoldingSummaryRow[]> {
+  const res = await apiClient.get<unknown[]>(`/backtest/${runId}/holdings`);
+  return (Array.isArray(res.data) ? res.data : []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      trade_date: stringOrEmpty(r.trade_date),
+      holding_count: Number(r.holding_count ?? 0),
+      total_market_value: nullableNumber(r.total_market_value),
+    };
+  });
+}
+
+export async function getBacktestHoldingDetails(
+  runId: string,
+  tradeDate: string,
+): Promise<BacktestHoldingDetailRow[]> {
+  const res = await apiClient.get<unknown[]>(`/backtest/${runId}/holdings`, {
+    params: { trade_date: tradeDate },
+  });
+  return (Array.isArray(res.data) ? res.data : []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      trade_date: stringOrEmpty(r.trade_date),
+      stock_code: stringOrEmpty(r.stock_code),
+      shares: numberOrZero(r.shares),
+      cost_basis: nullableNumber(r.cost_basis),
+      market_price: nullableNumber(r.market_price),
+      market_value: nullableNumber(r.market_value),
+      weight: nullableNumber(r.weight),
+      pnl: nullableNumber(r.pnl),
+      buy_date: r.buy_date == null ? null : String(r.buy_date),
+      industry_code: r.industry_code == null ? null : String(r.industry_code),
+    };
+  });
+}
+
+export async function getBacktestLatestHoldings(runId: string): Promise<Holding[]> {
+  const summary = await getBacktestHoldingSummary(runId);
+  const latestDate = summary.reduce<string | null>((latest, row) => {
+    if (!row.trade_date) return latest;
+    return latest == null || row.trade_date > latest ? row.trade_date : latest;
+  }, null);
+  if (!latestDate) return [];
+
+  const details = await getBacktestHoldingDetails(runId, latestDate);
+  return details.map((row) => {
+    const marketValue = row.market_value ?? 0;
+    const pnl = row.pnl ?? 0;
+    return {
+      symbol: row.stock_code,
+      name: row.stock_code,
+      industry: row.industry_code ?? "unknown",
+      weight: row.weight ?? 0,
+      return: marketValue !== 0 ? pnl / Math.abs(marketValue) : 0,
+    };
+  });
+}
+
+export async function getBacktestTradesForResult(runId: string): Promise<Trade[]> {
+  const response = await getBacktestTrades(runId, { page: 1, pageSize: 1000 });
+  return response.items.map((row) => {
+    const price = nullableNumber(row.exec_price) ?? nullableNumber(row.target_price) ?? 0;
+    const quantity = numberOrZero(row.shares);
+    const commission =
+      nullableNumber(row.total_cost) ??
+      (numberOrZero(row.commission) + numberOrZero(row.stamp_tax) + numberOrZero(row.transfer_fee));
+    return {
+      date: row.exec_date ?? row.signal_date ?? "",
+      symbol: row.stock_code,
+      name: row.stock_code,
+      direction: row.side === "sell" ? "sell" : "buy",
+      price,
+      quantity,
+      amount: price * quantity,
+      commission,
+      slippage: numberOrZero(row.slippage_bps),
+      pnl: null,
+    };
+  });
+}
+
+export async function getBacktestAnnualRows(runId: string): Promise<BacktestAnnualRow[]> {
+  const res = await apiClient.get<unknown[]>(`/backtest/${runId}/annual`);
+  return (Array.isArray(res.data) ? res.data : []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      year: Number(r.year),
+      annual_return: nullableNumber(r.annual_return),
+      sharpe_ratio: nullableNumber(r.sharpe_ratio),
+      trading_days: Number(r.trading_days ?? 0),
+      worst_day: nullableNumber(r.worst_day),
+    };
+  });
+}
+
+export async function getBacktestAnnualRiskMetrics(runId: string): Promise<RiskMetric[]> {
+  const rows = await getBacktestAnnualRows(runId);
+  return rows.flatMap((row) => [
+    { label: "年度收益", value: row.annual_return ?? 0, unit: "%" },
+    { label: "年度Sharpe", value: row.sharpe_ratio ?? 0, unit: "" },
+    { label: "最差单日", value: row.worst_day ?? 0, unit: "%" },
+    { label: "交易日", value: row.trading_days, unit: "日" },
+  ]);
+}
+
+export async function getBacktestAttribution(
+  runId: string,
+): Promise<BacktestAttributionResponse> {
+  const res = await apiClient.get<Record<string, unknown>>(`/backtest/${runId}/attribution`);
+  const data = res.data ?? {};
+  const industries = Array.isArray(data.industries) ? data.industries : [];
+  return {
+    run_id: data.run_id == null ? null : String(data.run_id),
+    method: String(data.method ?? ""),
+    note: data.note == null ? null : String(data.note),
+    industries: industries.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        industry: String(r.industry ?? "unknown"),
+        stock_count: Number(r.stock_count ?? 0),
+        total_weight: nullableNumber(r.total_weight),
+        avg_pnl: nullableNumber(r.avg_pnl),
+      };
+    }),
+  };
+}
+
+export async function getBacktestCostSensitivity(
+  runId: string,
+): Promise<BacktestCostSensitivityResponse> {
+  const res = await apiClient.get<Record<string, unknown>>(`/backtest/${runId}/cost-sensitivity`);
+  const data = res.data ?? {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  return {
+    run_id: data.run_id == null ? null : String(data.run_id),
+    total_cost_base: nullableNumber(data.total_cost_base),
+    trade_count: Number(data.trade_count ?? 0),
+    rows: rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        cost_multiplier: numberOrZero(r.cost_multiplier),
+        label: r.label == null ? null : String(r.label),
+        annual_return: nullableNumber(r.annual_return),
+        sharpe_ratio: nullableNumber(r.sharpe_ratio),
+        max_drawdown: nullableNumber(r.max_drawdown),
+        calmar_ratio: nullableNumber(r.calmar_ratio),
+      };
+    }),
+    warning: data.warning == null ? null : String(data.warning),
+  };
+}
+
+export async function getBacktestMarketState(
+  runId: string,
+): Promise<BacktestMarketStateResponse> {
+  const res = await apiClient.get<Record<string, unknown>>(`/backtest/${runId}/market-state`);
+  const data = res.data ?? {};
+  const states = Array.isArray(data.states) ? data.states : [];
+  return {
+    run_id: data.run_id == null ? null : String(data.run_id),
+    method: String(data.method ?? ""),
+    states: states.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        market_state: String(r.market_state ?? "unknown"),
+        trading_days: Number(r.trading_days ?? 0),
+        avg_daily_return: nullableNumber(r.avg_daily_return),
+        std_daily_return: nullableNumber(r.std_daily_return),
+        cumulative_return: nullableNumber(r.cumulative_return),
+        worst_day: nullableNumber(r.worst_day),
+        best_day: nullableNumber(r.best_day),
+        sharpe_estimate: nullableNumber(r.sharpe_estimate),
+      };
+    }),
+  };
+}
+
+function normalizeLiveMetrics(value: unknown): BacktestLiveCompareMetrics | null {
+  if (value == null || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  return {
+    annual_return: nullableNumber(row.annual_return),
+    sharpe_ratio: nullableNumber(row.sharpe_ratio),
+    max_drawdown: nullableNumber(row.max_drawdown),
+  };
+}
+
+export async function getBacktestLiveCompare(
+  runId: string,
+): Promise<BacktestLiveCompareResponse> {
+  const res = await apiClient.get<Record<string, unknown>>(`/backtest/${runId}/live-compare`);
+  const data = res.data ?? {};
+  return {
+    run_id: data.run_id == null ? null : String(data.run_id),
+    backtest: normalizeLiveMetrics(data.backtest) ?? {
+      annual_return: null,
+      sharpe_ratio: null,
+      max_drawdown: null,
+    },
+    live: normalizeLiveMetrics(data.live),
+    note: data.note == null ? null : String(data.note),
+  };
+}
+
+export function getBacktestReportUrl(runId: string): string {
+  const baseURL = String(apiClient.defaults.baseURL ?? "/api").replace(/\/$/, "");
+  return `${baseURL}/backtest/${runId}/report`;
 }

@@ -3,8 +3,8 @@
 **Generated**: 2026-05-20
 **Fresh verify addendum**: 2026-05-25 §9 is the current count baseline. The original
 matrix body is retained as historical audit evidence.
-**Current backend surface**: 162 endpoints across 24 router files (§10.1)
-**Current frontend API modules**: 12 files (§9.2)
+**Current backend surface**: 170 endpoints across 25 router files (§22.5)
+**Current frontend API modules**: 18 files (§22.5)
 **Current frontend-only orphan**: 0 after the 2026-05-28 O7 HTTP backfill closure
 (§10)
 **Methodology**: `@router.(get|post|put|delete|patch)` grep on `backend/app/api/**/*.py` + `apiClient.(get|post|put|delete|patch)` grep on `frontend/src/api/*.ts`
@@ -15,18 +15,27 @@ matrix body is retained as historical audit evidence.
 
 | Metric | Count | % |
 |--------|-------|---|
-| Total backend endpoints | 162 | 100% |
+| Total backend endpoints | 170 | 100% |
 | Frontend-only orphans (no matching backend) | 0 | — |
 | Original 2026-05-20 backend endpoints | 148 | historical |
 | Original 2026-05-20 frontend-only orphans | 10 | historical |
 
 **Key findings**:
-- The 2026-05-20 50% backend-only ratio is historical. Use §10 for the current
+- The 2026-05-20 50% backend-only ratio is historical. Use §22.5 for the current
   endpoint count and orphan status.
 - Original 10 frontend-only orphans were reconciled to 0. O7
   `GET /api/pipeline/{run_id}/logs` now has a Redis-backed HTTP endpoint; PN-005
   writer instrumentation and WebSocket tailing remain tracked as enhancement work,
   not frontend-only orphan work.
+- Notification panel mock seeding is closed in §11: list, per-row read, and
+  read-all flows now consume `frontend/src/api/notifications.ts`.
+- Dashboard secondary panels are closed in §12 and §31: alerts, market ticker,
+  monthly returns, industry distribution, factor rows, and pipeline steps now go through
+  `frontend/src/api/dashboard.ts` wrappers instead of page-level `apiClient`
+  calls.
+- Portfolio endpoints are closed in §13: holdings, sector distribution, and
+  daily PnL now go through `frontend/src/api/portfolio.ts`; sector `value` is
+  normalized to percentage for chart consumers.
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -73,22 +82,23 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 20 | POST | `/api/backtest/run` | Start backtest run | backtest.py:145 | public |
-| 21 | GET | `/api/backtest/history` | Backtest run history | backtest.py:212 | public |
-| 22 | GET | `/api/backtest/{run_id}` | Backtest run status | backtest.py:284 | public |
-| 23 | GET | `/api/backtest/{run_id}/result` | Backtest result | backtest.py:308 | public |
-| 24 | GET | `/api/backtest/{run_id}/nav` | NAV series | backtest.py:377 | public |
-| 25 | GET | `/api/backtest/{run_id}/trades` | Trade list | backtest.py:420 | public |
-| 26 | GET | `/api/backtest/{run_id}/holdings` | Holdings | backtest.py:511 | public |
-| 27 | GET | `/api/backtest/{run_id}/annual` | Annual returns | backtest.py:570 | public |
-| 28 | GET | `/api/backtest/{run_id}/monthly` | Monthly returns | backtest.py:637 | public |
-| 29 | GET | `/api/backtest/{run_id}/attribution` | Factor attribution | backtest.py:693 | public |
-| 30 | GET | `/api/backtest/{run_id}/market-state` | Market state | backtest.py:743 | public |
-| 31 | GET | `/api/backtest/{run_id}/cost-sensitivity` | Cost sensitivity | backtest.py:827 | public |
-| 32 | GET | `/api/backtest/{run_id}/report` | Backtest report | backtest.py:936 | public |
-| 33 | POST | `/api/backtest/compare` | Compare runs | backtest.py:1031 | public |
-| 34 | POST | `/api/backtest/{run_id}/sensitivity` | Sensitivity analysis | backtest.py:1082 | public |
-| 35 | GET | `/api/backtest/{run_id}/live-compare` | Live vs backtest | backtest.py:1112 | public |
+| 20 | POST | `/api/backtest/run` | Start backtest run | backtest.py:169 | public |
+| 20a | POST | `/api/backtest/{run_id}/cancel` | Cancel backtest run | backtest.py:243 | public |
+| 21 | GET | `/api/backtest/history` | Backtest run history | backtest.py:292 | public |
+| 22 | GET | `/api/backtest/{run_id}` | Backtest run status | backtest.py:364 | public |
+| 23 | GET | `/api/backtest/{run_id}/result` | Backtest result | backtest.py:388 | public |
+| 24 | GET | `/api/backtest/{run_id}/nav` | NAV series | backtest.py:457 | public |
+| 25 | GET | `/api/backtest/{run_id}/trades` | Trade list | backtest.py:509 | public |
+| 26 | GET | `/api/backtest/{run_id}/holdings` | Holdings | backtest.py:596 | public |
+| 27 | GET | `/api/backtest/{run_id}/annual` | Annual returns | backtest.py:658 | public |
+| 28 | GET | `/api/backtest/{run_id}/monthly` | Monthly returns | backtest.py:727 | public |
+| 29 | GET | `/api/backtest/{run_id}/attribution` | Factor attribution | backtest.py:783 | public |
+| 30 | GET | `/api/backtest/{run_id}/market-state` | Market state | backtest.py:838 | public |
+| 31 | GET | `/api/backtest/{run_id}/cost-sensitivity` | Cost sensitivity | backtest.py:920 | public |
+| 32 | GET | `/api/backtest/{run_id}/report` | Backtest report | backtest.py:1035 | public |
+| 33 | POST | `/api/backtest/compare` | Compare runs | backtest.py:1137 | public |
+| 34 | POST | `/api/backtest/{run_id}/sensitivity` | Sensitivity analysis | backtest.py:1199 | public |
+| 35 | GET | `/api/backtest/{run_id}/live-compare` | Live vs backtest | backtest.py:1296 | public |
 
 ### 2.5 dashboard — `/api/dashboard` (`backend/app/api/dashboard.py`)
 
@@ -187,11 +197,11 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 87 | GET | `/api/notifications` | List notifications | notifications.py:51 | public |
-| 88 | GET | `/api/notifications/unread-count` | Unread count | notifications.py:82 | public |
-| 89 | GET | `/api/notifications/{notification_id}` | Notification detail | notifications.py:93 | public |
-| 90 | PUT | `/api/notifications/{notification_id}/read` | Mark as read | notifications.py:111 | public |
-| 91 | POST | `/api/notifications/test` | Test notification | notifications.py:129 | public |
+| 87 | GET | `/api/notifications` | List notifications | notifications.py:74 | public |
+| 88 | GET | `/api/notifications/unread-count` | Unread count | notifications.py:107 | public |
+| 89 | GET | `/api/notifications/{notification_id}` | Notification detail | notifications.py:186 | public |
+| 90 | PUT | `/api/notifications/{notification_id}/read` | Mark as read | notifications.py:208 | public |
+| 91 | POST | `/api/notifications/test` | Test notification | notifications.py:230 | public |
 
 ### 2.14 paper_trading — `/api/paper-trading` (`backend/app/api/paper_trading.py`)
 
@@ -207,11 +217,11 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 97 | GET | `/api/params` | List all params | params.py:41 | public |
-| 98 | GET | `/api/params/changelog` | Param changelog | params.py:63 | public |
-| 99 | GET | `/api/params/{key}` | Get param by key | params.py:78 | public |
-| 100 | PUT | `/api/params/{key}` | Update param | params.py:97 | public |
-| 101 | POST | `/api/params/init-defaults` | Init default params | params.py:124 | public |
+| 97 | GET | `/api/params` | List all params | params.py:63 | public |
+| 98 | GET | `/api/params/changelog` | Param changelog | params.py:89 | public |
+| 99 | GET | `/api/params/{key}` | Get param by key | params.py:144 | public |
+| 100 | PUT | `/api/params/{key}` | Update param | params.py:168 | public |
+| 101 | POST | `/api/params/init-defaults` | Init default params | params.py:201 | public |
 
 ### 2.16 pipeline — `/api/pipeline` (`backend/app/api/pipeline.py`)
 
@@ -292,13 +302,13 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 | 132 | GET | `/api/strategies` | List strategies | strategies.py:72 | public |
 | 133 | GET | `/api/strategies/{strategy_id}` | Strategy detail | strategies.py:92 | public |
 | 134 | GET | `/api/strategies/{strategy_id}/versions` | Strategy versions | strategies.py:114 | public |
-| 135 | POST | `/api/strategies/{strategy_id}/versions` | Create version | strategies.py:147 | public |
-| 136 | POST | `/api/strategies/{strategy_id}/rollback` | Rollback strategy | strategies.py:173 | public |
+| 135 | POST | `/api/strategies/{strategy_id}/versions` | Create version | strategies.py:148 | public |
+| 136 | POST | `/api/strategies/{strategy_id}/rollback` | Rollback strategy | strategies.py:174 | public |
 | 137 | POST | `/api/strategies` | Create strategy | strategies.py:199 | public |
 | 138 | PUT | `/api/strategies/{strategy_id}` | Update strategy | strategies.py:220 | public |
 | 139 | DELETE | `/api/strategies/{strategy_id}` | Delete strategy | strategies.py:245 | public |
 | 140 | GET | `/api/strategies/{strategy_id}/factors` | Strategy factors | strategies.py:267 | public |
-| 141 | POST | `/api/strategies/{strategy_id}/backtest` | Trigger backtest | strategies.py:289 | public |
+| 141 | POST | `/api/strategies/{strategy_id}/backtest` | Trigger backtest | strategies.py:290 | public |
 
 ### 2.25 system — `/api/system` (`backend/app/api/system.py`)
 
@@ -343,14 +353,26 @@ Frontend base URL: `apiClient` configured in `frontend/src/api/client.ts:28` (ax
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| backtest.ts:128 | POST | `/backtest/run` |
-| backtest.ts:135 | GET | `/backtest/{runId}` |
-| backtest.ts:150 | GET | `/backtest/{runId}/result` |
-| backtest.ts:183 | POST | `/backtest/{runId}/cancel` |
-| backtest.ts:189 | GET | `/backtest/history` |
-| backtest.ts:207 | POST | `/backtest/compare` |
+| backtest.ts:234 | POST | `/backtest/run` |
+| backtest.ts:239 | GET | `/backtest/{runId}` |
+| backtest.ts:255 | GET | `/backtest/{runId}/result` |
+| backtest.ts:289 | POST | `/backtest/{runId}/cancel` |
+| backtest.ts:293 | GET | `/backtest/history` |
+| backtest.ts:348 | POST | `/backtest/compare` |
+| backtest.ts:515 | GET | `/backtest/{runId}/nav` |
+| backtest.ts:523 | GET | `/backtest/{runId}/trades` |
+| backtest.ts:541 | GET | `/backtest/{runId}/monthly` |
+| backtest.ts:553/567 | GET | `/backtest/{runId}/holdings` |
+| backtest.ts:636 | GET | `/backtest/{runId}/annual` |
+| backtest.ts:660 | GET | `/backtest/{runId}/attribution` |
+| backtest.ts:682 | GET | `/backtest/{runId}/cost-sensitivity` |
+| backtest.ts:707 | GET | `/backtest/{runId}/market-state` |
+| backtest.ts:742 | GET | `/backtest/{runId}/live-compare` |
+| backtest.ts:759 | URL helper | `/backtest/{runId}/report` |
 
-**6 calls → 5 consumed (#20, #22, #23, #21, #33); 1 orphan** (`/backtest/{runId}/cancel` — no backend endpoint)
+**15 HTTP calls + 1 report URL helper → 16 consumed (#20, #20a, #21-33, #35)**.
+Historical O1 cancel orphan is resolved by `backend/app/api/backtest.py:243`;
+backtest deep-dive rows 26-32 and 35 are closed in §23.
 
 ### 3.3 client.ts (`frontend/src/api/client.ts`)
 
@@ -358,51 +380,59 @@ Axios instance definition only. No direct API calls. **0 calls**.
 
 ### 3.4 dashboard.ts (`frontend/src/api/dashboard.ts`)
 
-No `apiClient.*` calls — comment only at line 2.  
-**0 direct calls** — dashboard data likely fetched via react-query hooks elsewhere or SSE/WebSocket.  
-All 8 dashboard endpoints (#36–43) are **backend-only** (no frontend API module consumer).
+Historical 2026-05-20 snapshot. Superseded by §12 Fresh verify.
+
+Current wrapper coverage includes Dashboard summary, NAV, pending actions,
+market ticker, alerts, monthly returns, industry distribution, paper status,
+paper trades, positions, strategy overview, factor rows, and pipeline steps.
 
 ### 3.5 execution.ts (`frontend/src/api/execution.ts`)
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| execution.ts:164–165 | POST | `/auth/admin-token` |
-| execution.ts:186 | POST | `/auth/admin-token/clear` |
-| execution.ts:204–205 | GET | `/auth/admin-token/status` |
-| execution.ts:227 | GET | `/execution/qmt-status` |
-| execution.ts:232 | GET | `/execution/positions` |
-| execution.ts:237 | GET | `/execution/asset` |
-| execution.ts:242 | GET | `/execution/orders` |
-| execution.ts:247 | GET | `/execution/trades` |
-| execution.ts:252 | GET | `/execution/drift` |
-| execution.ts:257 | GET | `/execution/trading-paused` |
-| execution.ts:262 | GET | `/execution/audit-log` |
-| execution.ts:273 | POST | `/execution/cancel-all` |
-| execution.ts:280 | POST | `/execution/cancel/{orderId}` |
-| execution.ts:287 | POST | `/execution/fix-drift/preview` |
-| execution.ts:297 | POST | `/execution/fix-drift/execute` |
-| execution.ts:306 | POST | `/execution/trigger-rebalance` |
-| execution.ts:316 | POST | `/execution/emergency-liquidate` |
-| execution.ts:325 | POST | `/execution/pause-trading` |
-| execution.ts:332 | POST | `/execution/resume-trading` |
+| execution.ts:202–205 | POST | `/auth/admin-token` |
+| execution.ts:224 | POST | `/auth/admin-token/clear` |
+| execution.ts:242–244 | GET | `/auth/admin-token/status` |
+| execution.ts:270 | GET | `/execution/qmt-status` |
+| execution.ts:275 | GET | `/execution/positions` |
+| execution.ts:280 | GET | `/execution/asset` |
+| execution.ts:285 | GET | `/execution/orders` |
+| execution.ts:290 | GET | `/execution/trades` |
+| execution.ts:295 | GET | `/execution/pending-orders` |
+| execution.ts:304 | GET | `/execution/log` |
+| execution.ts:313 | GET | `/execution/drift` |
+| execution.ts:318 | GET | `/execution/trading-paused` |
+| execution.ts:323 | GET | `/execution/audit-log` |
+| execution.ts:334 | POST | `/execution/cancel-all` |
+| execution.ts:341 | POST | `/execution/cancel/{orderId}` |
+| execution.ts:348 | POST | `/execution/fix-drift/preview` |
+| execution.ts:355 | POST | `/execution/fix-drift/execute` |
+| execution.ts:367 | POST | `/execution/trigger-rebalance` |
+| execution.ts:374 | POST | `/execution/emergency-liquidate` |
+| execution.ts:386 | POST | `/execution/pause-trading` |
+| execution.ts:393 | POST | `/execution/resume-trading` |
 
-**19 calls → all 19 consumed** (auth #17–19, execution_ops #47–63 partially)
+**21 calls → all 21 consumed** (auth #17–19, execution #44–45, execution_ops #47–63 except alert-config)
 
 ### 3.6 factors.ts (`frontend/src/api/factors.ts`)
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| factors.ts:100 | GET | `/factors/summary` |
-| factors.ts:105 | GET | `/factors` |
-| factors.ts:110 | GET | `/factors/stats` |
-| factors.ts:115 | GET | `/factors/correlation` |
-| factors.ts:120 | GET | `/factors/health` |
-| factors.ts:126 | GET | `/factors/{name}/report` |
-| factors.ts:196 | POST | `/factors/{name}/archive` |
-| factors.ts:200 | POST | `/factors/health` |
-| factors.ts:204 | POST | `/factors/correlation-prune` |
+| factors.ts:35 | GET | `/factors/ic-monitoring` |
+| factors.ts:61 | GET | `/factors/{name}` |
+| factors.ts:78 | GET | `/factors/stats` |
+| factors.ts:96 | GET | `/factors/health` |
+| factors.ts:197 | GET | `/factors/summary` |
+| factors.ts:202 | GET | `/factors` |
+| factors.ts:207 | GET | `/factors/stats` |
+| factors.ts:212 | GET | `/factors/correlation` |
+| factors.ts:217 | GET | `/factors/health` |
+| factors.ts:223 | GET | `/factors/{name}/report` |
+| factors.ts:293 | POST | `/factors/{name}/archive` |
+| factors.ts:300 | POST | `/factors/health-check` |
+| factors.ts:304 | POST | `/factors/correlation-prune` |
 
-**9 calls → 7 consumed; 2 orphans** (`POST /factors/health` — backend has only GET; `POST /factors/correlation-prune` — no backend endpoint)
+**13 calls → all 13 consumed** (IcMonitoring + factor library/evaluation + O9/O10 repaired)
 
 ### 3.7 mining.ts (`frontend/src/api/mining.ts`)
 
@@ -449,28 +479,35 @@ All 8 dashboard endpoints (#36–43) are **backend-only** (no frontend API modul
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| strategies.ts:47 | GET | `/strategies` |
-| strategies.ts:67 | GET | `/strategies/{id}` |
-| strategies.ts:72 | POST | `/strategies` |
-| strategies.ts:77 | PUT | `/strategies/{id}` |
-| strategies.ts:82 | DELETE | `/strategies/{id}` |
+| strategies.ts:238 | GET | `/strategies` |
+| strategies.ts:243/252 | GET | `/strategies/{id}` |
+| strategies.ts:256 | GET | `/strategies/{id}/versions` |
+| strategies.ts:261 | GET | `/strategies/{id}/factors` |
+| strategies.ts:270 | POST | `/strategies` |
+| strategies.ts:287 | PUT | `/strategies/{id}` |
+| strategies.ts:302 | DELETE | `/strategies/{id}` |
 
-**5 calls → all 5 consumed** (#132, #133, #137, #138, #139)
+**7 calls → all 7 consumed** (#132, #133, #134, #137, #138, #139, #140)
 
 ### 3.11 system.ts (`frontend/src/api/system.ts`)
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| system.ts:57 | GET | `/system/datasources` |
-| system.ts:62 | GET | `/system/scheduler` |
-| system.ts:67 | GET | `/system/health` |
-| system.ts:72 | GET | `/params` |
-| system.ts:85 | PUT | `/params/{key}` |
-| system.ts:93 | POST | `/system/test-notification` |
-| system.ts:103 | GET | `/system/env-state` |
-| system.ts:130 | GET | `/system/calendar-info` |
+| system.ts:110 | GET | `/system/datasources` |
+| system.ts:149 | GET | `/system/scheduler` |
+| system.ts:185 | GET | `/system/beat-schedule` |
+| system.ts:190 | GET | `/system/health` |
+| system.ts:195 | GET | `/system/streams` |
+| system.ts:200 | GET | `/health/qmt` |
+| system.ts:205 | GET | `/params` |
+| system.ts:218 | PUT | `/params/{key}` |
+| system.ts:226 | POST | `/system/test-notification` |
+| system.ts:236 | GET | `/system/env-state` |
+| system.ts:263 | GET | `/system/calendar-info` |
+| system.ts:285 | GET | `/system/settings/paper-strategy-id` |
+| system.ts:325 | GET | `/system/scheduler-task-log` |
 
-**8 calls → all 8 consumed** (#142, #145, #143, #97, #100, #146, #148, #147)
+**13 calls → all 13 consumed** (#142, #145, beat dashboard, #143, #144, #74, #97, #100, #146, #148, #147, D5, scheduler dashboard)
 
 ---
 
@@ -491,96 +528,96 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 9 | `/api/agent/cost-summary` | GET | agent.ts:91 | ✅ |
 | 10 | `/api/agent/{name}/logs` | GET | agent.ts:96 | ✅ |
 | 11 | `/api/approval/queue` | GET | pipeline.ts:117 | ✅ |
-| 12 | `/api/approval/queue/{item_id}` | GET | — | ❌ |
-| 13 | `/api/approval/queue/{item_id}/approve` | POST | — | ❌ |
-| 14 | `/api/approval/queue/{item_id}/reject` | POST | — | ❌ |
-| 15 | `/api/approval/queue/{item_id}/hold` | POST | — | ❌ |
-| 16 | `/api/approval/history` | GET | — | ❌ |
+| 12 | `/api/approval/queue/{item_id}` | GET | approval.ts:92 | ✅ |
+| 13 | `/api/approval/queue/{item_id}/approve` | POST | approval.ts:98 | ✅ |
+| 14 | `/api/approval/queue/{item_id}/reject` | POST | approval.ts:110 | ✅ |
+| 15 | `/api/approval/queue/{item_id}/hold` | POST | approval.ts:122 | ✅ |
+| 16 | `/api/approval/history` | GET | approval.ts:134 | ✅ |
 | 17 | `/api/auth/admin-token` | POST | execution.ts:164 | ✅ |
 | 18 | `/api/auth/admin-token/clear` | POST | execution.ts:186 | ✅ |
 | 19 | `/api/auth/admin-token/status` | GET | execution.ts:204 | ✅ |
-| 20 | `/api/backtest/run` | POST | backtest.ts:128 | ✅ |
-| 21 | `/api/backtest/history` | GET | backtest.ts:189 | ✅ |
-| 22 | `/api/backtest/{run_id}` | GET | backtest.ts:135 | ✅ |
-| 23 | `/api/backtest/{run_id}/result` | GET | backtest.ts:150 | ✅ |
-| 24 | `/api/backtest/{run_id}/nav` | GET | — | ❌ |
-| 25 | `/api/backtest/{run_id}/trades` | GET | — | ❌ |
-| 26 | `/api/backtest/{run_id}/holdings` | GET | — | ❌ |
-| 27 | `/api/backtest/{run_id}/annual` | GET | — | ❌ |
-| 28 | `/api/backtest/{run_id}/monthly` | GET | — | ❌ |
-| 29 | `/api/backtest/{run_id}/attribution` | GET | — | ❌ |
-| 30 | `/api/backtest/{run_id}/market-state` | GET | — | ❌ |
-| 31 | `/api/backtest/{run_id}/cost-sensitivity` | GET | — | ❌ |
-| 32 | `/api/backtest/{run_id}/report` | GET | — | ❌ |
-| 33 | `/api/backtest/compare` | POST | backtest.ts:207 | ✅ |
-| 34 | `/api/backtest/{run_id}/sensitivity` | POST | — | ❌ |
-| 35 | `/api/backtest/{run_id}/live-compare` | GET | — | ❌ |
-| 36 | `/api/dashboard/summary` | GET | — | ❌ |
-| 37 | `/api/dashboard/nav-series` | GET | — | ❌ |
-| 38 | `/api/dashboard/pending-actions` | GET | — | ❌ |
-| 39 | `/api/dashboard/market-ticker` | GET | — | ❌ |
-| 40 | `/api/dashboard/alerts` | GET | — | ❌ |
-| 41 | `/api/dashboard/strategies` | GET | — | ❌ |
-| 42 | `/api/dashboard/monthly-returns` | GET | — | ❌ |
-| 43 | `/api/dashboard/industry-distribution` | GET | — | ❌ |
-| 44 | `/api/execution/pending-orders` | GET | — | ❌ |
-| 45 | `/api/execution/log` | GET | — | ❌ |
-| 46 | `/api/execution/algo-config` | GET | — | ❌ |
-| 47 | `/api/execution/qmt-status` | GET | execution.ts:227 | ✅ |
-| 48 | `/api/execution/positions` | GET | execution.ts:232 | ✅ |
-| 49 | `/api/execution/asset` | GET | execution.ts:237 | ✅ |
-| 50 | `/api/execution/orders` | GET | execution.ts:242 | ✅ |
-| 51 | `/api/execution/trades` | GET | execution.ts:247 | ✅ |
-| 52 | `/api/execution/drift` | GET | execution.ts:252 | ✅ |
-| 53 | `/api/execution/cancel-all` | POST | execution.ts:273 | ✅ |
-| 54 | `/api/execution/cancel/{order_id}` | POST | execution.ts:280 | ✅ |
-| 55 | `/api/execution/fix-drift/preview` | POST | execution.ts:287 | ✅ |
-| 56 | `/api/execution/fix-drift/execute` | POST | execution.ts:297 | ✅ |
-| 57 | `/api/execution/trigger-rebalance` | POST | execution.ts:306 | ✅ |
-| 58 | `/api/execution/emergency-liquidate` | POST | execution.ts:316 | ✅ |
-| 59 | `/api/execution/pause-trading` | POST | execution.ts:325 | ✅ |
-| 60 | `/api/execution/resume-trading` | POST | execution.ts:332 | ✅ |
-| 61 | `/api/execution/trading-paused` | GET | execution.ts:257 | ✅ |
-| 62 | `/api/execution/alert-config` | PUT | — | ❌ |
-| 63 | `/api/execution/audit-log` | GET | execution.ts:262 | ✅ |
-| 64 | `/api/factors/health` | GET | factors.ts:120 | ✅ |
-| 65 | `/api/factors/correlation` | GET | factors.ts:115 | ✅ |
-| 66 | `/api/factors/summary` | GET | factors.ts:100 | ✅ |
-| 67 | `/api/factors/stats` | GET | factors.ts:110 | ✅ |
-| 68 | `/api/factors` | GET | factors.ts:105 | ✅ |
-| 69 | `/api/factors/{name}` | GET | — | ❌ |
-| 70 | `/api/factors/{name}/report` | GET | factors.ts:126 | ✅ |
-| 71 | `/api/factors/{name}/archive` | POST | factors.ts:196 | ✅ |
-| 72 | `/api/health` | GET | — | ❌ |
-| 73 | `/api/health/checks` | GET | — | ❌ |
-| 74 | `/api/health/qmt` | GET | — | ❌ |
-| 75 | `/api/market/indices` | GET | — | ❌ |
-| 76 | `/api/market/sectors` | GET | — | ❌ |
-| 77 | `/api/market/top-movers` | GET | — | ❌ |
+| 20 | `/api/backtest/run` | POST | backtest.ts:234 | ✅ |
+| 21 | `/api/backtest/history` | GET | backtest.ts:293 | ✅ |
+| 22 | `/api/backtest/{run_id}` | GET | backtest.ts:239 | ✅ |
+| 23 | `/api/backtest/{run_id}/result` | GET | backtest.ts:255 | ✅ |
+| 24 | `/api/backtest/{run_id}/nav` | GET | backtest.ts:515 | ✅ |
+| 25 | `/api/backtest/{run_id}/trades` | GET | backtest.ts:523 | ✅ |
+| 26 | `/api/backtest/{run_id}/holdings` | GET | backtest.ts:553/567/591 | ✅ |
+| 27 | `/api/backtest/{run_id}/annual` | GET | backtest.ts:636/650 | ✅ |
+| 28 | `/api/backtest/{run_id}/monthly` | GET | backtest.ts:541 | ✅ |
+| 29 | `/api/backtest/{run_id}/attribution` | GET | backtest.ts:660 | ✅ |
+| 30 | `/api/backtest/{run_id}/market-state` | GET | backtest.ts:707 | ✅ |
+| 31 | `/api/backtest/{run_id}/cost-sensitivity` | GET | backtest.ts:682 | ✅ |
+| 32 | `/api/backtest/{run_id}/report` | GET | backtest.ts:759 | ✅ |
+| 33 | `/api/backtest/compare` | POST | backtest.ts:348 | ✅ |
+| 34 | `/api/backtest/{run_id}/sensitivity` | POST | backtest.py:1199 | ⚠️ deferred contract |
+| 35 | `/api/backtest/{run_id}/live-compare` | GET | backtest.ts:742 | ✅ |
+| 36 | `/api/dashboard/summary` | GET | dashboard.ts:21 | ✅ |
+| 37 | `/api/dashboard/nav-series` | GET | dashboard.ts:28 | ✅ |
+| 38 | `/api/dashboard/pending-actions` | GET | dashboard.ts:37 | ✅ |
+| 39 | `/api/dashboard/market-ticker` | GET | dashboard.ts:66 | ✅ |
+| 40 | `/api/dashboard/alerts` | GET | dashboard.ts:44 | ✅ |
+| 41 | `/api/dashboard/strategies` | GET | dashboard.ts:166 | ✅ |
+| 42 | `/api/dashboard/monthly-returns` | GET | dashboard.ts:51 | ✅ |
+| 43 | `/api/dashboard/industry-distribution` | GET | dashboard.ts:58 | ✅ |
+| 44 | `/api/execution/pending-orders` | GET | execution.ts:295 | ✅ |
+| 45 | `/api/execution/log` | GET | execution.ts:304 | ✅ |
+| 46 | `/api/execution/algo-config` | GET | — | ⚠️ legacy display-only |
+| 47 | `/api/execution/qmt-status` | GET | execution.ts:270 | ✅ |
+| 48 | `/api/execution/positions` | GET | execution.ts:275 | ✅ |
+| 49 | `/api/execution/asset` | GET | execution.ts:280 | ✅ |
+| 50 | `/api/execution/orders` | GET | execution.ts:285 | ✅ |
+| 51 | `/api/execution/trades` | GET | execution.ts:290 | ✅ |
+| 52 | `/api/execution/drift` | GET | execution.ts:313 | ✅ |
+| 53 | `/api/execution/cancel-all` | POST | execution.ts:334 | ✅ |
+| 54 | `/api/execution/cancel/{order_id}` | POST | execution.ts:341 | ✅ |
+| 55 | `/api/execution/fix-drift/preview` | POST | execution.ts:348 | ✅ |
+| 56 | `/api/execution/fix-drift/execute` | POST | execution.ts:355 | ✅ |
+| 57 | `/api/execution/trigger-rebalance` | POST | execution.ts:367 | ✅ |
+| 58 | `/api/execution/emergency-liquidate` | POST | execution.ts:374 | ✅ |
+| 59 | `/api/execution/pause-trading` | POST | execution.ts:386 | ✅ |
+| 60 | `/api/execution/resume-trading` | POST | execution.ts:393 | ✅ |
+| 61 | `/api/execution/trading-paused` | GET | execution.ts:318 | ✅ |
+| 62 | `/api/execution/alert-config` | PUT | — | ⚠️ backend no-op |
+| 63 | `/api/execution/audit-log` | GET | execution.ts:323 | ✅ |
+| 64 | `/api/factors/health` | GET | factors.ts:96/217 | ✅ |
+| 65 | `/api/factors/correlation` | GET | factors.ts:212 | ✅ |
+| 66 | `/api/factors/summary` | GET | factors.ts:197 | ✅ |
+| 67 | `/api/factors/stats` | GET | factors.ts:78/207 | ✅ |
+| 68 | `/api/factors` | GET | factors.ts:202 | ✅ |
+| 69 | `/api/factors/{name}` | GET | factors.ts:61 | ✅ |
+| 70 | `/api/factors/{name}/report` | GET | factors.ts:223 | ✅ |
+| 71 | `/api/factors/{name}/archive` | POST | factors.ts:293 | ✅ |
+| 72 | `/api/health` | GET | health.py:23 | ⚠️ external monitor |
+| 73 | `/api/health/checks` | GET | health.py:56 | ⚠️ external monitor |
+| 74 | `/api/health/qmt` | GET | system.ts:200 | ✅ |
+| 75 | `/api/market/indices` | GET | market.ts:34 | ✅ |
+| 76 | `/api/market/sectors` | GET | market.ts:39 | ✅ |
+| 77 | `/api/market/top-movers` | GET | market.ts:47 | ✅ |
 | 78 | `/api/mining/run` | POST | mining.ts:142 | ✅ |
 | 79 | `/api/mining/tasks` | GET | mining.ts:166 | ✅ |
 | 80 | `/api/mining/tasks/{task_id}` | GET | mining.ts:184 | ✅ |
 | 81 | `/api/mining/tasks/{task_id}/cancel` | POST | mining.ts:190 | ✅ |
 | 82 | `/api/mining/evaluate` | POST | mining.ts:211 | ✅ |
-| 83 | `/api/news/ingest` | POST | — | ❌ |
-| 84 | `/api/news/ingest_rsshub` | POST | — | ❌ |
-| 85 | `/api/news/ingest_announcement` | POST | — | ❌ |
-| 86 | `/api/news/stats` | GET | — | ❌ |
-| 87 | `/api/notifications` | GET | — | ❌ |
-| 88 | `/api/notifications/unread-count` | GET | — | ❌ |
-| 89 | `/api/notifications/{notification_id}` | GET | — | ❌ |
-| 90 | `/api/notifications/{notification_id}/read` | PUT | — | ❌ |
-| 91 | `/api/notifications/test` | POST | — | ❌ |
-| 92 | `/api/paper-trading/status` | GET | — | ❌ |
-| 93 | `/api/paper-trading/graduation` | GET | — | ❌ |
-| 94 | `/api/paper-trading/graduation-status` | GET | — | ❌ |
-| 95 | `/api/paper-trading/positions` | GET | — | ❌ |
-| 96 | `/api/paper-trading/trades` | GET | — | ❌ |
-| 97 | `/api/params` | GET | system.ts:72 | ✅ |
-| 98 | `/api/params/changelog` | GET | — | ❌ |
-| 99 | `/api/params/{key}` | GET | — | ❌ |
-| 100 | `/api/params/{key}` | PUT | system.ts:85 | ✅ |
-| 101 | `/api/params/init-defaults` | POST | — | ❌ |
+| 83 | `/api/news/ingest` | POST | news.py:251 | ⚠️ ops ingest |
+| 84 | `/api/news/ingest_rsshub` | POST | news.py:322 | ⚠️ ops ingest |
+| 85 | `/api/news/ingest_announcement` | POST | news.py:437 | ⚠️ ops ingest |
+| 86 | `/api/news/stats` | GET | news.py:514 | ⚠️ ops diagnostics |
+| 87 | `/api/notifications` | GET | notifications.ts:113 | ✅ |
+| 88 | `/api/notifications/unread-count` | GET | list response `unread_count` | ⚠️ redundant |
+| 89 | `/api/notifications/{notification_id}` | GET | notifications.ts:129 | ✅ |
+| 90 | `/api/notifications/{notification_id}/read` | PUT | notifications.ts:138 | ✅ |
+| 91 | `/api/notifications/test` | POST | notifications.py:230 | ⚠️ admin test |
+| 92 | `/api/paper-trading/status` | GET | dashboard.ts:85 | ✅ |
+| 93 | `/api/paper-trading/graduation` | GET | — | ⚠️ superseded |
+| 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:120 | ✅ |
+| 95 | `/api/paper-trading/positions` | GET | dashboard.ts:130 | ✅ |
+| 96 | `/api/paper-trading/trades` | GET | dashboard.ts:67 | ✅ |
+| 97 | `/api/params` | GET | system.ts:216/221 | ✅ |
+| 98 | `/api/params/changelog` | GET | params.py:89 | ⚠️ audit endpoint |
+| 99 | `/api/params/{key}` | GET | params.py:144 | ⚠️ redundant read |
+| 100 | `/api/params/{key}` | PUT | system.ts:239 | ✅ |
+| 101 | `/api/params/init-defaults` | POST | params.py:201 | ⚠️ admin bootstrap |
 | 102 | `/api/pipeline/status` | GET | pipeline.ts:96 | ✅ |
 | 103 | `/api/pipeline/runs` | GET | pipeline.ts:111 | ✅ |
 | 104 | `/api/pipeline/runs/{run_id}` | GET | pipeline.ts:150 | ✅ |
@@ -590,48 +627,48 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 108 | `/api/pms/history` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
 | 109 | `/api/pms/config` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
 | 110 | `/api/pms/check` | POST | — | 🗑️ RETIRED iter 50 (ADR-094) |
-| 111 | `/api/portfolio/holdings` | GET | — | ❌ |
-| 112 | `/api/portfolio/sector-distribution` | GET | — | ❌ |
-| 113 | `/api/portfolio/daily-pnl` | GET | — | ❌ |
+| 111 | `/api/portfolio/holdings` | GET | portfolio.ts:93 | ✅ |
+| 112 | `/api/portfolio/sector-distribution` | GET | portfolio.ts:63 | ✅ |
+| 113 | `/api/portfolio/daily-pnl` | GET | portfolio.ts:83 | ✅ |
 | 114 | `/api/realtime/portfolio` | GET | realtime.ts:84 | ✅ |
 | 115 | `/api/realtime/market` | GET | realtime.ts:89 | ✅ |
-| 116 | `/api/v1/ping` | GET | — | ❌ |
-| 117 | `/api/v1/status` | GET | — | ❌ |
-| 118 | `/api/reports/list` | GET | — | ❌ |
-| 119 | `/api/reports/quick-stats` | GET | — | ❌ |
-| 120 | `/api/reports/generate` | POST | — | ❌ |
-| 121 | `/api/risk/state/{strategy_id}` | GET | — | ❌ |
-| 122 | `/api/risk/history/{strategy_id}` | GET | — | ❌ |
-| 123 | `/api/risk/summary/{strategy_id}` | GET | — | ❌ |
-| 124 | `/api/risk/l4-recovery/{strategy_id}` | POST | — | ❌ |
-| 125 | `/api/risk/l4-approve/{approval_id}` | POST | — | ❌ |
-| 126 | `/api/risk/force-reset/{strategy_id}` | POST | — | ❌ |
-| 127 | `/api/risk/overview` | GET | — | ❌ |
-| 128 | `/api/risk/limits` | GET | — | ❌ |
-| 129 | `/api/risk/stress-tests` | GET | — | ❌ |
-| 130 | `/api/risk/dingtalk-webhook` | POST | — | ❌ |
-| 131 | `/api/sse/risk-events` | GET | — | ❌ |
-| 132 | `/api/strategies` | GET | strategies.ts:47 | ✅ |
-| 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:67 | ✅ |
-| 134 | `/api/strategies/{strategy_id}/versions` | GET | — | ❌ |
-| 135 | `/api/strategies/{strategy_id}/versions` | POST | — | ❌ |
-| 136 | `/api/strategies/{strategy_id}/rollback` | POST | — | ❌ |
-| 137 | `/api/strategies` | POST | strategies.ts:72 | ✅ |
-| 138 | `/api/strategies/{strategy_id}` | PUT | strategies.ts:77 | ✅ |
-| 139 | `/api/strategies/{strategy_id}` | DELETE | strategies.ts:82 | ✅ |
-| 140 | `/api/strategies/{strategy_id}/factors` | GET | — | ❌ |
-| 141 | `/api/strategies/{strategy_id}/backtest` | POST | — | ❌ |
-| 142 | `/api/system/datasources` | GET | system.ts:57 | ✅ |
-| 143 | `/api/system/health` | GET | system.ts:67 | ✅ |
-| 144 | `/api/system/streams` | GET | — | ❌ |
-| 145 | `/api/system/scheduler` | GET | system.ts:62 | ✅ |
-| 146 | `/api/system/test-notification` | POST | system.ts:93 | ✅ |
-| 147 | `/api/system/calendar-info` | GET | system.ts:130 | ✅ |
-| 148 | `/api/system/env-state` | GET | system.ts:103 | ✅ |
+| 116 | `/api/v1/ping` | GET | remote_status.py:278 | ⚠️ external monitor |
+| 117 | `/api/v1/status` | GET | remote_status.py:297 | ⚠️ external monitor |
+| 118 | `/api/reports/list` | GET | reports.ts:143 | ✅ |
+| 119 | `/api/reports/quick-stats` | GET | reports.ts:150 | ✅ |
+| 120 | `/api/reports/generate` | POST | reports.ts:168 | ✅ |
+| 121 | `/api/risk/state/{strategy_id}` | GET | risk.ts:176 | ✅ |
+| 122 | `/api/risk/history/{strategy_id}` | GET | risk.ts:225 | ✅ |
+| 123 | `/api/risk/summary/{strategy_id}` | GET | risk.ts:241 | ✅ |
+| 124 | `/api/risk/l4-recovery/{strategy_id}` | POST | risk.ts:200 | ✅ |
+| 125 | `/api/risk/l4-approve/{approval_id}` | POST | risk.ts:213 | ✅ |
+| 126 | `/api/risk/force-reset/{strategy_id}` | POST | risk.ts:187 | ✅ |
+| 127 | `/api/risk/overview` | GET | risk.ts:252 | ✅ |
+| 128 | `/api/risk/limits` | GET | risk.ts:268 | ✅ |
+| 129 | `/api/risk/stress-tests` | GET | risk.ts:277 | ✅ |
+| 130 | `/api/risk/dingtalk-webhook` | POST | risk.py:618 | ⚠️ inbound webhook |
+| 131 | `/api/sse/risk-events` | GET | useRiskEventsSSE.ts:92/96 | ✅ |
+| 132 | `/api/strategies` | GET | strategies.ts:238 | ✅ |
+| 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:243/252 | ✅ |
+| 134 | `/api/strategies/{strategy_id}/versions` | GET | strategies.ts:256 | ✅ |
+| 135 | `/api/strategies/{strategy_id}/versions` | POST | strategies.py:148 | ⚠️ needs UX design |
+| 136 | `/api/strategies/{strategy_id}/rollback` | POST | strategies.py:174 | ⚠️ needs UX design |
+| 137 | `/api/strategies` | POST | strategies.ts:270 | ✅ |
+| 138 | `/api/strategies/{strategy_id}` | PUT | strategies.ts:287 | ✅ |
+| 139 | `/api/strategies/{strategy_id}` | DELETE | strategies.ts:302 | ✅ |
+| 140 | `/api/strategies/{strategy_id}/factors` | GET | strategies.ts:261 | ✅ |
+| 141 | `/api/strategies/{strategy_id}/backtest` | POST | StrategyWorkspace.tsx:243 | ⚠️ superseded |
+| 142 | `/api/system/datasources` | GET | system.ts:110 | ✅ |
+| 143 | `/api/system/health` | GET | system.ts:190 | ✅ |
+| 144 | `/api/system/streams` | GET | system.ts:195 | ✅ |
+| 145 | `/api/system/scheduler` | GET | system.ts:149 | ✅ |
+| 146 | `/api/system/test-notification` | POST | system.ts:226 | ✅ |
+| 147 | `/api/system/calendar-info` | GET | system.ts:263 | ✅ |
+| 148 | `/api/system/env-state` | GET | system.ts:236 | ✅ |
 
 ---
 
-## §5 Unused Endpoint Candidates (Backend-Only, 74 endpoints)
+## §5 Unused Endpoint Candidates (historical backend-only snapshot)
 
 > These endpoints have no frontend consumer in `frontend/src/api/*.ts`. Some are legitimate (admin scripts, DingTalk webhooks, health probes); others may be Phase J cleanup candidates.
 
@@ -639,43 +676,47 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 
 | # | Endpoint | Rationale |
 |---|----------|-----------|
-| 72–74 | `/api/health`, `/api/health/checks`, `/api/health/qmt` | Consumed by Servy / monitoring, not frontend |
+| 72–73 | `/api/health`, `/api/health/checks` | Consumed by Servy / monitoring, not frontend |
+| 74 | `/api/health/qmt` | Wrapped by `fetchQmtHealth()` for `QMTStatusBadge`; badge is exported but not mounted by current frontend routes |
 | 116–117 | `/api/v1/ping`, `/api/v1/status` | Remote ops script (`remote_status.py`) — external monitoring |
 | 130 | `/api/risk/dingtalk-webhook` | DingTalk webhook receiver — not frontend-initiated |
-| 131 | `/api/sse/risk-events` | SSE stream — consumed via `EventSource` in frontend JS, not apiClient |
-| 83–85 | `/api/news/ingest*` | Script-triggered ingest, not user-facing UI |
+| 131 | `/api/sse/risk-events` | Consumed by `useRiskEventsSSE()` through native `EventSource`; see §32 |
+| 83–85 | `/api/news/ingest*` | Script/ops-triggered ingest, not user-facing UI; see §34 |
+| 86 | `/api/news/stats` | Ops diagnostics endpoint for recent news ingestion counts/samples; see §34 |
+| 88 | `/api/notifications/unread-count` | Redundant for the panel because `GET /api/notifications` already returns `unread_count` |
 | 91 | `/api/notifications/test` | Admin test only |
 
-### 5B — Dashboard Module Gap (8 endpoints)
+### 5B — Dashboard Module Gap (historical)
 
-All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consumer. `dashboard.ts` exists but contains only a comment. Dashboard data is likely fetched via react-query hooks in page components directly, bypassing the api layer — **check `frontend/src/pages/` for direct axios/fetch usage**.
+Historical 2026-05-20 snapshot. Dashboard secondary panels were closed in §12;
+remaining dashboard work should be assessed from fresh code, not this stale
+snapshot.
 
 ### 5C — Deprecated / Low Priority
 
 | # | Endpoint | Rationale |
 |---|----------|-----------|
 | 107–110 | `/api/pms/*` | **PHYSICALLY RETIRED iter 50 2026-05-24 (ADR-094)** — pms_engine.py + api/pms.py + frontend page/route/nav 同 PR 全部删除. V3 SSOT 走 V3 §4 L1 PMSRule + V3 §7.3 trailing_stop |
-| 98 | `/api/params/changelog` | No frontend UI for changelog |
-| 99 | `/api/params/{key}` GET | Only PUT consumed; GET by key unused |
-| 101 | `/api/params/init-defaults` | Init script only |
+| 46 | `/api/execution/algo-config` | Legacy display-only endpoint from the retired `TradeExecution` path; prior audits found it can expose stale `strategy_configs` display values and is not in the trading path |
+| 93 | `/api/paper-trading/graduation` | Legacy parameterized criteria endpoint requiring caller-supplied backtest baselines; current operator UI uses fixed-standard `/api/paper-trading/graduation-status` instead |
+| 141 | `/api/strategies/{strategy_id}/backtest` | Direct async trigger is superseded by the operator-confirmed `/backtest/config?strategy_id=...` flow, which submits through `/api/backtest/run` after configuration review |
+| 98 | `/api/params/changelog` | Audit endpoint; no active frontend surface after DEV_PARAM_CONFIG was marked DESIGN_OVERSIZED; see §35 |
+| 99 | `/api/params/{key}` GET | Redundant read path because the current settings UI uses grouped `/api/params?module=notification`; see §35 |
+| 101 | `/api/params/init-defaults` | Admin/bootstrap endpoint, not a user-facing control; see §35 |
 
 ### 5D — Backend-Implemented But Frontend Not Yet Wired
 
 | # | Endpoint | Priority |
 |---|----------|----------|
-| 12–16 | `/api/approval/queue/{item_id}` detail + approve/reject/hold + history | Approval workflow incomplete in frontend |
-| 24–32, 34–35 | `/api/backtest/{run_id}/nav`, `/trades`, `/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest detail views not yet connected |
-| 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
-| 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
-| 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
-| 75–77 | `/api/market/*` | Market data not consumed by any frontend module |
-| 87–90 | `/api/notifications/*` | Notifications panel not using API module |
-| 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
-| 111–113 | `/api/portfolio/*` | Portfolio panel bypasses API module |
-| 118–120 | `/api/reports/*` | Report generation not wired |
-| 121–129 | `/api/risk/*` (10 endpoints) | Risk framework dashboard not wired |
-| 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
-| 144 | `/api/system/streams` | Streams viewer not wired |
+| — | — | No remaining backend-implemented/frontend-unwired item after §30 reclassified row 34 |
+
+### 5E — Needs Backend Semantics Before UI
+
+| # | Endpoint | Rationale |
+|---|----------|-----------|
+| 62 | `/api/execution/alert-config` PUT | Admin-gated endpoint only writes `operation_audit_log` and echoes the payload; no config store or runtime reload semantics exist yet, so wiring a UI would imply a mutation that does not persist |
+| 34 | `/api/backtest/{run_id}/sensitivity` POST | Endpoint is an explicit deferred contract returning `status="deferred"` and ADR-DRAFT row 18 tracking metadata. UI needs the Phase B architecture decision first: parameter whitelist, storage/lineage, aggregation metrics, result delivery, and shared-data-load strategy |
+| 135–136 | `/api/strategies/{strategy_id}/versions` POST, `/rollback` POST | Version creation and rollback are real mutations. UI needs explicit diff preview, changelog policy, rollback confirmation, audit trail, and post-mutation reload semantics before these controls should be exposed |
 
 ---
 
@@ -686,7 +727,7 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 
 | # | File:Line | Method | URL Called | Notes |
 |---|-----------|--------|------------|-------|
-| O1 | backtest.ts:183 | POST | `/backtest/{runId}/cancel` | No cancel endpoint in backtest.py — cancel may be Celery task revoke only |
+| O1 | backtest.ts:183 | POST | `/backtest/{runId}/cancel` | **RESOLVED** — backend cancel endpoint exists in `backtest.py:243`; see PR #446 note in §6.1 |
 | O2 | pipeline.ts:101 | POST | `/pipeline/trigger` | No trigger endpoint in pipeline.py (only status/runs/approve/reject) |
 | O3 | pipeline.ts:106 | POST | `/pipeline/pause` | **RESOLVED** — see §6.1 / PN-003 |
 | O4 | pipeline.ts:122 | POST | `/pipeline/approve/{id}` | Uses old approval path — backend uses `/approval/queue/{item_id}/approve` |
@@ -694,8 +735,8 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 | O6 | pipeline.ts:130 | POST | `/pipeline/hold/{id}` | Uses old hold path — backend uses `/approval/queue/{item_id}/hold` |
 | O7 | pipeline.ts:134 | GET | `/pipeline/{runId}/logs` | **RESOLVED 2026-05-28** — backend HTTP backfill now exists; see §10 |
 | O8 | pipeline.ts:139 | PUT | `/pipeline/automation-level` | **RESOLVED** — see §6.1 / PN-001 |
-| O9 | factors.ts:200 | POST | `/factors/health` | Backend has GET `/api/factors/health` (factors.py:57) — method mismatch |
-| O10 | factors.ts:204 | POST | `/factors/correlation-prune` | **RESOLVED** — see §6.1 / PN-002 |
+| O9 | factors.ts:300 | POST | `/factors/health-check` | **RESOLVED** — current wrapper targets backend `POST /api/factors/health-check`; see §25 |
+| O10 | factors.ts:304 | POST | `/factors/correlation-prune` | **RESOLVED** — see §6.1 / PN-002 |
 
 **Historical 2026-05-20 finding**: `pipeline.ts` was the highest-risk file, with
 7 of 13 calls targeting non-existent or stale backend paths. This is no longer the
@@ -824,13 +865,20 @@ Total frontend apiClient calls: 83 (deduplicated by URL: ~60 unique paths)
 | D2 | `POST /api/pipeline/trigger` | pipeline.py:168 | pipeline.ts:125 (`triggerPipeline`) | ✅ matched | iter 1 PN-001 closed O2 orphan |
 | D3 | `GET /api/pipeline/{run_id}/logs` | pipeline.py:267 | pipeline.ts:180 (`getPipelineLogs`) | ✅ matched | O7 HTTP backfill closed 2026-05-28; PN-005 writer/WS enhancements remain |
 | D4 | `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ backend has + frontend missing | new admin endpoint, no UI yet (candidate §5D) |
-| D5 | `GET /api/system/settings/paper-strategy-id` | system.py:509 | system.ts:152 (`getPaperStrategyId`) | ✅ matched | iter 50+ new pair |
-| D6 | `GET /api/system/streams` | system.py:334 | — | ⚠️ backend has + frontend missing | sustained §5D legitimate-ops gap |
+| D5 | `GET /api/system/settings/paper-strategy-id` | system.py:509 | system.ts:285 (`getPaperStrategyId`) | ✅ matched | iter 50+ new pair |
+| D6 | `GET /api/system/streams` | system.py:334 | system.ts:195 (`fetchSystemStreams`) | ✅ matched | §24 closes the former ops viewer gap |
 | D7 | `POST /api/factors/correlation-prune` | factors.py:1121 | factors.ts:207 | ✅ matched | iter 11 PN-002 closed O10 orphan |
 
 ### §9.4 Backtest +1 root-cause locator
 
-Existing matrix §2.4 (rows 20-35) shows 16 backtest endpoints. Fresh grep returns 17 (lines 141, 215, 264, 336, 360, 429, 469, 560, 616, 685, 741, 791, 873, 988, 1081, 1132, 1230). The +1 is `POST /api/backtest/{run_id}/sensitivity` (backtest.py:1132) — already in matrix row 34. The actual delta is bookkeeping: 2026-05-20 §8 listed `backtest: 16` but the row table rows 20-35 = 16 ⊕ the new entry was added during 2026-05-19 frontend-redesign push without §8 footer count sync. **No new endpoint** — §8 footer is the drift, fixed below.
+Existing matrix §2.4 originally showed 16 numbered backtest rows, while fresh
+grep returns 17 route decorators. Batch 21 re-verified the current route lines:
+169, 243, 292, 364, 388, 457, 509, 596, 658, 727, 783, 838, 920, 1035,
+1137, 1198, and 1296. The previously missing row is
+`POST /api/backtest/{run_id}/cancel` (`backtest.py:243`), which matches
+`cancelBacktest()` in `frontend/src/api/backtest.ts:281`. The historical O1
+orphan text is corrected above; row 34 sensitivity remains present and deferred
+by design.
 
 ### §9.5 Orphan status sustained from §6.1
 
@@ -868,3 +916,1640 @@ Remaining PN-005 scope is explicitly narrower:
 - a retention decision if the project later needs durable DB-backed history.
 
 These are enhancements/backlog, not current frontend-only API orphans.
+
+## §11 Fresh verify — 2026-06-01 (notification panel API closure)
+
+### §11.1 Frontend route consumer delta
+
+`frontend/src/api/notifications.ts` adds the missing frontend API module for the
+notification panel. The current frontend API module inventory is **13 files**:
+the §9.2 list plus `notifications.ts`.
+
+### §11.2 Notification endpoint status
+
+| Endpoint | Backend | Frontend | State | Note |
+|---|---|---|---|---|
+| `GET /api/notifications` | notifications.py:74 | notifications.ts:113 + `NotificationProvider` | ✅ matched | Panel loads backend rows and uses response `unread_count` |
+| `PUT /api/notifications/{notification_id}/read` | notifications.py:208 | notifications.ts:138 + row click handler | ✅ matched | Already-read rows are guarded client-side to avoid backend 404 reload |
+| `PUT /api/notifications/read-all` | notifications.py:120 | notifications.ts:151 + header action | ✅ matched | Header action marks loaded rows read and updates unread badge |
+| `GET /api/notifications/unread-count` | notifications.py:107 | — | ⚠️ intentionally unused | Redundant for current panel because list response includes `unread_count` |
+| `GET /api/notifications/{notification_id}` | notifications.py:186 | notifications.ts:129 + `NotificationPanel` detail view | ✅ matched | No-link notification rows open the backend detail payload |
+| `DELETE /api/notifications/clear-old` | notifications.py:133 | — | ⚠️ admin gap | No admin cleanup UI yet |
+| `GET/PUT /api/notifications/preferences` | notifications.py:152 / 170 | — | ⚠️ settings gap | Existing system notification settings use `/api/system/test-notification` and `/api/params` |
+| `POST /api/notifications/test` | notifications.py:230 | — | ⚠️ admin test gap | No direct frontend consumer |
+
+### §11.3 Verification
+
+- RED: `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx` failed before the fix on missing `@/api/notifications`, zero backend fetch calls, seeded mock rows, and missing backend mark-all calls.
+- Edge RED: `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "already-read"` failed before the guard because read rows still called `markNotificationRead()`.
+- GREEN targeted notification contracts: 10 passed.
+- Full frontend suite: `npx vitest --run` -> 100 passed.
+- Frontend production build: `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7005 deselected.
+
+### §11.4 Remaining notification backlog
+
+- Add cleanup/preferences UI only if notification administration becomes an operator workflow. Until then, those endpoints remain backend/admin-only candidates rather than broken user-facing chains.
+
+## §12 Fresh verify — 2026-06-01 (dashboard API-layer closure)
+
+### §12.1 Finding
+
+`frontend/src/pages/Dashboard/index.tsx` previously imported `apiClient`
+directly for five secondary data reads:
+
+| UI panel | Previous page-level call | Current wrapper |
+|---|---|---|
+| Alerts | `/dashboard/alerts` | `fetchAlerts()` |
+| Monthly heatmap | `/dashboard/monthly-returns` | `fetchMonthlyReturns()` |
+| Industry distribution | `/dashboard/industry-distribution` | `fetchIndustryDistribution()` |
+| Factor library rows | `/factors` | `fetchDashboardFactorRows()` |
+| AI pipeline steps | `/pipeline/status` | `fetchDashboardPipelineSteps()` |
+
+Risk: the API matrix grep only counts `frontend/src/api/*.ts`, so page-level
+calls hid real consumers and made the historical §3.4 “backend-only” dashboard
+claim stale. The page also owned response-shape conversion that belongs in the
+API layer per LL-035.
+
+### §12.2 Closure
+
+- Added the five wrappers in `frontend/src/api/dashboard.ts`.
+- Centralized Dashboard row types in `frontend/src/types/dashboard.ts`.
+- Updated `MonthlyHeatmap` to accept backend `null` months via
+  `MonthlyReturns`.
+- Removed the direct `apiClient` import and all `apiClient.*` calls from
+  `Dashboard/index.tsx`.
+- Added `frontend/src/__tests__/dashboard-api-contract.test.ts` to lock wrapper
+  exports, endpoint params, factor-row normalization, pipeline-step
+  normalization, and the Dashboard page boundary.
+- Batch 30 extended the same contract to row 39
+  `/api/dashboard/market-ticker` and added the compact Dashboard ticker strip.
+
+### §12.3 Verification
+
+- RED: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed
+  before the fix on missing wrapper exports and the direct `apiClient` import.
+- GREEN targeted contract after Batch 30:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` -> 7 passed.
+- Broader frontend/API suite:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 20 passed.
+- Full frontend suite: `npx vitest --run` -> 106 passed.
+- Frontend build: `npm run build` -> exit 0 with the existing Vite vendor
+  chunk-size warning only.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/dashboard`;
+  heading `驾驶舱` was visible and console error list was empty.
+
+### §12.4 Remaining API Governance Backlog
+
+- `DashboardAstock.tsx` and `Portfolio.tsx` are closed in §13 for portfolio
+  endpoint usage and sector-chart normalization.
+- `PTGraduation.tsx`, `RiskManagement.tsx`,
+  and a few shared widgets still import `apiClient`
+  directly. They are candidates for follow-up API-layer contraction only when a
+  code-backed page/API contract gap is confirmed.
+
+## §13 Fresh verify — 2026-06-01 (portfolio API-layer closure)
+
+### §13.1 Finding
+
+`frontend/src/pages/Portfolio.tsx` and `frontend/src/pages/DashboardAstock.tsx`
+previously imported `apiClient` directly for portfolio-side data:
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Portfolio sector chart | `/portfolio/sector-distribution` | `fetchPortfolioSectorDistribution()` |
+| Portfolio daily PnL | `/portfolio/daily-pnl` | `fetchPortfolioDailyPnl()` |
+| Portfolio holding-days map | `/portfolio/holdings` | `fetchHoldingDaysMap()` |
+| A-share dashboard sector chart | `/portfolio/sector-distribution` | `fetchPortfolioSectorDistribution()` |
+
+Risk: the backend `portfolio.py` route returns sector `pct` as percentage and
+`value` as market value. Both frontend charts were using `value` as the
+percentage label/data key, so the page-level contract could display market
+value as a percent and also hid the `/api/portfolio/*` consumers from this
+matrix.
+
+### §13.2 Closure
+
+- Added `frontend/src/api/portfolio.ts` with wrappers for sector distribution,
+  daily PnL, holdings, and holding-days lookup.
+- Normalized sector rows so chart-facing `value` equals `pct`, while
+  `marketValue` preserves the backend value.
+- Added deterministic colors for sector chart consumers.
+- Removed direct `apiClient` imports and calls from `Portfolio.tsx` and
+  `DashboardAstock.tsx`.
+- Added `frontend/src/__tests__/portfolio-api-contract.test.ts` to lock wrapper
+  params, sector normalization, holding-days mapping, and the two page
+  boundaries.
+
+### §13.3 Verification
+
+- RED: `npx vitest --run src/__tests__/portfolio-api-contract.test.ts` failed
+  before the fix because `@/api/portfolio` did not exist.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/portfolio-api-contract.test.ts`
+  -> 4 passed.
+- Broader frontend/API suite:
+  `npx vitest --run src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 24 passed.
+- TypeScript: `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite: `npx vitest --run` -> 110 passed.
+- Frontend build: `npm run build` -> exit 0 with the existing Vite vendor
+  chunk-size warning only.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/portfolio`
+  and `http://127.0.0.1:5173/dashboard/astock`; headings `持仓管理` and
+  `A股详情` were visible and console error lists were empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §13.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`,
+  and `QMTStatusBadge.tsx`.
+- The next contraction should be selected only after confirming a response
+  conversion bug, coverage-matrix blind spot, or broken user workflow from
+  current code.
+
+## §14 Fresh verify — 2026-06-01 (market API-layer closure)
+
+### §14.1 Finding
+
+`frontend/src/pages/MarketData.tsx` previously consumed the three implemented
+market routes directly from the page:
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Main index cards | `/market/indices` | `fetchMarketIndices()` |
+| Sector heatmap | `/market/sectors` | `fetchMarketSectors()` |
+| Top gainers / losers | `/market/top-movers?direction=...&limit=5` | `fetchMarketTopMovers(direction, limit)` |
+
+Risk: this matrix marked rows 75–77 as unconsumed even though the page used
+them inline. That hid real frontend usage from the `frontend/src/api/*.ts`
+coverage methodology and left route params spread across UI code.
+
+Fresh evidence:
+- `frontend/src/pages/MarketData.tsx:61` / §MarketData queries — wrapper query
+  functions in use after fix; fresh verify 2026-06-01 14:51 +08.
+- `frontend/src/api/market.ts:33-47` / §Market wrappers — three `/market/*`
+  routes covered by typed API functions; fresh verify 2026-06-01 14:51 +08.
+
+### §14.2 Closure
+
+- Added `frontend/src/api/market.ts` with typed wrappers for indices, sectors,
+  and top movers.
+- Removed direct `apiClient` import and direct `/market/*` calls from
+  `MarketData.tsx`.
+- Added `frontend/src/__tests__/market-api-contract.test.ts` to lock wrapper
+  endpoints, top-mover params, and the page boundary.
+- Updated rows 75–77 in this matrix and removed `/api/market/*` from §5D.
+
+### §14.3 Verification
+
+- RED: `npx vitest --run src/__tests__/market-api-contract.test.ts` failed
+  before the fix because `src/api/market.ts` did not exist and `MarketData.tsx`
+  imported `apiClient` directly.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/market-api-contract.test.ts`
+  -> 3 passed.
+- Broader frontend/API suite:
+  `npx vitest --run src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 27 passed.
+- TypeScript: `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite: `npx vitest --run` -> 113 passed.
+- Frontend build: `npm run build` -> exit 0 with the existing Vite vendor
+  chunk-size warning only.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/market`;
+  heading `行情数据` and tab `行情概览` were visible, and console error list was
+  empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §14.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`, and
+  `QMTStatusBadge.tsx`.
+- Continue selecting the next contraction only from current code evidence:
+  response conversion bug, coverage-matrix blind spot, or broken user workflow.
+
+## §15 Fresh verify — 2026-06-01 (report center API-layer closure)
+
+### §15.1 Finding
+
+`frontend/src/pages/ReportCenter.tsx` previously consumed two implemented
+report routes directly from the page while `docs/API_COVERAGE.md` rows 118–120
+still marked report endpoints as unwired:
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Report history tab | `/reports/list` | `listReportHistory()` |
+| Quick stats tab | `/reports/quick-stats` | `fetchReportQuickStats()` |
+| Generate report button | already wrapped | `generateReport()` |
+
+Risk: real report-page usage was hidden from the `frontend/src/api/*.ts`
+coverage methodology. `frontend/src/api/reports.ts` also carried an explicit
+comment saying the legacy list endpoint was intentionally inline, preserving
+the stale boundary.
+
+Active discovery at resume:
+- `memory/project_sprint_state.md` / §Current Handoff said Batch 13 still needed
+  commit/push/CI, but fresh `git log` + PR #523 state showed head `0e628bc0`
+  clean with all checks passing. Batch 14 handoff now corrects that drift.
+
+Fresh evidence:
+- `frontend/src/api/reports.ts:142-150` / §Report wrappers — history and quick
+  stats wrappers in place; fresh verify 2026-06-01 15:08 +08.
+- `frontend/src/pages/ReportCenter.tsx:64-70` / §ReportCenter queries —
+  page now calls wrappers; fresh verify 2026-06-01 15:08 +08.
+
+### §15.2 Closure
+
+- Added `listReportHistory()` and `fetchReportQuickStats()` to
+  `frontend/src/api/reports.ts`.
+- Exported typed report history / quick-stats contracts from the API layer.
+- Removed direct `apiClient` import and `/reports/*` calls from
+  `ReportCenter.tsx`.
+- Added `frontend/src/__tests__/report-center-api-contract.test.ts` to lock
+  endpoint params and the page boundary.
+- Updated rows 118–120 and removed `/api/reports/*` from §5D.
+
+### §15.3 Verification
+
+- RED: `npx vitest --run src/__tests__/report-center-api-contract.test.ts`
+  failed before the fix because the wrappers were missing and `ReportCenter.tsx`
+  imported `apiClient` directly.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/report-center-api-contract.test.ts`
+  -> 3 passed.
+- Focused compatibility suite:
+  `npx vitest --run src/__tests__/report-center-api-contract.test.ts src/__tests__/reports-api.test.ts src/__tests__/pages.test.tsx`
+  -> 19 passed.
+- Broader frontend/API pack:
+  `npx vitest --run src/__tests__/report-center-api-contract.test.ts src/__tests__/reports-api.test.ts src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 38 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 116 tests passed across 22 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/reports`;
+  heading `报告中心` and tab text `报告列表` were visible; console errors were
+  empty. Existing dev server on port 5173 was reused and not stopped.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+- Governance guards: V3 banned-word diff scan -> no new hits;
+  `git diff --check` -> exit 0 with Git line-ending warnings only.
+
+### §15.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
+- Continue selecting the next contraction only from current code evidence:
+  response conversion bug, coverage-matrix blind spot, or broken user workflow.
+
+## §16 Fresh verify — 2026-06-01 (risk management API-layer closure)
+
+### §16.1 Finding
+
+`frontend/src/pages/RiskManagement.tsx` previously consumed implemented risk
+routes directly from the page, while rows 121–129 in this matrix still marked
+most `/api/risk/*` endpoints as unwired.
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Status history tab | `/risk/history/{strategy_id}` | `fetchRiskHistory()` |
+| Status summary card | `/risk/summary/{strategy_id}` | `fetchRiskSummary()` |
+| Overview metric cards | `/risk/overview` | `fetchRiskOverviewDisplay()` |
+| Limit monitor tab | `/risk/limits` | `fetchRiskLimits()` |
+| Stress-test tab | `/risk/stress-tests` | `fetchStressTests()` |
+| Header circuit badge | already wrapped | `fetchCircuitBreakerState()` |
+
+Risk: the backend returns raw scalar overview fields, limit statuses
+`normal/warning/danger`, and stress-test fields such as `estimated_loss` and
+`period`. The page expected display metrics, `ok/warn/critical`, and
+`impact/probability/recovery`, so direct page calls could silently show empty
+overview cards and miscount risk-limit severity.
+
+Fresh evidence:
+- `frontend/src/api/risk.ts:225` / §Risk wrappers — history wrapper in place;
+  fresh verify 2026-06-01 15:30 +08.
+- `frontend/src/api/risk.ts:252-277` / §Risk display wrappers — overview,
+  limits, and stress-test normalization in the API layer; fresh verify
+  2026-06-01 15:30 +08.
+- `frontend/src/pages/RiskManagement.tsx:179` / §RiskStatusHistoryPanel —
+  page now calls `fetchRiskHistory`; fresh verify 2026-06-01 15:30 +08.
+- `frontend/src/pages/RiskManagement.tsx:384-400` / §Risk overview loader —
+  page now calls risk API wrappers for live/paper fallback; fresh verify
+  2026-06-01 15:30 +08.
+
+### §16.2 Closure
+
+- Added risk history, summary, overview, limit, and stress-test wrappers to
+  `frontend/src/api/risk.ts`.
+- Normalized backend overview scalars into the six metric cards the page
+  renders.
+- Normalized risk-limit status and percentage display in the API layer.
+- Normalized stress-test rows for the existing stress-test cards without
+  inventing missing time series or exposure data.
+- Kept empty `data_days <= 0` overview responses as empty metric sets so the
+  page still falls back from live to paper data.
+- Removed direct `apiClient` import and all direct `/risk/*` GET calls from
+  `RiskManagement.tsx`.
+- Added `frontend/src/__tests__/risk-management-api-contract.test.ts` to lock
+  wrapper endpoints, response normalization, and the page boundary.
+- Updated rows 121–129 and narrowed the §5D risk backlog to L4 admin mutations
+  before the follow-up admin-flow closure in §17.
+
+### §16.3 Verification
+
+- RED: `npx vitest --run src/__tests__/risk-management-api-contract.test.ts`
+  failed before the fix on missing wrapper exports and the direct page
+  `apiClient` import.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts`
+  -> 7 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts src/__tests__/report-center-api-contract.test.ts src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 37 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 123 tests passed across 23 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/risk`; heading
+  `风控管理`, tab `风控总览`, and tab `限额监控` each resolved once; console error
+  list was empty. Existing dev server on port 5173 was reused and not stopped.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §16.4 Remaining API Governance Backlog
+
+- Superseded by §17 for `SafetyControlPanel` rows 124–125.
+- Continue selecting the next contraction only from current code evidence:
+  response conversion bug, coverage-matrix blind spot, or broken user workflow.
+
+## §17 Fresh verify — 2026-06-01 (SafetyControlPanel L4 API-layer closure)
+
+### §17.1 Finding
+
+`frontend/src/components/safety/SafetyControlPanel.tsx` directly posted L4
+recovery and approval mutations from the component while this matrix still
+marked rows 124–125 as unwired. That left the most privileged risk UI path
+outside the `frontend/src/api/risk.ts` wrapper boundary used by the rest of the
+risk surface.
+
+| UI surface | Previous component-level call | Current wrapper |
+|---|---|---|
+| L4 recovery request | `/risk/l4-recovery/{strategy_id}` | `requestL4Recovery()` |
+| L4 approve/reject | `/risk/l4-approve/{approval_id}` | `approveL4Recovery()` |
+
+Fresh evidence:
+- `backend/app/api/risk.py:206` / §L4 recovery endpoint — POST
+  `/l4-recovery/{strategy_id}` requires admin token and accepts
+  `reviewer_note`; fresh verify 2026-06-01 15:47 +08.
+- `backend/app/api/risk.py:239` / §L4 approve endpoint — POST
+  `/l4-approve/{approval_id}` requires admin token and accepts `approved` plus
+  `reviewer_note`; fresh verify 2026-06-01 15:47 +08.
+- `frontend/src/api/risk.ts:200` and `frontend/src/api/risk.ts:213` /
+  §Risk wrappers — L4 mutation wrappers now own both HTTP calls; fresh verify
+  2026-06-01 15:47 +08.
+- `frontend/src/components/safety/SafetyControlPanel.tsx:151` and
+  `frontend/src/components/safety/SafetyControlPanel.tsx:182` /
+  §Safety panel handlers — component now calls wrappers and no longer imports
+  `apiClient`; fresh verify 2026-06-01 15:47 +08.
+
+### §17.2 Closure
+
+- Added typed `L4RecoveryResponse`, `L4RecoveryState`, and `L4ApproveResponse`
+  contracts to `frontend/src/api/risk.ts`.
+- Added `requestL4Recovery()` and `approveL4Recovery()` wrappers.
+- Refactored `SafetyControlPanel.tsx` to consume the wrappers while preserving
+  existing modal behavior and success/error handling.
+- Extended `frontend/src/__tests__/risk-management-api-contract.test.ts` to
+  lock the two L4 endpoint calls and the component boundary.
+- Updated `frontend/src/__tests__/SafetyControlPanel.test.tsx` mocks so the
+  existing L4 flow tests continue to exercise the UI flow through wrappers.
+- Updated rows 124–125 to covered and removed the L4 row from §5D.
+
+### §17.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts`
+  failed before the fix on missing `requestL4Recovery` /
+  `approveL4Recovery` exports and the direct `SafetyControlPanel` `apiClient`
+  import.
+- GREEN targeted contract/UI:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts src/__tests__/SafetyControlPanel.test.tsx`
+  -> 17 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts src/__tests__/SafetyControlPanel.test.tsx src/__tests__/report-center-api-contract.test.ts src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 47 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 126 tests passed across 23 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/risk`, clicked
+  `紧急控制`, and the DOM contained `熔断状态`, `紧急操作`, and `ENV: paper`;
+  console error list was empty. Existing dev server on port 5173 was reused and
+  not stopped.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §17.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`
+  and `QMTStatusBadge.tsx`.
+- Keep `/api/risk/dingtalk-webhook` classified as webhook/ops, not a frontend
+  wrapper target unless a UI workflow is added.
+- Continue choosing the next closure from current code evidence rather than
+  historical matrix drift alone.
+
+## §18 Fresh verify — 2026-06-01 (QMTStatusBadge health API-layer closure)
+
+### §18.1 Finding
+
+`frontend/src/components/shared/QMTStatusBadge.tsx` directly called
+`/health/qmt`, while row 74 in this matrix still classified the endpoint as
+backend-only monitoring. Fresh grep also showed the badge is exported from the
+shared component barrel but not mounted by current routes, so this is a
+low-blast-radius wrapper-boundary cleanup rather than an active visible page
+bug.
+
+Fresh evidence:
+- `backend/app/api/health.py:78` / §QMT health endpoint — POST-free GET
+  `/qmt` returns `qmt_manager.health_check()`; fresh verify 2026-06-01
+  16:00 +08.
+- `backend/app/services/qmt_connection_manager.py:142` / §health_check —
+  response includes `execution_mode`, `state`, `account_id`, `connected_at`,
+  `last_error`, and `is_healthy`; fresh verify 2026-06-01 16:00 +08.
+- `frontend/src/api/system.ts:184` / §System wrappers — `fetchQmtHealth()`
+  now owns the `/health/qmt` call; fresh verify 2026-06-01 16:00 +08.
+- `frontend/src/components/shared/QMTStatusBadge.tsx:16` / §Badge query —
+  badge now uses `fetchQmtHealth`; fresh verify 2026-06-01 16:00 +08.
+
+### §18.2 Closure
+
+- Added `QmtAccountAsset` and `QmtHealth` types to
+  `frontend/src/api/system.ts`.
+- Added `fetchQmtHealth()` as the typed `/health/qmt` wrapper.
+- Refactored `QMTStatusBadge.tsx` to consume `fetchQmtHealth` and remove direct
+  `apiClient` usage.
+- Added `frontend/src/__tests__/health-api-contract.test.ts` to lock the
+  wrapper endpoint and component boundary.
+- Updated row 74 and clarified §5A so `/health/qmt` is no longer counted as
+  pure backend-only monitoring.
+
+### §18.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/health-api-contract.test.ts` first failed on
+  the missing `fetchQmtHealth` export and direct `QMTStatusBadge` `apiClient`
+  import after tightening the test to the existing `system.ts` API module.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/health-api-contract.test.ts` -> 2 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/health-api-contract.test.ts src/__tests__/system-api-scheduler.test.ts src/__tests__/system-api-paper-sid.test.ts src/__tests__/risk-management-api-contract.test.ts src/__tests__/SafetyControlPanel.test.tsx src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 44 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 128 tests passed across 24 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §18.4 Remaining API Governance Backlog
+
+- Superseded by §19: `PTGraduation.tsx` direct API usage is closed.
+- Since `QMTStatusBadge` is not mounted by current routes, browser smoke should
+  remain an app-load smoke unless a route starts rendering the badge.
+
+## §19 Fresh verify — 2026-06-01 (PTGraduation paper-trading API-layer closure)
+
+### §19.1 Finding
+
+`frontend/src/pages/PTGraduation.tsx` directly called
+`/paper-trading/graduation-status`, while rows 94-96 in this matrix still
+classified the paper-trading page data as backend-only. Fresh code review showed
+`/paper-trading/trades` and the `/paper-trading/positions` fallback were already
+owned by `frontend/src/api/dashboard.ts`; the remaining page bypass was the
+graduation-status request.
+
+Fresh evidence:
+- `backend/app/api/paper_trading.py:101` / §paper_trading router — GET
+  `/graduation-status`; fresh verify 2026-06-01 16:14 +08.
+- `backend/app/api/paper_trading.py:224` and `:243` / §paper_trading router —
+  GET `/positions` and GET `/trades`; fresh verify 2026-06-01 16:14 +08.
+- `frontend/src/api/dashboard.ts:67`, `:99`, and `:109` / §Dashboard API
+  wrappers — paper trades, graduation status, and positions wrappers; fresh
+  verify 2026-06-01 16:14 +08.
+- `frontend/src/pages/PTGraduation.tsx:264` / §PTGraduation effect — page now
+  calls `fetchPaperGraduationStatus("live")`; fresh verify 2026-06-01
+  16:14 +08.
+
+### §19.2 Closure
+
+- Added `PaperGraduationCriterion`, `PaperGraduationStatus`, and
+  `fetchPaperGraduationStatus()` to `frontend/src/api/dashboard.ts`.
+- Removed direct `apiClient` usage from `PTGraduation.tsx`.
+- Added `frontend/src/__tests__/pt-graduation-api-contract.test.ts` to lock the
+  wrapper endpoint and page boundary.
+- Updated rows 94-96 and narrowed §5D to the two unwrapped legacy PT endpoints:
+  `/api/paper-trading/status` and `/api/paper-trading/graduation`.
+
+### §19.3 Verification
+
+- RED: `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts`
+  first failed because `fetchPaperGraduationStatus()` was missing and
+  `PTGraduation.tsx` imported `apiClient` directly.
+- GREEN targeted contract + trade panel:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts src/__tests__/TradeLogPanel.test.tsx`
+  -> 5 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts src/__tests__/TradeLogPanel.test.tsx src/__tests__/dashboard-api-contract.test.ts src/__tests__/health-api-contract.test.ts src/__tests__/risk-management-api-contract.test.ts`
+  -> 23 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 130 tests passed across 25 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS, and production page/component grep for direct `apiClient` imports
+  returned no matches.
+- Browser smoke: in-app browser opened
+  `http://127.0.0.1:5173/pt-graduation`; `PT 毕业评估` was visible with backend
+  data loaded and console errors empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §19.4 Remaining API Governance Backlog
+
+- Direct `apiClient` imports in production pages/components: none found by the
+  current audit scan.
+- Rows 92-93 remain as a low-risk paper-trading API backlog until a current
+  frontend workflow needs the legacy status/criteria endpoints.
+
+## §20 Fresh verify — 2026-06-01 (ApprovalQueue API coverage drift closure)
+
+### §20.1 Finding
+
+Rows 12-16 still classified approval detail, approve, reject, hold, and history
+as unwired, and §5D still described the approval workflow as incomplete. Fresh
+code review showed this was documentation drift: `frontend/src/api/approval.ts`
+already wraps all six approval endpoints, `ApprovalQueue.tsx` is mounted at
+`/approval-queue`, and the sidebar exposes it as `因子审批`.
+
+Fresh evidence:
+- `backend/app/api/approval.py:205`, `:234`, `:259`, `:290`, `:321`, and
+  `:353` / §approval router — queue list, detail, approve, reject, hold, and
+  history endpoints; fresh verify 2026-06-01 16:21 +08.
+- `frontend/src/api/approval.ts:84`, `:92`, `:98`, `:110`, `:122`, and `:134`
+  / §Approval API wrappers — all six endpoint wrappers; fresh verify
+  2026-06-01 16:21 +08.
+- `frontend/src/pages/ApprovalQueue.tsx:279`, `:450`, `:601`, `:607`, `:619`,
+  and `:631` / §ApprovalQueue page — pending, history, detail, approve, reject,
+  and hold consumers; fresh verify 2026-06-01 16:21 +08.
+- `frontend/src/router.tsx:82` and `frontend/src/components/layout/Sidebar.tsx:82`
+  / §Route + nav — `/approval-queue` mounted and reachable; fresh verify
+  2026-06-01 16:21 +08.
+
+### §20.2 Closure
+
+- Added `frontend/src/__tests__/approval-api-contract.test.ts` to lock the
+  endpoint mapping for queue reads and admin actions.
+- Updated rows 12-16 to covered.
+- Removed the stale approval workflow row from §5D.
+- No production behavior changed; this batch reduces audit noise and preserves
+  the existing ApprovalQueue implementation.
+
+### §20.3 Verification
+
+- Characterization contract + page guard:
+  `npx vitest --run src/__tests__/approval-api-contract.test.ts src/__tests__/ApprovalQueue.test.tsx`
+  -> 9 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 132 tests passed across 26 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened
+  `http://127.0.0.1:5173/approval-queue`; `因子审批队列`, `待审批`, and `历史`
+  were visible, the page returned the empty-state view, and console errors were
+  empty. No approval actions were clicked.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §20.4 Remaining API Governance Backlog
+
+- Approval queue is no longer part of §5D.
+- Admin action browser smoke should not click approve/reject/hold without a
+  separately scoped operator test fixture and explicit non-production target.
+
+## §21 Fresh verify — 2026-06-01 (BacktestCompare S5 trade diff closure)
+
+### §21.1 Finding
+
+MVP 5.3 promised a lazy S5 trade-diff section for BacktestCompare, and the page
+header still claimed lazy `/backtest/{run_id}/trades` usage, but fresh code
+review showed the page only rendered S1-S4. The coverage matrix also still
+classified both row 24 `/nav` and row 25 `/trades` as unwired even though NAV
+was already wrapped and consumed. Runtime browser verification then found a
+second API-contract gap: `/api/backtest/compare` returns Decimal fields as
+strings, while `MetricRow` assumed the API layer returned numbers.
+
+Fresh evidence:
+- `docs/mvp/MVP_5_3_backtest_compare.md:36` and `:74` / §MVP 5.3 design —
+  S5 trade diff was in scope; fresh verify 2026-06-01 16:31 +08.
+- `backend/app/api/backtest.py:429`, `:469`, and `:1081` / §backtest router —
+  NAV, trades, and compare endpoints; fresh verify 2026-06-01 16:38 +08.
+- `frontend/src/api/backtest.ts:340`, `:355`, `:419`, and `:427` /
+  §Backtest API wrappers — compare numeric normalization, `getNavSeries()`,
+  and `getBacktestTrades()`; fresh verify 2026-06-01 16:38 +08.
+- `frontend/src/pages/BacktestCompare.tsx:334`, `:339`, `:355`, and `:645` /
+  §BacktestCompare S5 — lazy trade section, query, heading, and render site;
+  fresh verify 2026-06-01 16:38 +08.
+
+### §21.2 Closure
+
+- Added `BacktestTradeRow`, `BacktestTradesResponse`, `BacktestTradesParams`,
+  and `getBacktestTrades()` to `frontend/src/api/backtest.ts`.
+- Added `TradeListDiff` to `BacktestCompare.tsx`. It is collapsed by default
+  and fetches each run's first trade page only after the operator expands S5.
+- Added a per-run trade table and first-page signed-share difference summary.
+- Normalized compare metric fields in `compareBacktests()` so Decimal strings
+  are converted before `BacktestCompare.tsx` renders metric cells.
+- Added `frontend/src/__tests__/backtest-compare-trade-contract.test.ts`.
+- Updated rows 24-25 and narrowed §5D to the remaining deep-dive backtest
+  endpoints.
+
+### §21.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts`
+  first failed because `getBacktestTrades()` was missing and `BacktestCompare`
+  did not contain `TradeListDiff`.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts`
+  -> 3 passed after adding trade wrapper + Decimal-string normalization.
+- TypeScript: `npx tsc -b --pretty false` first caught a nullable aggregate
+  index in `buildTradeDiffRows`; after the fix, it exited 0.
+- Full frontend suite: `npx vitest --run` -> 135 tests passed across 27 files.
+- TypeScript/build: `npm run build` -> exit 0 with the existing Vite
+  vendor-echarts chunk-size warning.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened
+  `http://127.0.0.1:5173/backtest/compare?runs=2c91bd92-ee0f-4f52-9244-795365cc1037,3d7ecc84-0536-4d26-ac07-3eca4d53bdc4`,
+  verified S5 collapsed, expanded it, saw per-run `无交易记录` state from the
+  lazy trades endpoint, and fresh console errors were empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §21.4 Remaining API Governance Backlog
+
+- Backtest rows 26-32 and 35 are now consumed by BacktestResults (§23).
+  Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog.
+
+## §22 Fresh verify — 2026-06-01 (Backtest detail endpoint schema/runtime hardening)
+
+### §22.1 Finding
+
+Batch 20's browser smoke exposed an adjacent backend runtime gap: several
+backtest detail endpoints were marked as backend-implemented in rows 26-32 and
+35, but their SQL no longer matched the actual DDL and writer contract. The
+visible symptom was an empty BacktestCompare chart path plus server-side 500s
+when detail endpoints queried columns that do not exist in the committed schema.
+
+Fresh evidence:
+- `docs/QUANTMIND_V2_DDL_FINAL.sql:599-640` / §backtest DDL — `backtest_daily_nav`
+  has `benchmark_nav` but no `benchmark_return`; `backtest_trades` has
+  `trade_id` but no `id`; `backtest_holdings` has `shares`, `cost_basis`, and
+  `market_price` but no stored `market_value` or `pnl`; fresh verify
+  2026-06-01 16:56 +08.
+- `backend/app/tasks/backtest_tasks.py:579-605` / §backtest result writer —
+  writer inserts trades without `target_price`/`transfer_fee` and NAV rows with
+  `benchmark_nav`, not `benchmark_return`; fresh verify 2026-06-01 16:56 +08.
+- `backend/app/api/backtest.py:122`, `:458`, `:570`, `:623`, `:921`,
+  `:1036`, and `:1297` / §backtest router — patched runtime contract points;
+  fresh verify 2026-06-01 16:56 +08.
+
+### §22.2 Closure
+
+- Narrowed `_safe_query()` so only missing relation errors return an empty list;
+  undefined-column schema drift now fails loud instead of being reported as no
+  data.
+- Derived `benchmark_return` from `benchmark_nav` with `LAG(benchmark_nav)` for
+  NAV/report paths.
+- Updated trades SQL to select `trade_id AS id` and use `CAST(NULL AS NUMERIC)`
+  placeholders for fields not stored by the writer.
+- Derived holdings `market_value` and `pnl` from actual holdings columns.
+- Normalized Decimal/date/UUID values before detail responses leave
+  `backend/app/api/backtest.py`.
+- Updated the frontend trade-row type to accept UUID string IDs returned by the
+  backend.
+- Added `backend/tests/test_backtest_detail_endpoint_contract.py` covering
+  fail-loud schema errors, JSON-friendly conversion, DDL-aligned SQL guards,
+  trades UUID IDs, cost-sensitivity Decimal arithmetic, and live-compare metric
+  conversion.
+
+### §22.3 Verification
+
+- RED:
+  `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` first
+  failed on the new guards because trades SQL still used `NULL::numeric`, direct
+  endpoint-call defaults needed explicit query args, and the cost-sensitivity
+  assertion targeted the non-baseline row.
+- GREEN targeted:
+  `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7
+  passed.
+- Existing backtest/A6 compatibility:
+  `pytest backend/tests/test_a4_a6.py::TestA6BacktestNavEndpoint backend/tests/test_backtest_api.py -q`
+  -> 33 passed.
+- Backend lint/compile:
+  `ruff check backend/app/api/backtest.py backend/tests/test_backtest_detail_endpoint_contract.py`
+  -> PASS; `python -m py_compile backend/app/api/backtest.py` -> PASS.
+- Frontend compatibility:
+  `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` ->
+  3 passed; `npx tsc -b --pretty false` -> exit 0; frontend API discipline
+  guard -> PASS.
+- Real DB read-only runtime check against run
+  `2c91bd92-ee0f-4f52-9244-795365cc1037`: direct calls to nav, trades,
+  holdings summary, annual, monthly, attribution, market-state,
+  cost-sensitivity, live-compare, and report all returned without runtime
+  errors; the generated report temp file was removed after verification.
+
+### §22.4 Remaining API Governance Backlog
+
+- Rows 26-32 and 35 were backend-runtime-hardened here and are now
+  frontend-wired in §23 through `frontend/src/api/backtest.ts` wrappers and
+  `BacktestResults.tsx`.
+- Row 34 `/api/backtest/{run_id}/sensitivity` remains deferred/backlog by
+  design.
+
+### §22.5 Aggregate Count Drift Surfaced
+
+While correcting the backtest cancel row, Batch 21 re-ran the raw route/module
+counts. This supersedes the older §10 headline count but does not replace the
+row-level matrix audit, which remains future work for non-backtest domains.
+
+- Backend raw grep:
+  `rg -n "@router\\.(get|post|put|delete|patch)\\(" backend/app/api -g "*.py"`
+  -> 170 route decorators across 25 router files.
+- Per-router counts:
+  agent 10, approval 6, attribution 2, auth 3, backtest 17, dashboard 8,
+  execution 3, execution_ops 17, factors 11, health 3, market 3, mining 5,
+  news 4, notifications 9, paper_trading 5, params 7, pipeline 12,
+  portfolio 3, realtime 2, remote_status 2, report 5, risk 12, sse 1,
+  strategies 10, system 10.
+- Frontend API modules:
+  18 `frontend/src/api/*.ts` files: agent, approval, attribution, backtest,
+  client, dashboard, execution, factors, market, mining, notifications,
+  pipeline, portfolio, realtime, reports, risk, strategies, system.
+
+Backlog: run a dedicated API coverage refresh to update every non-backtest
+row-level mapping and stale count paragraph rather than silently editing only
+the headline numbers.
+
+## §23 Fresh verify — 2026-06-01 (BacktestResults deep-dive wiring)
+
+### §23.1 Finding
+
+After §22 hardened the backtest detail endpoints, rows 26-32 and 35 still had a
+frontend integration gap: `BacktestResults.tsx` read only sparse
+`/backtest/{run_id}/result` data, while the dedicated detail endpoints for
+holdings, annual/monthly slices, Brinson attribution, market-state,
+cost-sensitivity, report download, and live-compare were left unused.
+
+Fresh evidence:
+- `frontend/src/pages/BacktestResults.tsx:860`, `:884`, and `:1010-1013` /
+  §BacktestResults queries and tabs — page now calls the detail wrappers and
+  renders attribution/cost/market/live tabs; fresh verify 2026-06-01 17:18 +08.
+- `frontend/src/api/backtest.ts:541`, `:553`, `:567`, `:591`, `:636`, `:650`,
+  `:660`, `:682`, `:707`, `:742`, and `:759` / §Backtest detail wrappers —
+  monthly, holdings, annual risk, attribution, cost, market-state,
+  live-compare, and report URL are normalized in the API layer; fresh verify
+  2026-06-01 17:18 +08.
+- `frontend/src/__tests__/backtest-results-detail-contract.test.ts` and
+  `frontend/src/__tests__/backtest-results-page-render.test.tsx` /
+  §frontend contracts — wrappers and rendered tabs are locked by tests; fresh
+  verify 2026-06-01 17:18 +08.
+
+### §23.2 Closure
+
+- Added typed backtest detail wrappers in `frontend/src/api/backtest.ts`.
+- Updated `BacktestResults.tsx` so `/result` remains the summary source while
+  monthly returns, latest holdings, trades, annual risk metrics, attribution,
+  cost sensitivity, market-state, and live-compare load from dedicated detail
+  endpoints.
+- Added tabs for industry attribution, cost sensitivity, market-state, and
+  live-compare, and changed report export to use `/backtest/{run_id}/report`.
+- Updated the coverage matrix rows 26-32 and 35 to consumed.
+- Kept row 34 `/api/backtest/{run_id}/sensitivity` in backlog; the existing
+  backend endpoint remains intentionally deferred from the deep-dive page.
+
+### §23.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/backtest-results-detail-contract.test.ts`
+  first failed because the wrappers and page wiring were absent.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/backtest-results-page-render.test.tsx src/__tests__/backtest-results-detail-contract.test.ts`
+  -> 7 passed.
+- Frontend regression:
+  `npx tsc -b --pretty false` -> exit 0;
+  `python scripts/audit/check_frontend_api_discipline.py` -> PASS;
+  `npx vitest --run` -> 142 passed;
+  `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size
+  warning.
+- Backend compatibility:
+  `pytest backend/tests/test_backtest_detail_endpoint_contract.py -q` -> 7
+  passed.
+- Backend smoke/pre-push:
+  `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected; `bash config/hooks/pre-push` -> X10 clean, LLM import guard
+  clean, smoke 91 passed, 2 skipped, 6976 deselected.
+- Runtime proof against current source:
+  temporary uvicorn on `127.0.0.1:8011` served run
+  `2c91bd92-ee0f-4f52-9244-795365cc1037`; monthly=4, holdings_summary=0,
+  holdings_detail=0, annual=1, attribution_industries=0, market_states=0,
+  cost_rows=4, live_compare_has_backtest=true. The temporary process was
+  stopped after verification.
+
+### §23.4 Runtime Ops Note
+
+The existing Servy FastAPI listener on `127.0.0.1:8000` still emitted old SQL
+errors during verification (`AVG(pnl)`, `benchmark_return`, and Decimal/float
+cost arithmetic), which indicates the service process had not loaded the §22
+backend changes yet. This batch did not restart Servy. Ops backlog: reload the
+FastAPI service in a separate runtime step, then re-run the same detail endpoint
+probe against port 8000 before declaring deployed runtime parity.
+
+## §24 Fresh verify — 2026-06-01 (System Redis Streams viewer)
+
+### §24.1 Finding
+
+Row 144 `GET /api/system/streams` was backend-implemented but frontend-unwired.
+The health page already exposed service and resource status, but Redis Streams
+state required an external query path.
+
+Fresh evidence:
+- `backend/app/api/system.py:567` / §system streams endpoint — the route returns
+  `{"streams": bus.all_streams_status()}`; fresh verify 2026-06-01 17:33 +08.
+- `backend/app/core/stream_bus.py:191` / §StreamBus status summary — each row
+  contains `stream`, `length`, and `last_published_at`; fresh verify
+  2026-06-01 17:33 +08.
+- `frontend/src/api/system.ts:194` / §System wrappers — `fetchSystemStreams()`
+  now wraps `/system/streams`; fresh verify 2026-06-01 17:33 +08.
+- `frontend/src/pages/SystemSettings.tsx:63` and `:644` /
+  §SystemSettings health tab — the Redis Streams panel loads through the API
+  wrapper and is mounted under health; fresh verify 2026-06-01 17:33 +08.
+
+### §24.2 Closure
+
+- Added typed Redis Streams API wrapper in `frontend/src/api/system.ts`.
+- Added a read-only Redis Streams panel to `SystemSettings` health tab with
+  30-second refresh, stream counts, total messages, per-stream length, and last
+  publish time.
+- Added wrapper and rendered-page contract tests.
+- Updated row 144 to consumed and removed it from §5D.
+
+### §24.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/system-api-streams.test.ts src/__tests__/system-settings-streams.test.tsx`
+  first failed because the wrapper and panel were absent.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/system-api-streams.test.ts src/__tests__/system-settings-streams.test.tsx`
+  -> 2 passed.
+- Frontend regression:
+  `npx tsc -b --pretty false` -> exit 0;
+  `python scripts/audit/check_frontend_api_discipline.py` -> PASS;
+  `npx vitest --run` -> 144 passed;
+  `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size
+  warning.
+- Backend smoke/pre-push:
+  `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected; `bash config/hooks/pre-push` -> X10 clean, LLM import guard
+  clean, smoke 91 passed, 2 skipped, 6976 deselected.
+
+### §24.4 Remaining Work
+
+Commit/push and GitHub checks remain pending for Batch 23.
+
+## §25 Fresh verify — 2026-06-01 (Factor `{name}` coverage drift)
+
+### §25.1 Finding
+
+Row 69 `GET /api/factors/{name}` was marked backend-only in §4/§5D, but current
+frontend code already consumes it through `fetchFactorIcSeries()` for the
+IcMonitoring S1 chart. This was coverage documentation drift, not an
+implementation gap.
+
+Fresh evidence:
+- `backend/app/api/factors.py:477` / §single factor detail endpoint — route
+  returns factor metadata, stats, and `ic_series`; fresh verify 2026-06-01
+  17:45 +08.
+- `frontend/src/api/factors.ts:56` and `:61` / §factor API wrappers —
+  `fetchFactorIcSeries()` calls `/factors/{factorName}` with date params; fresh
+  verify 2026-06-01 17:45 +08.
+- `frontend/src/pages/IcMonitoring.tsx:25`, `:76`, and `:82` /
+  §IcMonitoring S1 — page query uses `fetchFactorIcSeries()` for the selected
+  factor; fresh verify 2026-06-01 17:45 +08.
+- `frontend/src/__tests__/factors-api.test.ts:29` and `:56` /
+  §factor API contracts — test now locks wrapper endpoint mapping and page
+  consumption; fresh verify 2026-06-01 17:45 +08.
+
+### §25.2 Closure
+
+- Added contract coverage for `fetchFactorIcSeries()`.
+- Updated the factor API inventory to current call sites, including
+  `health-check` and `correlation-prune`.
+- Marked row 69 consumed and removed it from §5D.
+- Updated historical O9 to reflect the already-repaired `POST
+  /factors/health-check` wrapper.
+
+### §25.3 Verification
+
+- Contract:
+  `npx vitest --run src/__tests__/factors-api.test.ts` -> 4 passed.
+- Frontend regression:
+  `npx tsc -b --pretty false` -> exit 0;
+  `python scripts/audit/check_frontend_api_discipline.py` -> PASS;
+  `npx vitest --run` -> 146 passed;
+  `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size
+  warning.
+- Backend smoke/pre-push:
+  `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected; `bash config/hooks/pre-push` -> X10 clean, LLM import guard
+  clean, smoke 91 passed, 2 skipped, 6976 deselected.
+
+### §25.4 Remaining Work
+
+Batch 24 commit, push, and GitHub checks completed before Batch 25. No factor
+row 69 work remains.
+
+## §26 Fresh verify — 2026-06-01 (Notification detail view + unread-count reclass)
+
+### §26.1 Finding
+
+Rows 88-89 in §5D bundled two different cases. Fresh code review showed
+`GET /api/notifications/unread-count` is intentionally redundant because
+`GET /api/notifications` already returns `unread_count`, while
+`GET /api/notifications/{notification_id}` still lacked a frontend consumer.
+
+Fresh evidence:
+- `backend/app/api/notifications.py:74` and `:99-104` / §list route — list
+  response includes `unread_count`; fresh verify 2026-06-01 18:05 +08.
+- `backend/app/api/notifications.py:107` / §unread-count route — standalone
+  count endpoint remains backend-only by design; fresh verify 2026-06-01
+  18:05 +08.
+- `backend/app/api/notifications.py:186` / §notification detail route — detail
+  endpoint returns `repo.get_by_id()` or 404; fresh verify 2026-06-01
+  18:05 +08.
+- `frontend/src/api/notifications.ts:129` and `:134` / §notification API
+  wrappers — `fetchNotificationDetail()` calls `/notifications/{id}` and
+  normalizes the backend row; fresh verify 2026-06-01 18:05 +08.
+- `frontend/src/components/ui/NotificationPanel.tsx:128` and `:133` /
+  §notification panel — no-link rows fetch and render backend detail content;
+  fresh verify 2026-06-01 18:05 +08.
+
+### §26.2 Closure
+
+- Added `fetchNotificationDetail()` to the unified notification API layer.
+- Added a no-link notification detail state to `NotificationPanel`, including
+  load/error/detail/list states.
+- Added a dropdown-close regression so a reopened panel returns to the list
+  instead of stale detail content.
+- Reclassified row 88 as redundant and removed the notification row from §5D.
+
+### §26.3 Verification
+
+- RED detail contract:
+  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
+  failed before the wrapper/panel change because `fetchNotificationDetail` was
+  missing and the panel never called the backend detail endpoint.
+- RED close-state regression:
+  `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "returns to the list"`
+  failed before the close-path fix because reopened dropdowns still showed the
+  prior detail body.
+- GREEN targeted notification contracts:
+  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
+  -> 13 passed.
+
+Full regression/build/smoke results are recorded in the Batch 25 status report.
+
+### §26.4 Remaining Work
+
+Notification cleanup, preferences, and admin test endpoints remain backend/admin
+workflow candidates. They are not part of the current operator panel chain.
+
+## §27 Fresh verify — 2026-06-01 (Execution read-only DB fallback + mutation reclass)
+
+### §27.1 Finding
+
+Rows 44-46 and row 62 were grouped as frontend-unwired execution work, but fresh
+code review split them into three different classes:
+
+- Rows 44-45 are read-only DB trade-log visibility endpoints from
+  `backend/app/api/execution.py`; wiring them gives the Execution page useful
+  planned/executed trade visibility when QMT orders/trades are unavailable.
+- Row 46 `/api/execution/algo-config` is a legacy display-only endpoint. Prior
+  audits already found it can expose stale `strategy_configs` display values and
+  is not in the trading path.
+- Row 62 `/api/execution/alert-config` is admin-gated but only writes
+  `operation_audit_log` and echoes the payload. It does not persist config or
+  reload runtime rules, so a UI would imply a mutation that does not happen.
+
+Fresh evidence:
+- `backend/app/api/execution.py:29` / §pending-orders route — read-only
+  `trade_log` query for unexecuted rows; fresh verify 2026-06-01 18:15 +08.
+- `backend/app/api/execution.py:94` / §execution-log route — read-only
+  `trade_log` query with date/limit params; fresh verify 2026-06-01 18:15 +08.
+- `backend/app/api/execution.py:186` / §algo-config route — legacy
+  `strategy_configs` display endpoint; fresh verify 2026-06-01 18:15 +08.
+- `backend/app/api/execution_ops.py:880` / §alert-config route — audit-only
+  update endpoint with no config persistence; fresh verify 2026-06-01 18:15 +08.
+- `frontend/src/api/execution.ts:295` and `:304` / §execution API wrappers —
+  frontend now wraps pending orders and execution log; fresh verify 2026-06-01
+  18:15 +08.
+- `frontend/src/pages/Execution/index.tsx:149-160`, `:594-642`, and `:685-738`
+  / §Execution page — page fetches the DB fallback rows and displays them when
+  QMT orders/trades are absent; fresh verify 2026-06-01 18:15 +08.
+
+### §27.2 Closure
+
+- Added typed `getPendingOrders()` and `getExecutionLog()` wrappers.
+- Added query keys and Execution page fallback tables for DB pending orders and
+  DB execution log rows.
+- Added API contract and source-guard tests for rows 44-45.
+- Marked row 46 as legacy display-only and moved row 62 to §5E backend
+  semantics-needed.
+- Removed execution rows from §5D.
+
+### §27.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/execution-api-contract.test.ts` failed before
+  implementation because the wrappers and page imports did not exist.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/execution-api-contract.test.ts` -> 3 passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full regression/build/smoke results are recorded in the Batch 26 status report.
+
+### §27.4 Remaining Work
+
+`PUT /api/execution/alert-config` needs an explicit backend design before UI:
+define storage, validation, diff preview, reload semantics, audit record, and
+rollback path. Until then, it should not be wired into the operator panel.
+
+## §28 Fresh verify — 2026-06-01 (Paper trading status + graduation reclass)
+
+### §28.1 Finding
+
+Rows 92-93 were grouped as legacy paper-trading endpoints. Fresh code review
+showed they should be split:
+
+- Row 92 `/api/paper-trading/status` is a useful read-only PT lifecycle/status
+  endpoint. `PtStatus.tsx` already had an S2 trading-state card, but it only
+  showed environment/config state and did not consume the PT status payload.
+- Row 93 `/api/paper-trading/graduation` is a legacy parameterized criteria
+  endpoint requiring caller-supplied backtest baselines. Current UI and fixed
+  gate semantics use `/api/paper-trading/graduation-status`, already wrapped by
+  `fetchPaperGraduationStatus()`.
+
+Fresh evidence:
+- `backend/app/api/paper_trading.py:57` / §paper-trading-status route —
+  read-only status endpoint returning NAV, position count, running days, Sharpe,
+  MDD, total return, latest date, and graduation-ready flag; fresh verify
+  2026-06-01 18:33 +08.
+- `backend/app/api/paper_trading.py:76` / §paper-trading-graduation route —
+  parameterized baseline comparison endpoint; fresh verify 2026-06-01 18:33 +08.
+- `backend/app/api/paper_trading.py:101` / §paper-trading-graduation-status
+  route — fixed-standard UI endpoint; fresh verify 2026-06-01 18:33 +08.
+- `frontend/src/api/dashboard.ts:85` / §paper status wrapper — frontend now
+  wraps `/paper-trading/status`; fresh verify 2026-06-01 18:33 +08.
+- `frontend/src/pages/PtStatus.tsx:403-405` and `:448` / §PT status page —
+  page now queries and renders the read-only PT status payload in S2; fresh
+  verify 2026-06-01 18:33 +08.
+
+### §28.2 Closure
+
+- Added typed `PaperTradingStatus` and `fetchPaperTradingStatus()` to
+  `frontend/src/api/dashboard.ts`.
+- Wired `PtStatus.tsx` S2 trading-state card to display PT NAV, holdings count,
+  running days, latest data date, Sharpe, MDD, cumulative return, and graduation
+  day readiness.
+- Added contract/source-guard tests for the status wrapper and page usage.
+- Marked row 92 as consumed and row 93 as superseded by the fixed-standard
+  graduation-status endpoint.
+
+### §28.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` failed
+  before implementation because `fetchPaperTradingStatus()` and PtStatus page
+  usage were missing.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts` -> 4
+  passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full regression/build/smoke results are recorded in the Batch 27 status report.
+
+### §28.4 Remaining Work
+
+`/api/paper-trading/graduation` should stay out of the current operator UI
+unless the product reintroduces caller-supplied backtest baselines. The active
+gate view should continue to use `/api/paper-trading/graduation-status`.
+
+## §29 Fresh verify — 2026-06-01 (Strategy edit route + read-only metadata)
+
+### §29.1 Finding
+
+Rows 134-136 and 140-141 were grouped as one strategy-management gap, but fresh
+code review split them into four classes:
+
+- Row 134 `/api/strategies/{strategy_id}/versions` and row 140
+  `/api/strategies/{strategy_id}/factors` are read-only metadata endpoints.
+  They belong on the strategy edit workspace because they help the operator
+  understand the loaded strategy before saving or configuring a backtest.
+- `/strategy/:id` already existed in the router, but `StrategyWorkspace.tsx`
+  ignored the route id and opened a blank editor. The edit action from
+  `StrategyLibrary.tsx` therefore did not load the selected backend strategy.
+- Existing create/update wrappers sent the UI editor payload directly, while
+  the backend requires `market`, `config`, and `factor_names` on create, and
+  `factor_config` / `backtest_config` on update.
+- Row 141 `/api/strategies/{strategy_id}/backtest` is a direct async trigger.
+  Current operator flow should stay on `/backtest/config?strategy_id=...`,
+  then submit through `/api/backtest/run` after config review.
+- Rows 135-136 are real version mutations and need an explicit diff/rollback
+  workflow before UI exposure.
+
+Fresh evidence:
+- `backend/app/api/strategies.py:29`, `:38`, and `:60` / §request models —
+  create/update/backtest request bodies require backend-specific shapes; fresh
+  verify 2026-06-01 18:48 +08.
+- `backend/app/api/strategies.py:115`, `:148`, `:174`, `:268`, and `:290` /
+  §strategy router — versions GET, version create, rollback, factors GET, and
+  direct backtest trigger are separate endpoints with different risk profiles;
+  fresh verify 2026-06-01 18:48 +08.
+- `frontend/src/router.tsx:51-53` / §strategy routes — `/strategy/:id` is a
+  real edit route; fresh verify 2026-06-01 18:48 +08.
+- `frontend/src/api/strategies.ts:243-261`, `:270`, and `:287` / §strategy API
+  wrappers — frontend now normalizes detail, versions, and factors and adapts
+  create/update payloads to backend request bodies; fresh verify 2026-06-01
+  18:48 +08.
+- `frontend/src/pages/StrategyWorkspace.tsx:120`, `:162`, `:172`, and `:243` /
+  §strategy workspace — page now reads the route id, queries versions/factors,
+  and routes backtests through the confirmation page; fresh verify 2026-06-01
+  18:48 +08.
+
+### §29.2 Closure
+
+- Added typed strategy detail/version/factor wrappers and backend-shape
+  normalization in `frontend/src/api/strategies.ts`.
+- Adapted create/update wrappers to the backend request contract.
+- Wired `/strategy/:id` to load the selected strategy into `StrategyWorkspace`.
+- Added a compact versions/factors metadata panel to the strategy workspace.
+- Changed strategy backtest navigation to include `strategy_id` in the existing
+  config-confirmation route instead of calling the direct strategy trigger.
+- Marked rows 134 and 140 as consumed, moved rows 135-136 to §5E, and moved row
+  141 to §5C as superseded by the confirmation flow.
+
+### §29.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` failed before
+  implementation because detail normalization, versions/factors wrappers,
+  backend-shape create/update adaptation, and route-id workspace wiring were
+  missing.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` -> 5 passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full regression/build/smoke results are recorded in the Batch 28 status report.
+
+### §29.4 Remaining Work
+
+Rows 135-136 need a small version-management design before implementation:
+version diff preview, required changelog text, rollback confirmation, audit
+record display, post-mutation reload, and a regression proving the editor
+refreshes after rollback. Row 141 should remain outside the workspace unless a
+separate "quick run" product decision replaces the safer config-confirmation
+path.
+
+## §30 Fresh verify — 2026-06-01 (Backtest sensitivity defer reclass)
+
+### §30.1 Finding
+
+Row 34 `/api/backtest/{run_id}/sensitivity` was the last §5D item, but fresh
+code review shows it is not a missed frontend integration. The backend endpoint
+is intentionally preserved as a 200/`status="deferred"` contract that explains
+why real sensitivity execution was deferred to a Phase B architecture pass.
+
+Wiring this endpoint into the UI today would show a deferred placeholder, not a
+working sensitivity analysis. The usable quick what-if surface already exists
+through row 31 `/api/backtest/{run_id}/cost-sensitivity`, which is consumed by
+`BacktestResults.tsx`.
+
+Fresh evidence:
+- `backend/app/api/backtest.py:1191` and `:1198` / §SensitivityRequest +
+  route — endpoint accepts a param name and values but enters the deferred
+  branch; fresh verify 2026-06-01 19:14 +08.
+- `backend/app/api/backtest.py:1228-1277` / §DEFER sediment — inline rationale
+  lists missing dispatch-time override, child backtest cost, aggregation,
+  lineage, delivery, and shared-load decisions; fresh verify 2026-06-01
+  19:14 +08.
+- `docs/adr/ADR-DRAFT.md:29` / row 18 — architecture backlog records the
+  sensitivity defer decision and future implementation prerequisites; fresh
+  verify 2026-06-01 19:14 +08.
+- `backend/tests/test_backtest_sensitivity_defer.py:51`, `:82`, and `:111` /
+  §defer contract tests — regression coverage locks deferred status, message,
+  tracking ref, and validation; fresh verify 2026-06-01 19:14 +08.
+- `frontend/src/api/backtest.ts:682` and
+  `frontend/src/pages/BacktestResults.tsx:888` / §cost sensitivity — current
+  BacktestResults UI consumes the working cost-sensitivity endpoint instead;
+  fresh verify 2026-06-01 19:14 +08.
+
+### §30.2 Closure
+
+- Removed row 34 from §5D because there is no remaining generic
+  backend-implemented/frontend-unwired item.
+- Moved row 34 to §5E as a backend-semantics-before-UI item.
+- Preserved the main matrix row as backend-only (`❌`) because no frontend UI
+  should call a deferred placeholder.
+
+### §30.3 Verification
+
+- Backend defer contract:
+  `pytest backend/tests/test_backtest_sensitivity_defer.py -q` -> 3 passed.
+- Existing backtest API compatibility:
+  `pytest backend/tests/test_backtest_api.py::test_sensitivity_analysis -q` ->
+  1 passed.
+
+Full smoke/pre-push results are recorded in the Batch 29 status report.
+
+### §30.4 Remaining Work
+
+Implementing row 34 requires a design decision first: allowed parameters,
+config override path, child-run lineage/storage, aggregation metrics, result
+delivery, and shared-data-load strategy. Until that design exists, row 34
+should remain in §5E rather than being offered as an operator-facing UI.
+
+## §31 Fresh verify — 2026-06-01 (Dashboard matrix row reconciliation)
+
+### §31.1 Finding
+
+Rows 36-38 and 40-43 were stale matrix negatives. Fresh code review showed
+their wrappers already existed in `frontend/src/api/dashboard.ts` and the
+Dashboard page already consumed the relevant data flows. Row 39
+`/api/dashboard/market-ticker` was the actual missing dashboard row: the backend
+route existed, but there was no typed frontend wrapper or page consumer.
+
+Fresh evidence:
+- `backend/app/api/dashboard.py:84` / §market-ticker route and
+  `backend/app/services/dashboard_service.py:158` / §service delegation —
+  backend route and service path existed before this batch; fresh verify
+  2026-06-01 19:27 +08.
+- `frontend/src/api/dashboard.ts:21`, `:28`, `:37`, `:44`, `:51`, `:58`,
+  and `:166` / §dashboard wrappers — rows 36-38 and 40-43 had existing
+  API-layer wrappers; fresh verify 2026-06-01 19:27 +08.
+- `frontend/src/api/dashboard.ts:66` / §market ticker wrapper —
+  row 39 now has a typed API-layer wrapper; fresh verify 2026-06-01 19:27 +08.
+- `frontend/src/pages/Dashboard/index.tsx:60`, `:124`, and `:253` /
+  §market ticker page state and strip — Dashboard now consumes and renders row
+  39 data when available; fresh verify 2026-06-01 19:27 +08.
+- `frontend/src/__tests__/dashboard-api-contract.test.ts:24`, `:86`, and
+  `:189` / §contract guard — regression coverage locks the wrapper export,
+  endpoint call, and Dashboard page boundary; fresh verify 2026-06-01
+  19:27 +08.
+
+### §31.2 Closure
+
+- Added `MarketTickerItem` to `frontend/src/types/dashboard.ts`.
+- Added `fetchMarketTicker()` to `frontend/src/api/dashboard.ts`.
+- Wired `Dashboard/index.tsx` to load and render a compact market ticker strip.
+- Updated matrix rows 36-43 from stale negatives to current wrapper line
+  anchors.
+
+### §31.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed before
+  the fix on missing `fetchMarketTicker()` and Dashboard page references.
+- Targeted GREEN:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` -> 7 passed.
+
+Full frontend/build/smoke/pre-push results are recorded in the Batch 30 status
+report.
+
+### §31.4 Remaining Work
+
+No dashboard rows remain classified as backend-implemented/frontend-unwired in
+the API matrix. Further work should come from route semantics, runtime
+verification, or operator-workflow findings rather than the stale dashboard
+matrix labels.
+
+## §32 Fresh verify — 2026-06-01 (SSE EventSource row closure)
+
+### §32.1 Finding
+
+Row 131 `/api/sse/risk-events` was marked backend-only because the matrix grep
+only counted `frontend/src/api/*.ts` wrappers. That route is not an axios
+request: the frontend consumes it through the native browser `EventSource`
+contract in `useRiskEventsSSE()`, and `RiskManagement.tsx` mounts that hook for
+the live risk-events tab.
+
+Fresh evidence:
+- `backend/app/api/sse.py:159` / §SSE route — backend exposes
+  `GET /api/sse/risk-events`; fresh verify 2026-06-01 19:40 +08.
+- `frontend/src/hooks/useRiskEventsSSE.ts:92` and `:96` / §EventSource URL and
+  credentials — the hook builds `/sse/risk-events` URLs and opens
+  `EventSource` with credentials; fresh verify 2026-06-01 19:40 +08.
+- `frontend/src/pages/RiskManagement.tsx:37` and `:44` / §RiskManagement
+  consumer — the operator risk page imports and mounts `useRiskEventsSSE`;
+  fresh verify 2026-06-01 19:40 +08.
+- `frontend/src/__tests__/risk-events-sse-hook.test.tsx:76` and `:81` /
+  §contract guard — regression coverage locks the `/api/sse/risk-events`
+  subscription URL and credentialed EventSource options; fresh verify
+  2026-06-01 19:40 +08.
+
+### §32.2 Closure
+
+- Added `frontend/src/__tests__/risk-events-sse-hook.test.tsx` to lock SSE URL
+  derivation, credentialed subscription, event buffering, heartbeat parsing,
+  server-error surfacing, and cleanup.
+- Updated row 131 from backend-only to consumed with
+  `useRiskEventsSSE.ts:92/96`.
+- Clarified §5A so this row is no longer treated as an unintegrated frontend
+  gap.
+
+### §32.3 Verification
+
+- Targeted hook contract:
+  `npx vitest --run src/__tests__/risk-events-sse-hook.test.tsx` -> 1 passed.
+
+Full frontend/build/smoke/pre-push results are recorded in the Batch 31 status
+report.
+
+### §32.4 Remaining Work
+
+No SSE API coverage gap remains. Future SSE work should be driven by runtime
+latency/connection reliability findings, not the stale API wrapper matrix.
+
+## §33 Fresh verify — 2026-06-01 (External/admin endpoint taxonomy)
+
+### §33.1 Finding
+
+Rows 72-73, 91, 116-117, and 130 were marked backend-only, but none of these
+are missing frontend integrations. They are external monitoring probes, an
+admin notification test endpoint, or an inbound DingTalk webhook receiver. The
+main matrix now marks them as `⚠️` taxonomy rows rather than product UI gaps.
+
+Fresh evidence:
+- `backend/app/api/health.py:23` and `:56` / §health probes — `GET
+  /api/health` and `/api/health/checks` expose infrastructure health for probes
+  and monitoring; fresh verify 2026-06-01 19:49 +08.
+- `backend/tests/test_api_routes.py:373` and `:396` / §health route tests —
+  regression coverage locks health status and check history responses; fresh
+  verify 2026-06-01 19:49 +08.
+- `backend/app/api/remote_status.py:278` and `:297` / §remote status probes —
+  `/api/v1/ping` and `/api/v1/status` are remote monitoring endpoints with API
+  key behavior; fresh verify 2026-06-01 19:49 +08.
+- `backend/tests/test_remote_status.py:72` and `:92` / §remote status tests —
+  regression coverage locks ping and status response shape; fresh verify
+  2026-06-01 19:49 +08.
+- `backend/app/api/notifications.py:230` and
+  `backend/tests/test_notification_system.py:366` / §notification test —
+  `/api/notifications/test` is an admin test send endpoint, while the operator
+  settings UI uses the system notification test path; fresh verify 2026-06-01
+  19:49 +08.
+- `backend/app/api/risk.py:618` and
+  `backend/tests/test_dingtalk_webhook_endpoint.py:130` / §DingTalk inbound
+  webhook — row 130 is a receiver path invoked by DingTalk, not a frontend
+  action; fresh verify 2026-06-01 19:49 +08.
+
+### §33.2 Closure
+
+- Reclassified rows 72-73 as external-monitor endpoints.
+- Reclassified row 91 as an admin notification-test endpoint.
+- Reclassified rows 116-117 as remote-monitor endpoints.
+- Reclassified row 130 as an inbound webhook endpoint.
+
+### §33.3 Verification
+
+- Health API:
+  `pytest backend/tests/test_api_routes.py::TestHealthAPI -q` -> 4 passed.
+- Remote status API:
+  `pytest backend/tests/test_remote_status.py -q` -> 7 passed.
+- Notification test endpoint:
+  `pytest backend/tests/test_notification_system.py::TestNotificationAPI::test_send_test_notification -q`
+  -> 1 passed.
+- DingTalk inbound webhook endpoint:
+  `pytest backend/tests/test_dingtalk_webhook_endpoint.py::TestEndpointHappyPath::test_transitioned_returns_200 -q`
+  -> 1 passed.
+
+Full smoke/pre-push results are recorded in the Batch 32 status report.
+
+### §33.4 Remaining Work
+
+Remaining `❌` rows after this taxonomy cleanup are real decision points or
+unclassified endpoints: row 34 deferred backtest sensitivity, rows 83-86 news
+ingest/stats, rows 98-99 and 101 params admin/read surfaces, rows 135-136
+strategy version mutations, and row 141 superseded strategy backtest.
+
+## §34 Fresh verify — 2026-06-01 (News ops endpoint taxonomy)
+
+### §34.1 Finding
+
+Rows 83-86 were stale backend-only markers. They are not missing operator UI:
+three are manual/ops ingestion triggers that can call external news providers
+and classifier services, while row 86 is an ops diagnostics endpoint returning
+recent news row counts and samples. The main matrix now marks them as ops
+taxonomy rows rather than frontend wiring gaps.
+
+Fresh evidence:
+- `backend/app/api/news.py:251` / §5-source ingest — `POST /api/news/ingest`
+  orchestrates fetch/classify/persist through mocked-in-test services and owns
+  endpoint-level commit/rollback; fresh verify 2026-06-01 20:14 +08.
+- `backend/tests/test_news_api_manual_endpoints.py:16` and `:56` / §manual
+  ingest route tests — route success and sanitized failure behavior are locked
+  without external provider or DB calls; fresh verify 2026-06-01 20:14 +08.
+- `backend/app/api/news.py:322` and
+  `backend/tests/test_news_api_rsshub_endpoint.py:121` / §RSSHub ingest route
+  — RSSHub ingest already had mocked route coverage and remains an ops route;
+  fresh verify 2026-06-01 20:14 +08.
+- `backend/app/api/news.py:437` and
+  `backend/tests/test_news_api_manual_endpoints.py:82` / §announcement ingest
+  route — announcement ingestion is an ops-triggered AKShare/CNInfo path, not a
+  frontend action; fresh verify 2026-06-01 20:14 +08.
+- `backend/app/api/news.py:514` and
+  `backend/tests/test_news_api_manual_endpoints.py:127` / §news stats route —
+  stats maps DB row counts and last samples into diagnostics response shape;
+  fresh verify 2026-06-01 20:14 +08.
+
+### §34.2 Closure
+
+- Reclassified rows 83-85 as ops-ingest endpoints.
+- Reclassified row 86 as an ops-diagnostics endpoint.
+- Added route-level regression coverage for rows 83, 85, and 86.
+
+### §34.3 Verification
+
+- News manual endpoints:
+  `pytest backend/tests/test_news_api_manual_endpoints.py -q` -> 4 passed.
+
+Full smoke/pre-push results are recorded in the Batch 33 status report.
+
+### §34.4 Remaining Work
+
+Remaining `❌` rows after this news cleanup: row 34 deferred backtest
+sensitivity, rows 98-99 and 101 params admin/read surfaces, rows 135-136
+strategy version mutations, and row 141 superseded strategy backtest.
+
+## §35 Fresh verify — 2026-06-01 (Params contract drift + taxonomy)
+
+### §35.1 Finding
+
+Row 97 was marked consumed, but the frontend wrapper had a runtime contract
+drift: `fetchNotificationParams()` called `/api/params` with `category` and
+returned the backend object as `NotificationParam[]`. The backend accepts
+`module` and returns `{ modules, params }`. This would make
+`SystemSettings.tsx` call `.map()` on a non-array response.
+
+Rows 98, 99, and 101 were stale backend-only markers rather than current UI
+gaps. `DEV_PARAM_CONFIG.md` is explicitly DESIGN_OVERSIZED, and the active
+settings UI only needs grouped notification params plus the existing PUT loop.
+The remaining params endpoints are audit/read/bootstrap surfaces.
+
+Fresh evidence:
+- `backend/app/api/params.py:63` / §list params — list endpoint accepts
+  `module` and returns grouped `{modules, params}`; fresh verify 2026-06-01
+  20:18 +08.
+- `frontend/src/api/system.ts:216` and `:221` / §notification params wrapper —
+  wrapper now sends `module=notification` and normalizes grouped backend rows
+  into `{key, value}` pairs; fresh verify 2026-06-01 20:18 +08.
+- `frontend/src/__tests__/system-api-contract.test.ts:21` / §contract test —
+  RED first failed on `category` vs `module`, then GREEN passed after wrapper
+  normalization; fresh verify 2026-06-01 20:18 +08.
+- `backend/app/api/params.py:89` and
+  `backend/tests/test_param_system.py:278` / §changelog route — changelog is an
+  audit endpoint with mocked route coverage; fresh verify 2026-06-01 20:18 +08.
+- `backend/app/api/params.py:144` and
+  `backend/tests/test_param_system.py:259` / §single-param route — single read
+  remains available but current UI uses the grouped params endpoint; fresh
+  verify 2026-06-01 20:18 +08.
+- `backend/app/api/params.py:201` and
+  `backend/tests/test_param_system.py:387` / §init-defaults route — init
+  defaults is bootstrap/admin behavior, not frontend initiated; fresh verify
+  2026-06-01 20:18 +08.
+
+### §35.2 Closure
+
+- Fixed `fetchNotificationParams()` request/query/response normalization.
+- Added frontend contract coverage for the params wrapper.
+- Added backend route coverage for `/api/params/changelog` and
+  `/api/params/init-defaults`.
+- Reclassified rows 98, 99, and 101 as audit/read/bootstrap taxonomy rows.
+
+### §35.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/system-api-contract.test.ts` failed on
+  `category` vs `module`.
+- GREEN:
+  `npx vitest --run src/__tests__/system-api-contract.test.ts` -> 1 passed.
+- Backend params routes:
+  `pytest backend/tests/test_param_system.py::TestParamAPI -q` -> 8 passed.
+- Frontend params/system subset:
+  `npx vitest --run src/__tests__/system-api-contract.test.ts src/__tests__/system-settings-streams.test.tsx`
+  -> 2 files passed, 2 tests passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full smoke/pre-push results are recorded in the Batch 34 status report.
+
+### §35.4 Remaining Work
+
+Remaining `❌` rows after this params cleanup: row 34 deferred backtest
+sensitivity, rows 135-136 strategy version mutations, and row 141 superseded
+strategy backtest.
+
+## §36 Fresh verify — 2026-06-01 (Final API matrix hard-gap cleanup)
+
+### §36.1 Finding
+
+The last hard `❌` markers were not missing wrappers. They were already
+classified by earlier fresh-read sections as deferred or intentionally not
+frontend-initiated:
+
+- Row 34 is an explicit sensitivity-analysis deferred contract.
+- Rows 135-136 are strategy version mutations that need a safe UX design before
+  exposure.
+- Row 141 is a direct strategy backtest trigger superseded by the
+  operator-confirmed `/backtest/config?strategy_id=...` flow.
+
+Fresh evidence:
+- `backend/app/api/backtest.py:1199` and
+  `backend/tests/test_backtest_sensitivity_defer.py:51` / §sensitivity defer —
+  row 34 returns a deferred contract with metadata and should not be wired as a
+  working analysis UI; fresh verify 2026-06-01 20:25 +08.
+- `backend/app/api/strategies.py:148` and
+  `backend/tests/test_api_routes.py:725` / §version create — row 135 is a real
+  mutation with required changelog; fresh verify 2026-06-01 20:25 +08.
+- `backend/app/api/strategies.py:174` and
+  `backend/tests/test_api_routes.py:767` / §version rollback — row 136 is a
+  real rollback mutation; fresh verify 2026-06-01 20:25 +08.
+- `backend/app/api/strategies.py:290` and
+  `backend/tests/test_api_routes.py:796` / §direct strategy backtest — backend
+  route contract is covered, but frontend intentionally routes through
+  `frontend/src/pages/StrategyWorkspace.tsx:243` to
+  `/backtest/config?strategy_id=...`; fresh verify 2026-06-01 20:25 +08.
+- `frontend/src/pages/BacktestConfig.tsx:135` and
+  `frontend/src/api/backtest.ts:234` / §confirmed backtest submit — current
+  operator flow submits reviewed config through `/api/backtest/run`; fresh
+  verify 2026-06-01 20:25 +08.
+
+### §36.2 Closure
+
+- Reclassified row 34 as a deferred contract.
+- Reclassified rows 135-136 as version-management UX design gates.
+- Reclassified row 141 as superseded by the confirmed backtest flow.
+- Added route coverage for row 141 direct strategy backtest while the backend
+  endpoint remains present.
+- Main API matrix now has no hard `❌` rows. Remaining work is tracked in
+  §5C/§5E taxonomy rows rather than false frontend-gap markers.
+
+### §36.3 Verification
+
+- Strategy routes:
+  `pytest backend/tests/test_api_routes.py::TestStrategiesAPI -q` -> 13 passed.
+- Ruff:
+  `ruff check backend/tests/test_api_routes.py` -> all checks passed.
+
+Full smoke/pre-push results are recorded in the Batch 35 status report.
+
+### §36.4 Remaining Work
+
+No hard `❌` API matrix rows remain. Deferred design work remains explicit:
+
+- Row 34: Phase B sensitivity architecture.
+- Rows 135-136: version-management UX with diff preview, required changelog,
+  rollback confirmation, audit display, post-mutation reload, and regression
+  coverage.

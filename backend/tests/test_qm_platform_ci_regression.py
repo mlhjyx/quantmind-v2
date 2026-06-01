@@ -41,6 +41,18 @@ def test_default_pairs_at_least_two():
     assert "backtest_12yr" in labels
 
 
+def test_default_pairs_use_committed_regression_result_artifacts():
+    """Default gate must point at committed max_diff result artifacts that exist in CI."""
+    by_label = {pair.label: pair for pair in default_pairs()}
+    five_year = by_label["backtest_5yr"]
+    twelve_year = by_label["backtest_12yr"]
+
+    assert five_year.baseline_path == Path("cache/baseline/regression_result_5yr.json")
+    assert five_year.actual_path == five_year.baseline_path
+    assert twelve_year.baseline_path == Path("cache/baseline/regression_result_12yr.json")
+    assert twelve_year.actual_path == twelve_year.baseline_path
+
+
 def test_regression_pair_frozen():
     """RegressionPair frozen — 反 silent mutation."""
     import dataclasses
@@ -164,6 +176,33 @@ def test_one_pair_diff_aggregate_false():
     result = orch.run_phase(CIPhase.REGRESSION)
     assert result.passed is False
     assert "sharpe" in result.details["p1"]
+
+
+def test_single_artifact_nonzero_max_diff_fails():
+    """Committed result artifacts are valid only when their recorded max_diff is zero."""
+    pairs = [
+        RegressionPair(
+            label="p1",
+            baseline_path=Path("regression_result.json"),
+            actual_path=Path("regression_result.json"),
+        )
+    ]
+    data = {Path("regression_result.json"): {"run1": {"max_diff": 0.0001}}}
+    orch = RegressionOrchestrator(pairs=pairs, file_loader=_make_loader(data))
+
+    result = orch.run_phase(CIPhase.REGRESSION)
+
+    assert result.passed is False
+    assert "max_diff=0.0001" in result.details["p1"]
+
+
+def test_default_regression_artifacts_pass_in_current_worktree():
+    """Default regression phase is blocking-capable in GitHub Actions now."""
+    result = RegressionOrchestrator().run_phase(CIPhase.REGRESSION)
+
+    assert result.passed is True
+    assert "max_diff=0.0" in result.details["backtest_5yr"]
+    assert "max_diff=0.0" in result.details["backtest_12yr"]
 
 
 def test_file_missing_captured_as_failure():

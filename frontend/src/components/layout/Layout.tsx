@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
-import { NotificationProvider } from "@/contexts/NotificationContext";
-import { ToastContainer } from "@/components/ui/Toast";
 import { C } from "@/theme";
 import { PageErrorBoundary } from "@/components/ui/PageErrorBoundary";
 import { useMarketOverview } from "@/hooks/useRealtimeData";
@@ -74,7 +72,7 @@ export function Layout() {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <NotificationProvider>
+    <>
       <div
         className="h-screen w-screen overflow-hidden flex"
         style={{ background: C.bg0, fontFamily: C.font, color: C.text1 }}
@@ -104,9 +102,8 @@ export function Layout() {
           </main>
         </div>
       </div>
-      <ToastContainer />
       {/* AI 助手 Cmd+J 全局快捷键 + 浮动入口 */}
       <FloatingAssistLauncher />
-    </NotificationProvider>
+    </>
   );
 }

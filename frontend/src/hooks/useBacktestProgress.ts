@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { getBacktestProgress, type BacktestProgress } from "@/api/backtest";
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? "";
+const _wsRuntimeConfig = (typeof window !== "undefined" ? window.__APP_CONFIG__ : undefined) ?? {};
+const WS_URL = _wsRuntimeConfig.wsUrl ?? import.meta.env.VITE_WS_URL ?? "";
+const SOCKET_IO_PATH = "/ws/socket.io";
 const POLL_INTERVAL_MS = 2000;
 
 interface UseBacktestProgressOptions {
@@ -64,8 +66,9 @@ export function useBacktestProgress({
     if (!runId || !enabled) return;
 
     // Try WebSocket first
-    const socket = io(`${WS_URL}/ws/backtest`, {
-      transports: ["websocket"],
+    const socket = io(WS_URL, {
+      path: SOCKET_IO_PATH,
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 3,
       reconnectionDelay: 1000,
@@ -88,7 +91,7 @@ export function useBacktestProgress({
       setIsPolling(false);
       wsFailedRef.current = false;
       // Subscribe to this run's progress
-      socket.emit("subscribe", { run_id: runId });
+      socket.emit("join_backtest", { run_id: runId });
     });
 
     socket.on("disconnect", () => {
@@ -122,6 +125,7 @@ export function useBacktestProgress({
 
     return () => {
       clearTimeout(connectTimeout);
+      socket.emit("leave_backtest", { run_id: runId });
       socket.disconnect();
       socketRef.current = null;
       stopPolling();

@@ -27,6 +27,51 @@ export interface PendingAction {
   time: string | null;
 }
 
+/** Dashboard 预警面板行 */
+export interface Alert {
+  level: string;
+  color: string;
+  title: string;
+  desc: string;
+  time: string;
+}
+
+/** Dashboard 月度收益矩阵，后端无数据月份返回 null。 */
+export type MonthlyReturns = Record<string, Array<number | null>>;
+
+/** Dashboard 行业分布行 */
+export interface IndustryItem {
+  name: string;
+  pct: number;
+  color: string;
+}
+
+/** Dashboard market ticker row */
+export interface MarketTickerItem {
+  label: string;
+  code: string;
+  value: number;
+  change_pct: number;
+  is_up: boolean;
+}
+
+/** Dashboard 因子库行 */
+export interface FactorRow {
+  name: string;
+  cat: string;
+  ic: number;
+  ir: number;
+  dir: string;
+  status: string;
+  trend: number[];
+}
+
+/** Dashboard AI pipeline step */
+export interface PipelineStep {
+  name: string;
+  status: string;
+}
+
 /** 持仓记录 */
 export interface Position {
   code: string;

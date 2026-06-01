@@ -53,6 +53,7 @@ def _make_completion_obj(
     prompt_tokens: int = 12,
     completion_tokens: int = 8,
     cost: float = 0.000123,
+    hidden_params: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
     """构造 LiteLLM ChatCompletion 兼容对象 (走 SimpleNamespace 真 attribute access).
 
@@ -64,11 +65,14 @@ def _make_completion_obj(
     message = SimpleNamespace(content=content)
     choice = SimpleNamespace(message=message)
     usage = SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+    params = {"response_cost": cost}
+    if hidden_params:
+        params.update(hidden_params)
     return SimpleNamespace(
         choices=[choice],
         model=model,
         usage=usage,
-        _hidden_params={"response_cost": cost},
+        _hidden_params=params,
     )
 
 
@@ -162,7 +166,7 @@ def test_completion_mock_happy_path(router: LiteLLMRouter, monkeypatch: pytest.M
 def test_response_dataclass_fields_complete(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """LLMResponse 真 dataclass 7 字段全部齐 (含 decision_id + is_fallback)."""
+    """LLMResponse dataclass fields stay explicit for audit consumers."""
     _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
 
     response = router.completion(
@@ -179,6 +183,7 @@ def test_response_dataclass_fields_complete(
         "latency_ms",
         "decision_id",
         "is_fallback",
+        "fallback_error_class",
     }
     assert set(response.__dataclass_fields__.keys()) == expected_fields
 
@@ -218,6 +223,38 @@ def test_fallback_detection_v4_flash_to_qwen(
     )
 
     assert response.is_fallback is True
+
+
+def test_fallback_response_records_sanitized_provider_error_class(
+    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LiteLLM previous_models metadata becomes a sanitized fallback error class."""
+
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        return _make_completion_obj(
+            model="ollama_chat/qwen3.5:9b",
+            hidden_params={
+                "metadata": {
+                    "previous_models": [
+                        {
+                            "exception_type": "AuthenticationError",
+                            "exception_string": "Authentication Fails: invalid API key sk-test-secret",
+                        }
+                    ]
+                }
+            },
+        )
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    response = router.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "classify")],
+    )
+
+    assert response.is_fallback is True
+    assert response.fallback_error_class == "primary_fail_authentication"
+    assert "sk-test-secret" not in response.fallback_error_class
 
 
 def test_fallback_detection_v4_pro_stays_primary(
