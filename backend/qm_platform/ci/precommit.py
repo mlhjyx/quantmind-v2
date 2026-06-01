@@ -46,6 +46,7 @@ PYTEST_COLLECT_TARGETS = [
     "backend/tests/test_qm_platform_ci_regression.py",
     "backend/tests/test_qm_platform_ci_review.py",
     "backend/tests/test_qm_platform_ci_entry_script.py",
+    "backend/tests/test_github_ci_workflow.py",
     "backend/tests/test_frontend_api_discipline_audit.py",
     "backend/tests/test_backtest_runner_bypass_audit.py",
     "backend/tests/test_platform_skeleton.py",

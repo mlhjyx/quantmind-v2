@@ -1,13 +1,50 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 9.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 10.
 date: 2026-06-01 +08:00
-status: governance_batch_9_notification_api_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_9.md
+status: governance_batch_10_blocking_ci_parity_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_10.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 9
+## Current Handoff - 2026-06-01 Batch 10
+
+Mode: full-project closure/governance remediation, batch 10 blocking CI regression parity verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited GitHub CI from code and workflow: `regression` and `ci_matrix` still used `scripts/ci_run_phase.py --advisory`, so workflow failures could be masked as advisory output.
+- Reproduced the underlying regression issue: default regression pairs pointed at nonexistent `cache/baseline/backtest_*_{baseline,actual}.json` files, while committed artifacts are `cache/baseline/regression_result_5yr.json` and `cache/baseline/regression_result_12yr.json`.
+- Updated `RegressionOrchestrator.default_pairs()` to use the committed regression result artifacts.
+- Added recorded `max_diff` validation for same-file committed artifacts while preserving baseline-vs-actual pair comparison for custom callers.
+- Removed advisory masking from GitHub `regression` and `ci_matrix` jobs.
+- Added `backend/tests/test_github_ci_workflow.py` and included it in bounded pre-commit collect coverage.
+- Updated `docs/mvp/MVP_4_3_cicd.md` and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_10.md`.
+
+Verified so far:
+- RED: focused regression/workflow tests failed before the fix on nonexistent default paths, same-artifact nonzero `max_diff` passing, default regression failing, and workflow `--advisory` usage.
+- GREEN focused contract tests -> 4 passed.
+- CI regression/test pack -> 54 passed.
+- `python scripts/ci_run_phase.py --phase regression` -> PASS, both default artifacts reported `max_diff=0.0`.
+- `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
+- `python scripts/ci_run_phase.py --phase pre_commit` -> PASS.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Notification detail, cleanup, and preferences endpoints remain backend/admin-only unless they become explicit operator workflows.
+
+Next safe step:
+- Run final smoke/diff checks, commit/push Batch 10 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 9
 
 Mode: full-project closure/governance remediation, batch 9 notification panel API closure verified locally before final commit/CI.
 

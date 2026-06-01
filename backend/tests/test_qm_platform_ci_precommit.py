@@ -69,6 +69,7 @@ def test_pytest_collect_includes_active_governance_inventory_and_hooks():
         "backend/tests/test_sediment_poststop_hook.py",
         "backend/tests/test_verify_completion_hook.py",
         "backend/tests/test_session_context_inject_hook.py",
+        "backend/tests/test_github_ci_workflow.py",
     }
 
     assert required.issubset(set(PYTEST_COLLECT_TARGETS))
