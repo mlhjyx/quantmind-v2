@@ -1,58 +1,50 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 34.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 35.
 date: 2026-06-01 +08:00
-status: governance_batch_34_params_contract_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_34.md
+status: governance_batch_35_api_matrix_final_cleanup_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_35.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 34
+## Current Handoff - 2026-06-01 Batch 35
 
-Mode: full-project closure/governance remediation, batch 34 params API contract
-and taxonomy in progress.
+Mode: full-project closure/governance remediation, batch 35 final API matrix
+hard-gap cleanup in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `fe746aa5` (`classify news ops
-  endpoints`), and PR #523 checks were clean before Batch 34 edits.
+- Latest pushed head before this batch is `de82df38` (`fix params settings
+  contract`), and PR #523 checks were clean before Batch 35 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- API coverage row 97 was marked consumed, but `fetchNotificationParams()` used
-  `category` while backend `GET /api/params` expects `module`.
-- The wrapper returned grouped backend data as though it were
-  `NotificationParam[]`, so `SystemSettings.tsx` could call `.map()` on a
-  non-array response.
-- Rows 98, 99, and 101 are audit/read/bootstrap surfaces, not current operator
-  UI gaps.
+- API coverage rows 34, 135-136, and 141 were the final hard gap markers, but
+  each is already a deferred/sensitive/superseded endpoint rather than missing
+  wiring.
+- Row 34 is an explicit deferred sensitivity-analysis contract.
+- Rows 135-136 are version mutations needing UX design before exposure.
+- Row 141 direct strategy backtest is superseded by the reviewed
+  `/backtest/config?strategy_id=...` flow.
 
 Closed in this batch:
-- Added `frontend/src/__tests__/system-api-contract.test.ts`.
-- Fixed `frontend/src/api/system.ts::fetchNotificationParams()`.
-- Added backend route tests for `/api/params/changelog` and
-  `/api/params/init-defaults`.
-- Updated `docs/API_COVERAGE.md` rows 97-101 and added §35.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_34.md`.
+- Added backend route coverage for direct strategy backtest.
+- Updated `docs/API_COVERAGE.md` rows 34, 135-136, and 141 to explicit taxonomy
+  labels.
+- Added `docs/API_COVERAGE.md` §36.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_35.md`.
 
 Verification:
-- RED: `npx vitest --run src/__tests__/system-api-contract.test.ts` failed on
-  `category` vs `module`.
-- GREEN: `npx vitest --run src/__tests__/system-api-contract.test.ts` -> 1
+- `pytest backend/tests/test_api_routes.py::TestStrategiesAPI -q` -> 13
   passed.
-- `pytest backend/tests/test_param_system.py::TestParamAPI -q` -> 8 passed.
-- `npx vitest --run src/__tests__/system-api-contract.test.ts src/__tests__/system-settings-streams.test.tsx`
-  -> 2 files passed, 2 tests passed.
-- `npx tsc -b --pretty false` -> exit 0.
-- `npx vitest --run` -> 35 files passed, 162 tests passed.
-- `npm run build` -> exit 0 with existing large `vendor-echarts` warning.
-- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7026
+- `ruff check backend/tests/test_api_routes.py` -> all checks passed.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7028
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
-  passed, 2 skipped, 6982 deselected.
+  passed, 2 skipped, 6984 deselected.
 - Pending: commit, push, PR body append, and PR #523 check watch.
 
 Still open:
@@ -80,6 +72,16 @@ Still open:
 
 Next safe step:
 - Stage/commit/push and verify PR #523 checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 34
+
+Batch 34 fixed the notification settings params wrapper contract, added
+`frontend/src/__tests__/system-api-contract.test.ts`, added backend route tests
+for params changelog/init-defaults, reclassified rows 97-101, added
+`docs/API_COVERAGE.md` §35, and pushed commit `de82df38` (`fix params settings
+contract`). PR #523 checks passed after the push.
 
 ---
 

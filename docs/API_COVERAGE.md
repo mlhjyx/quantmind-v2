@@ -97,7 +97,7 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 | 31 | GET | `/api/backtest/{run_id}/cost-sensitivity` | Cost sensitivity | backtest.py:920 | public |
 | 32 | GET | `/api/backtest/{run_id}/report` | Backtest report | backtest.py:1035 | public |
 | 33 | POST | `/api/backtest/compare` | Compare runs | backtest.py:1137 | public |
-| 34 | POST | `/api/backtest/{run_id}/sensitivity` | Sensitivity analysis | backtest.py:1198 | public |
+| 34 | POST | `/api/backtest/{run_id}/sensitivity` | Sensitivity analysis | backtest.py:1199 | public |
 | 35 | GET | `/api/backtest/{run_id}/live-compare` | Live vs backtest | backtest.py:1296 | public |
 
 ### 2.5 dashboard — `/api/dashboard` (`backend/app/api/dashboard.py`)
@@ -302,13 +302,13 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 | 132 | GET | `/api/strategies` | List strategies | strategies.py:72 | public |
 | 133 | GET | `/api/strategies/{strategy_id}` | Strategy detail | strategies.py:92 | public |
 | 134 | GET | `/api/strategies/{strategy_id}/versions` | Strategy versions | strategies.py:114 | public |
-| 135 | POST | `/api/strategies/{strategy_id}/versions` | Create version | strategies.py:147 | public |
-| 136 | POST | `/api/strategies/{strategy_id}/rollback` | Rollback strategy | strategies.py:173 | public |
+| 135 | POST | `/api/strategies/{strategy_id}/versions` | Create version | strategies.py:148 | public |
+| 136 | POST | `/api/strategies/{strategy_id}/rollback` | Rollback strategy | strategies.py:174 | public |
 | 137 | POST | `/api/strategies` | Create strategy | strategies.py:199 | public |
 | 138 | PUT | `/api/strategies/{strategy_id}` | Update strategy | strategies.py:220 | public |
 | 139 | DELETE | `/api/strategies/{strategy_id}` | Delete strategy | strategies.py:245 | public |
 | 140 | GET | `/api/strategies/{strategy_id}/factors` | Strategy factors | strategies.py:267 | public |
-| 141 | POST | `/api/strategies/{strategy_id}/backtest` | Trigger backtest | strategies.py:289 | public |
+| 141 | POST | `/api/strategies/{strategy_id}/backtest` | Trigger backtest | strategies.py:290 | public |
 
 ### 2.25 system — `/api/system` (`backend/app/api/system.py`)
 
@@ -550,7 +550,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 31 | `/api/backtest/{run_id}/cost-sensitivity` | GET | backtest.ts:682 | ✅ |
 | 32 | `/api/backtest/{run_id}/report` | GET | backtest.ts:759 | ✅ |
 | 33 | `/api/backtest/compare` | POST | backtest.ts:348 | ✅ |
-| 34 | `/api/backtest/{run_id}/sensitivity` | POST | — | ❌ |
+| 34 | `/api/backtest/{run_id}/sensitivity` | POST | backtest.py:1199 | ⚠️ deferred contract |
 | 35 | `/api/backtest/{run_id}/live-compare` | GET | backtest.ts:742 | ✅ |
 | 36 | `/api/dashboard/summary` | GET | dashboard.ts:21 | ✅ |
 | 37 | `/api/dashboard/nav-series` | GET | dashboard.ts:28 | ✅ |
@@ -651,13 +651,13 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 132 | `/api/strategies` | GET | strategies.ts:238 | ✅ |
 | 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:243/252 | ✅ |
 | 134 | `/api/strategies/{strategy_id}/versions` | GET | strategies.ts:256 | ✅ |
-| 135 | `/api/strategies/{strategy_id}/versions` | POST | — | ❌ |
-| 136 | `/api/strategies/{strategy_id}/rollback` | POST | — | ❌ |
+| 135 | `/api/strategies/{strategy_id}/versions` | POST | strategies.py:148 | ⚠️ needs UX design |
+| 136 | `/api/strategies/{strategy_id}/rollback` | POST | strategies.py:174 | ⚠️ needs UX design |
 | 137 | `/api/strategies` | POST | strategies.ts:270 | ✅ |
 | 138 | `/api/strategies/{strategy_id}` | PUT | strategies.ts:287 | ✅ |
 | 139 | `/api/strategies/{strategy_id}` | DELETE | strategies.ts:302 | ✅ |
 | 140 | `/api/strategies/{strategy_id}/factors` | GET | strategies.ts:261 | ✅ |
-| 141 | `/api/strategies/{strategy_id}/backtest` | POST | — | ❌ |
+| 141 | `/api/strategies/{strategy_id}/backtest` | POST | StrategyWorkspace.tsx:243 | ⚠️ superseded |
 | 142 | `/api/system/datasources` | GET | system.ts:110 | ✅ |
 | 143 | `/api/system/health` | GET | system.ts:190 | ✅ |
 | 144 | `/api/system/streams` | GET | system.ts:195 | ✅ |
@@ -2490,3 +2490,66 @@ Full smoke/pre-push results are recorded in the Batch 34 status report.
 Remaining `❌` rows after this params cleanup: row 34 deferred backtest
 sensitivity, rows 135-136 strategy version mutations, and row 141 superseded
 strategy backtest.
+
+## §36 Fresh verify — 2026-06-01 (Final API matrix hard-gap cleanup)
+
+### §36.1 Finding
+
+The last hard `❌` markers were not missing wrappers. They were already
+classified by earlier fresh-read sections as deferred or intentionally not
+frontend-initiated:
+
+- Row 34 is an explicit sensitivity-analysis deferred contract.
+- Rows 135-136 are strategy version mutations that need a safe UX design before
+  exposure.
+- Row 141 is a direct strategy backtest trigger superseded by the
+  operator-confirmed `/backtest/config?strategy_id=...` flow.
+
+Fresh evidence:
+- `backend/app/api/backtest.py:1199` and
+  `backend/tests/test_backtest_sensitivity_defer.py:51` / §sensitivity defer —
+  row 34 returns a deferred contract with metadata and should not be wired as a
+  working analysis UI; fresh verify 2026-06-01 20:25 +08.
+- `backend/app/api/strategies.py:148` and
+  `backend/tests/test_api_routes.py:725` / §version create — row 135 is a real
+  mutation with required changelog; fresh verify 2026-06-01 20:25 +08.
+- `backend/app/api/strategies.py:174` and
+  `backend/tests/test_api_routes.py:767` / §version rollback — row 136 is a
+  real rollback mutation; fresh verify 2026-06-01 20:25 +08.
+- `backend/app/api/strategies.py:290` and
+  `backend/tests/test_api_routes.py:796` / §direct strategy backtest — backend
+  route contract is covered, but frontend intentionally routes through
+  `frontend/src/pages/StrategyWorkspace.tsx:243` to
+  `/backtest/config?strategy_id=...`; fresh verify 2026-06-01 20:25 +08.
+- `frontend/src/pages/BacktestConfig.tsx:135` and
+  `frontend/src/api/backtest.ts:234` / §confirmed backtest submit — current
+  operator flow submits reviewed config through `/api/backtest/run`; fresh
+  verify 2026-06-01 20:25 +08.
+
+### §36.2 Closure
+
+- Reclassified row 34 as a deferred contract.
+- Reclassified rows 135-136 as version-management UX design gates.
+- Reclassified row 141 as superseded by the confirmed backtest flow.
+- Added route coverage for row 141 direct strategy backtest while the backend
+  endpoint remains present.
+- Main API matrix now has no hard `❌` rows. Remaining work is tracked in
+  §5C/§5E taxonomy rows rather than false frontend-gap markers.
+
+### §36.3 Verification
+
+- Strategy routes:
+  `pytest backend/tests/test_api_routes.py::TestStrategiesAPI -q` -> 13 passed.
+- Ruff:
+  `ruff check backend/tests/test_api_routes.py` -> all checks passed.
+
+Full smoke/pre-push results are recorded in the Batch 35 status report.
+
+### §36.4 Remaining Work
+
+No hard `❌` API matrix rows remain. Deferred design work remains explicit:
+
+- Row 34: Phase B sensitivity architecture.
+- Rows 135-136: version-management UX with diff preview, required changelog,
+  rollback confirmation, audit display, post-mutation reload, and regression
+  coverage.
