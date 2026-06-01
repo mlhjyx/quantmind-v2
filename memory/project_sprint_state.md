@@ -1,50 +1,50 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 32.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 33.
 date: 2026-06-01 +08:00
-status: governance_batch_32_external_admin_taxonomy_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_32.md
+status: governance_batch_33_news_ops_taxonomy_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_33.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 32
+## Current Handoff - 2026-06-01 Batch 33
 
-Mode: full-project closure/governance remediation, batch 32 external/admin API
+Mode: full-project closure/governance remediation, batch 33 news ops API
 taxonomy in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `236d43d5` (`close risk events sse
-  coverage`), and PR #523 checks were clean before Batch 32 edits.
+- Latest pushed head before this batch is `7f5f472d` (`reclass external api
+  rows`), and PR #523 checks were clean before Batch 33 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- API coverage rows 72-73, 91, 116-117, and 130 were backend-only by design,
-  not missing operator UI.
-- Rows 72-73 and 116-117 are probe/monitoring surfaces.
-- Row 91 is an admin notification test-send endpoint.
-- Row 130 is an inbound DingTalk webhook receiver.
+- API coverage rows 83-86 were backend-only by design, not missing operator UI.
+- Rows 83-85 are ops-triggered news ingestion endpoints that can call external
+  providers, classifier services, and persistence paths.
+- Row 86 is an ops diagnostics endpoint for recent news counts and samples.
+- RSSHub route coverage already existed; 5-source ingest, announcement ingest,
+  and stats needed matching mocked route coverage.
 
 Closed in this batch:
-- Updated `docs/API_COVERAGE.md` rows 72-73, 91, 116-117, and 130 to explicit
-  taxonomy labels.
-- Added `docs/API_COVERAGE.md` §33.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_32.md`.
+- Added `backend/tests/test_news_api_manual_endpoints.py`.
+- Updated `docs/API_COVERAGE.md` rows 83-86 to explicit ops taxonomy labels.
+- Added `docs/API_COVERAGE.md` §34.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_33.md`.
 
 Verification:
-- `pytest backend/tests/test_api_routes.py::TestHealthAPI -q` -> 4 passed.
-- `pytest backend/tests/test_remote_status.py -q` -> 7 passed.
-- `pytest backend/tests/test_notification_system.py::TestNotificationAPI::test_send_test_notification -q`
-  -> 1 passed.
-- `pytest backend/tests/test_dingtalk_webhook_endpoint.py::TestEndpointHappyPath::test_transitioned_returns_200 -q`
-  -> 1 passed.
-- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+- `pytest backend/tests/test_news_api_manual_endpoints.py -q` -> 4 passed.
+- `pytest backend/tests/test_news_api_manual_endpoints.py backend/tests/test_news_api_rsshub_endpoint.py -q`
+  -> 16 passed.
+- `ruff check backend/tests/test_news_api_manual_endpoints.py` -> all checks
+  passed.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7024
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
-  passed, 2 skipped, 6976 deselected.
+  passed, 2 skipped, 6980 deselected.
 - Pending: commit, push, PR body append, and PR #523 check watch.
 
 Still open:
@@ -53,6 +53,8 @@ Still open:
 - Remaining §5D backlog: none after row 34 reclassification, dashboard row
   reconciliation, row 131 SSE closure, and Batch 32 taxonomy cleanup.
 - Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 98-99 and 101 params admin/read surfaces remain open for the next
+  taxonomy or UI-semantics pass.
 - Rows 135-136 strategy version create/rollback need a version-management UI
   design with diff preview, required changelog, rollback confirmation, audit
   display, post-mutation reload, and rollback refresh regression coverage.
@@ -72,6 +74,15 @@ Still open:
 
 Next safe step:
 - Stage/commit/push and verify PR #523 checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 32
+
+Batch 32 reclassified API coverage rows 72-73, 91, 116-117, and 130 as
+external-monitor/admin-test/inbound-webhook taxonomy rows, added
+`docs/API_COVERAGE.md` §33, and pushed commit `7f5f472d` (`reclass external api
+rows`). PR #523 checks passed after the push.
 
 ---
 

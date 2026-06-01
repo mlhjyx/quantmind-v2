@@ -599,10 +599,10 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 80 | `/api/mining/tasks/{task_id}` | GET | mining.ts:184 | ✅ |
 | 81 | `/api/mining/tasks/{task_id}/cancel` | POST | mining.ts:190 | ✅ |
 | 82 | `/api/mining/evaluate` | POST | mining.ts:211 | ✅ |
-| 83 | `/api/news/ingest` | POST | — | ❌ |
-| 84 | `/api/news/ingest_rsshub` | POST | — | ❌ |
-| 85 | `/api/news/ingest_announcement` | POST | — | ❌ |
-| 86 | `/api/news/stats` | GET | — | ❌ |
+| 83 | `/api/news/ingest` | POST | news.py:251 | ⚠️ ops ingest |
+| 84 | `/api/news/ingest_rsshub` | POST | news.py:322 | ⚠️ ops ingest |
+| 85 | `/api/news/ingest_announcement` | POST | news.py:437 | ⚠️ ops ingest |
+| 86 | `/api/news/stats` | GET | news.py:514 | ⚠️ ops diagnostics |
 | 87 | `/api/notifications` | GET | notifications.ts:113 | ✅ |
 | 88 | `/api/notifications/unread-count` | GET | list response `unread_count` | ⚠️ redundant |
 | 89 | `/api/notifications/{notification_id}` | GET | notifications.ts:129 | ✅ |
@@ -681,7 +681,8 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 116–117 | `/api/v1/ping`, `/api/v1/status` | Remote ops script (`remote_status.py`) — external monitoring |
 | 130 | `/api/risk/dingtalk-webhook` | DingTalk webhook receiver — not frontend-initiated |
 | 131 | `/api/sse/risk-events` | Consumed by `useRiskEventsSSE()` through native `EventSource`; see §32 |
-| 83–85 | `/api/news/ingest*` | Script-triggered ingest, not user-facing UI |
+| 83–85 | `/api/news/ingest*` | Script/ops-triggered ingest, not user-facing UI; see §34 |
+| 86 | `/api/news/stats` | Ops diagnostics endpoint for recent news ingestion counts/samples; see §34 |
 | 88 | `/api/notifications/unread-count` | Redundant for the panel because `GET /api/notifications` already returns `unread_count` |
 | 91 | `/api/notifications/test` | Admin test only |
 
@@ -2371,4 +2372,53 @@ Full smoke/pre-push results are recorded in the Batch 32 status report.
 Remaining `❌` rows after this taxonomy cleanup are real decision points or
 unclassified endpoints: row 34 deferred backtest sensitivity, rows 83-86 news
 ingest/stats, rows 98-99 and 101 params admin/read surfaces, rows 135-136
+strategy version mutations, and row 141 superseded strategy backtest.
+
+## §34 Fresh verify — 2026-06-01 (News ops endpoint taxonomy)
+
+### §34.1 Finding
+
+Rows 83-86 were stale backend-only markers. They are not missing operator UI:
+three are manual/ops ingestion triggers that can call external news providers
+and classifier services, while row 86 is an ops diagnostics endpoint returning
+recent news row counts and samples. The main matrix now marks them as ops
+taxonomy rows rather than frontend wiring gaps.
+
+Fresh evidence:
+- `backend/app/api/news.py:251` / §5-source ingest — `POST /api/news/ingest`
+  orchestrates fetch/classify/persist through mocked-in-test services and owns
+  endpoint-level commit/rollback; fresh verify 2026-06-01 20:14 +08.
+- `backend/tests/test_news_api_manual_endpoints.py:16` and `:56` / §manual
+  ingest route tests — route success and sanitized failure behavior are locked
+  without external provider or DB calls; fresh verify 2026-06-01 20:14 +08.
+- `backend/app/api/news.py:322` and
+  `backend/tests/test_news_api_rsshub_endpoint.py:121` / §RSSHub ingest route
+  — RSSHub ingest already had mocked route coverage and remains an ops route;
+  fresh verify 2026-06-01 20:14 +08.
+- `backend/app/api/news.py:437` and
+  `backend/tests/test_news_api_manual_endpoints.py:82` / §announcement ingest
+  route — announcement ingestion is an ops-triggered AKShare/CNInfo path, not a
+  frontend action; fresh verify 2026-06-01 20:14 +08.
+- `backend/app/api/news.py:514` and
+  `backend/tests/test_news_api_manual_endpoints.py:127` / §news stats route —
+  stats maps DB row counts and last samples into diagnostics response shape;
+  fresh verify 2026-06-01 20:14 +08.
+
+### §34.2 Closure
+
+- Reclassified rows 83-85 as ops-ingest endpoints.
+- Reclassified row 86 as an ops-diagnostics endpoint.
+- Added route-level regression coverage for rows 83, 85, and 86.
+
+### §34.3 Verification
+
+- News manual endpoints:
+  `pytest backend/tests/test_news_api_manual_endpoints.py -q` -> 4 passed.
+
+Full smoke/pre-push results are recorded in the Batch 33 status report.
+
+### §34.4 Remaining Work
+
+Remaining `❌` rows after this news cleanup: row 34 deferred backtest
+sensitivity, rows 98-99 and 101 params admin/read surfaces, rows 135-136
 strategy version mutations, and row 141 superseded strategy backtest.
