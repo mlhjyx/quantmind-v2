@@ -1,13 +1,53 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 12.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 13.
 date: 2026-06-01 +08:00
-status: governance_batch_12_portfolio_api_layer_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_12.md
+status: governance_batch_13_market_api_layer_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_13.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 12
+## Current Handoff - 2026-06-01 Batch 13
+
+Mode: full-project closure/governance remediation, batch 13 Market API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited `MarketData.tsx` against backend `market.py` and `docs/API_COVERAGE.md`.
+- Confirmed `/api/market/indices`, `/api/market/sectors`, and `/api/market/top-movers` were implemented and consumed by the market page, but the page bypassed `frontend/src/api/*.ts` and the matrix still marked rows 75-77 as unconsumed.
+- Added `frontend/src/api/market.ts` wrappers: `fetchMarketIndices`, `fetchMarketSectors`, and `fetchMarketTopMovers`.
+- Removed direct `apiClient` import and usage from `MarketData.tsx` for market endpoints.
+- Added `frontend/src/__tests__/market-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §14 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_13.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/market-api-contract.test.ts` failed before the fix because `src/api/market.ts` did not exist and `MarketData.tsx` imported `apiClient` directly.
+- GREEN targeted market contract -> 3 passed.
+- Broader frontend/API suite -> 27 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite -> 113 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `/market`; heading `行情数据` and tab `行情概览` were visible and console errors were empty. Temporary Vite dev server was stopped after verification.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+
+Still open:
+- Commit/push Batch 13 into PR #523 and wait for CI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- Run final diff/check hygiene, commit/push Batch 13 into PR #523, wait for CI, then continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 12
 
 Mode: full-project closure/governance remediation, batch 12 Portfolio API-layer closure verified locally before final commit/CI.
 

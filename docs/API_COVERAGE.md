@@ -565,9 +565,9 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 72 | `/api/health` | GET | — | ❌ |
 | 73 | `/api/health/checks` | GET | — | ❌ |
 | 74 | `/api/health/qmt` | GET | — | ❌ |
-| 75 | `/api/market/indices` | GET | — | ❌ |
-| 76 | `/api/market/sectors` | GET | — | ❌ |
-| 77 | `/api/market/top-movers` | GET | — | ❌ |
+| 75 | `/api/market/indices` | GET | market.ts:34 | ✅ |
+| 76 | `/api/market/sectors` | GET | market.ts:39 | ✅ |
+| 77 | `/api/market/top-movers` | GET | market.ts:47 | ✅ |
 | 78 | `/api/mining/run` | POST | mining.ts:142 | ✅ |
 | 79 | `/api/mining/tasks` | GET | mining.ts:166 | ✅ |
 | 80 | `/api/mining/tasks/{task_id}` | GET | mining.ts:184 | ✅ |
@@ -681,7 +681,6 @@ snapshot.
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
-| 75–77 | `/api/market/*` | Market data not consumed by any frontend module |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
 | 118–120 | `/api/reports/*` | Report generation not wired |
@@ -970,7 +969,7 @@ API layer per LL-035.
 - `DashboardAstock.tsx` and `Portfolio.tsx` are closed in §13 for portfolio
   endpoint usage and sector-chart normalization.
 - `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`,
-  `MarketData.tsx`, and a few shared widgets still import `apiClient`
+  and a few shared widgets still import `apiClient`
   directly. They are candidates for follow-up API-layer contraction only when a
   code-backed page/API contract gap is confirmed.
 
@@ -1032,8 +1031,72 @@ matrix.
 ### §13.4 Remaining API Governance Backlog
 
 - Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
-  `RiskManagement.tsx`, `ReportCenter.tsx`, `MarketData.tsx`,
-  `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
+  `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`,
+  and `QMTStatusBadge.tsx`.
 - The next contraction should be selected only after confirming a response
   conversion bug, coverage-matrix blind spot, or broken user workflow from
   current code.
+
+## §14 Fresh verify — 2026-06-01 (market API-layer closure)
+
+### §14.1 Finding
+
+`frontend/src/pages/MarketData.tsx` previously consumed the three implemented
+market routes directly from the page:
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Main index cards | `/market/indices` | `fetchMarketIndices()` |
+| Sector heatmap | `/market/sectors` | `fetchMarketSectors()` |
+| Top gainers / losers | `/market/top-movers?direction=...&limit=5` | `fetchMarketTopMovers(direction, limit)` |
+
+Risk: this matrix marked rows 75–77 as unconsumed even though the page used
+them inline. That hid real frontend usage from the `frontend/src/api/*.ts`
+coverage methodology and left route params spread across UI code.
+
+Fresh evidence:
+- `frontend/src/pages/MarketData.tsx:61` / §MarketData queries — wrapper query
+  functions in use after fix; fresh verify 2026-06-01 14:51 +08.
+- `frontend/src/api/market.ts:33-47` / §Market wrappers — three `/market/*`
+  routes covered by typed API functions; fresh verify 2026-06-01 14:51 +08.
+
+### §14.2 Closure
+
+- Added `frontend/src/api/market.ts` with typed wrappers for indices, sectors,
+  and top movers.
+- Removed direct `apiClient` import and direct `/market/*` calls from
+  `MarketData.tsx`.
+- Added `frontend/src/__tests__/market-api-contract.test.ts` to lock wrapper
+  endpoints, top-mover params, and the page boundary.
+- Updated rows 75–77 in this matrix and removed `/api/market/*` from §5D.
+
+### §14.3 Verification
+
+- RED: `npx vitest --run src/__tests__/market-api-contract.test.ts` failed
+  before the fix because `src/api/market.ts` did not exist and `MarketData.tsx`
+  imported `apiClient` directly.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/market-api-contract.test.ts`
+  -> 3 passed.
+- Broader frontend/API suite:
+  `npx vitest --run src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 27 passed.
+- TypeScript: `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite: `npx vitest --run` -> 113 passed.
+- Frontend build: `npm run build` -> exit 0 with the existing Vite vendor
+  chunk-size warning only.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/market`;
+  heading `行情数据` and tab `行情概览` were visible, and console error list was
+  empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §14.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `RiskManagement.tsx`, `ReportCenter.tsx`, `SafetyControlPanel.tsx`, and
+  `QMTStatusBadge.tsx`.
+- Continue selecting the next contraction only from current code evidence:
+  response conversion bug, coverage-matrix blind spot, or broken user workflow.
