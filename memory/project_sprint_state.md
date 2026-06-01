@@ -1,56 +1,57 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 31.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 32.
 date: 2026-06-01 +08:00
-status: governance_batch_31_sse_matrix_closure_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_31.md
+status: governance_batch_32_external_admin_taxonomy_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_32.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 31
+## Current Handoff - 2026-06-01 Batch 32
 
-Mode: full-project closure/governance remediation, batch 31 SSE coverage
-matrix closure in progress.
+Mode: full-project closure/governance remediation, batch 32 external/admin API
+taxonomy in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `63f24727` (`wire dashboard market
-  ticker`), and PR #523 checks were clean before Batch 31 edits.
+- Latest pushed head before this batch is `236d43d5` (`close risk events sse
+  coverage`), and PR #523 checks were clean before Batch 32 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- API coverage row 131 `/api/sse/risk-events` was a stale backend-only marker.
-- The frontend consumes it through native `EventSource` in
-  `useRiskEventsSSE()`, and `RiskManagement.tsx` mounts that hook.
-- The coverage grep missed it because it is intentionally outside
-  `frontend/src/api/*.ts`.
+- API coverage rows 72-73, 91, 116-117, and 130 were backend-only by design,
+  not missing operator UI.
+- Rows 72-73 and 116-117 are probe/monitoring surfaces.
+- Row 91 is an admin notification test-send endpoint.
+- Row 130 is an inbound DingTalk webhook receiver.
 
 Closed in this batch:
-- Added `frontend/src/__tests__/risk-events-sse-hook.test.tsx`.
-- Updated `docs/API_COVERAGE.md` row 131 and added §32.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_31.md`.
+- Updated `docs/API_COVERAGE.md` rows 72-73, 91, 116-117, and 130 to explicit
+  taxonomy labels.
+- Added `docs/API_COVERAGE.md` §33.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_32.md`.
 
 Verification:
-- `npx vitest --run src/__tests__/risk-events-sse-hook.test.tsx` -> 1 passed.
-- `npx tsc -b --pretty false` -> exit 0.
-- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 34 files passed, 161 tests passed.
-- `npm run build` -> exit 0 with existing large `vendor-echarts` warning.
+- `pytest backend/tests/test_api_routes.py::TestHealthAPI -q` -> 4 passed.
+- `pytest backend/tests/test_remote_status.py -q` -> 7 passed.
+- `pytest backend/tests/test_notification_system.py::TestNotificationAPI::test_send_test_notification -q`
+  -> 1 passed.
+- `pytest backend/tests/test_dingtalk_webhook_endpoint.py::TestEndpointHappyPath::test_transitioned_returns_200 -q`
+  -> 1 passed.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
-- Pending before closure: commit, push, PR body append, and PR #523 check
-  watch.
+- Pending: commit, push, PR body append, and PR #523 check watch.
 
 Still open:
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
 - Remaining §5D backlog: none after row 34 reclassification, dashboard row
-  reconciliation, and row 131 SSE closure.
+  reconciliation, row 131 SSE closure, and Batch 32 taxonomy cleanup.
 - Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
 - Rows 135-136 strategy version create/rollback need a version-management UI
   design with diff preview, required changelog, rollback confirmation, audit

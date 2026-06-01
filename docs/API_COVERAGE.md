@@ -588,8 +588,8 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 69 | `/api/factors/{name}` | GET | factors.ts:61 | ✅ |
 | 70 | `/api/factors/{name}/report` | GET | factors.ts:223 | ✅ |
 | 71 | `/api/factors/{name}/archive` | POST | factors.ts:293 | ✅ |
-| 72 | `/api/health` | GET | — | ❌ |
-| 73 | `/api/health/checks` | GET | — | ❌ |
+| 72 | `/api/health` | GET | health.py:23 | ⚠️ external monitor |
+| 73 | `/api/health/checks` | GET | health.py:56 | ⚠️ external monitor |
 | 74 | `/api/health/qmt` | GET | system.ts:200 | ✅ |
 | 75 | `/api/market/indices` | GET | market.ts:34 | ✅ |
 | 76 | `/api/market/sectors` | GET | market.ts:39 | ✅ |
@@ -607,7 +607,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 88 | `/api/notifications/unread-count` | GET | list response `unread_count` | ⚠️ redundant |
 | 89 | `/api/notifications/{notification_id}` | GET | notifications.ts:129 | ✅ |
 | 90 | `/api/notifications/{notification_id}/read` | PUT | notifications.ts:138 | ✅ |
-| 91 | `/api/notifications/test` | POST | — | ❌ |
+| 91 | `/api/notifications/test` | POST | notifications.py:230 | ⚠️ admin test |
 | 92 | `/api/paper-trading/status` | GET | dashboard.ts:85 | ✅ |
 | 93 | `/api/paper-trading/graduation` | GET | — | ⚠️ superseded |
 | 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:120 | ✅ |
@@ -632,8 +632,8 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 113 | `/api/portfolio/daily-pnl` | GET | portfolio.ts:83 | ✅ |
 | 114 | `/api/realtime/portfolio` | GET | realtime.ts:84 | ✅ |
 | 115 | `/api/realtime/market` | GET | realtime.ts:89 | ✅ |
-| 116 | `/api/v1/ping` | GET | — | ❌ |
-| 117 | `/api/v1/status` | GET | — | ❌ |
+| 116 | `/api/v1/ping` | GET | remote_status.py:278 | ⚠️ external monitor |
+| 117 | `/api/v1/status` | GET | remote_status.py:297 | ⚠️ external monitor |
 | 118 | `/api/reports/list` | GET | reports.ts:143 | ✅ |
 | 119 | `/api/reports/quick-stats` | GET | reports.ts:150 | ✅ |
 | 120 | `/api/reports/generate` | POST | reports.ts:168 | ✅ |
@@ -646,7 +646,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 127 | `/api/risk/overview` | GET | risk.ts:252 | ✅ |
 | 128 | `/api/risk/limits` | GET | risk.ts:268 | ✅ |
 | 129 | `/api/risk/stress-tests` | GET | risk.ts:277 | ✅ |
-| 130 | `/api/risk/dingtalk-webhook` | POST | — | ❌ |
+| 130 | `/api/risk/dingtalk-webhook` | POST | risk.py:618 | ⚠️ inbound webhook |
 | 131 | `/api/sse/risk-events` | GET | useRiskEventsSSE.ts:92/96 | ✅ |
 | 132 | `/api/strategies` | GET | strategies.ts:238 | ✅ |
 | 133 | `/api/strategies/{strategy_id}` | GET | strategies.ts:243/252 | ✅ |
@@ -2311,3 +2311,64 @@ report.
 
 No SSE API coverage gap remains. Future SSE work should be driven by runtime
 latency/connection reliability findings, not the stale API wrapper matrix.
+
+## §33 Fresh verify — 2026-06-01 (External/admin endpoint taxonomy)
+
+### §33.1 Finding
+
+Rows 72-73, 91, 116-117, and 130 were marked backend-only, but none of these
+are missing frontend integrations. They are external monitoring probes, an
+admin notification test endpoint, or an inbound DingTalk webhook receiver. The
+main matrix now marks them as `⚠️` taxonomy rows rather than product UI gaps.
+
+Fresh evidence:
+- `backend/app/api/health.py:23` and `:56` / §health probes — `GET
+  /api/health` and `/api/health/checks` expose infrastructure health for probes
+  and monitoring; fresh verify 2026-06-01 19:49 +08.
+- `backend/tests/test_api_routes.py:373` and `:396` / §health route tests —
+  regression coverage locks health status and check history responses; fresh
+  verify 2026-06-01 19:49 +08.
+- `backend/app/api/remote_status.py:278` and `:297` / §remote status probes —
+  `/api/v1/ping` and `/api/v1/status` are remote monitoring endpoints with API
+  key behavior; fresh verify 2026-06-01 19:49 +08.
+- `backend/tests/test_remote_status.py:72` and `:92` / §remote status tests —
+  regression coverage locks ping and status response shape; fresh verify
+  2026-06-01 19:49 +08.
+- `backend/app/api/notifications.py:230` and
+  `backend/tests/test_notification_system.py:366` / §notification test —
+  `/api/notifications/test` is an admin test send endpoint, while the operator
+  settings UI uses the system notification test path; fresh verify 2026-06-01
+  19:49 +08.
+- `backend/app/api/risk.py:618` and
+  `backend/tests/test_dingtalk_webhook_endpoint.py:130` / §DingTalk inbound
+  webhook — row 130 is a receiver path invoked by DingTalk, not a frontend
+  action; fresh verify 2026-06-01 19:49 +08.
+
+### §33.2 Closure
+
+- Reclassified rows 72-73 as external-monitor endpoints.
+- Reclassified row 91 as an admin notification-test endpoint.
+- Reclassified rows 116-117 as remote-monitor endpoints.
+- Reclassified row 130 as an inbound webhook endpoint.
+
+### §33.3 Verification
+
+- Health API:
+  `pytest backend/tests/test_api_routes.py::TestHealthAPI -q` -> 4 passed.
+- Remote status API:
+  `pytest backend/tests/test_remote_status.py -q` -> 7 passed.
+- Notification test endpoint:
+  `pytest backend/tests/test_notification_system.py::TestNotificationAPI::test_send_test_notification -q`
+  -> 1 passed.
+- DingTalk inbound webhook endpoint:
+  `pytest backend/tests/test_dingtalk_webhook_endpoint.py::TestEndpointHappyPath::test_transitioned_returns_200 -q`
+  -> 1 passed.
+
+Full smoke/pre-push results are recorded in the Batch 32 status report.
+
+### §33.4 Remaining Work
+
+Remaining `❌` rows after this taxonomy cleanup are real decision points or
+unclassified endpoints: row 34 deferred backtest sensitivity, rows 83-86 news
+ingest/stats, rows 98-99 and 101 params admin/read surfaces, rows 135-136
+strategy version mutations, and row 141 superseded strategy backtest.
