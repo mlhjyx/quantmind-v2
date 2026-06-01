@@ -390,27 +390,29 @@ strategy overview, factor rows, and pipeline steps.
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| execution.ts:164–165 | POST | `/auth/admin-token` |
-| execution.ts:186 | POST | `/auth/admin-token/clear` |
-| execution.ts:204–205 | GET | `/auth/admin-token/status` |
-| execution.ts:227 | GET | `/execution/qmt-status` |
-| execution.ts:232 | GET | `/execution/positions` |
-| execution.ts:237 | GET | `/execution/asset` |
-| execution.ts:242 | GET | `/execution/orders` |
-| execution.ts:247 | GET | `/execution/trades` |
-| execution.ts:252 | GET | `/execution/drift` |
-| execution.ts:257 | GET | `/execution/trading-paused` |
-| execution.ts:262 | GET | `/execution/audit-log` |
-| execution.ts:273 | POST | `/execution/cancel-all` |
-| execution.ts:280 | POST | `/execution/cancel/{orderId}` |
-| execution.ts:287 | POST | `/execution/fix-drift/preview` |
-| execution.ts:297 | POST | `/execution/fix-drift/execute` |
-| execution.ts:306 | POST | `/execution/trigger-rebalance` |
-| execution.ts:316 | POST | `/execution/emergency-liquidate` |
-| execution.ts:325 | POST | `/execution/pause-trading` |
-| execution.ts:332 | POST | `/execution/resume-trading` |
+| execution.ts:202–205 | POST | `/auth/admin-token` |
+| execution.ts:224 | POST | `/auth/admin-token/clear` |
+| execution.ts:242–244 | GET | `/auth/admin-token/status` |
+| execution.ts:270 | GET | `/execution/qmt-status` |
+| execution.ts:275 | GET | `/execution/positions` |
+| execution.ts:280 | GET | `/execution/asset` |
+| execution.ts:285 | GET | `/execution/orders` |
+| execution.ts:290 | GET | `/execution/trades` |
+| execution.ts:295 | GET | `/execution/pending-orders` |
+| execution.ts:304 | GET | `/execution/log` |
+| execution.ts:313 | GET | `/execution/drift` |
+| execution.ts:318 | GET | `/execution/trading-paused` |
+| execution.ts:323 | GET | `/execution/audit-log` |
+| execution.ts:334 | POST | `/execution/cancel-all` |
+| execution.ts:341 | POST | `/execution/cancel/{orderId}` |
+| execution.ts:348 | POST | `/execution/fix-drift/preview` |
+| execution.ts:355 | POST | `/execution/fix-drift/execute` |
+| execution.ts:367 | POST | `/execution/trigger-rebalance` |
+| execution.ts:374 | POST | `/execution/emergency-liquidate` |
+| execution.ts:386 | POST | `/execution/pause-trading` |
+| execution.ts:393 | POST | `/execution/resume-trading` |
 
-**19 calls → all 19 consumed** (auth #17–19, execution_ops #47–63 partially)
+**21 calls → all 21 consumed** (auth #17–19, execution #44–45, execution_ops #47–63 except alert-config)
 
 ### 3.6 factors.ts (`frontend/src/api/factors.ts`)
 
@@ -556,26 +558,26 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 41 | `/api/dashboard/strategies` | GET | — | ❌ |
 | 42 | `/api/dashboard/monthly-returns` | GET | — | ❌ |
 | 43 | `/api/dashboard/industry-distribution` | GET | — | ❌ |
-| 44 | `/api/execution/pending-orders` | GET | — | ❌ |
-| 45 | `/api/execution/log` | GET | — | ❌ |
-| 46 | `/api/execution/algo-config` | GET | — | ❌ |
-| 47 | `/api/execution/qmt-status` | GET | execution.ts:227 | ✅ |
-| 48 | `/api/execution/positions` | GET | execution.ts:232 | ✅ |
-| 49 | `/api/execution/asset` | GET | execution.ts:237 | ✅ |
-| 50 | `/api/execution/orders` | GET | execution.ts:242 | ✅ |
-| 51 | `/api/execution/trades` | GET | execution.ts:247 | ✅ |
-| 52 | `/api/execution/drift` | GET | execution.ts:252 | ✅ |
-| 53 | `/api/execution/cancel-all` | POST | execution.ts:273 | ✅ |
-| 54 | `/api/execution/cancel/{order_id}` | POST | execution.ts:280 | ✅ |
-| 55 | `/api/execution/fix-drift/preview` | POST | execution.ts:287 | ✅ |
-| 56 | `/api/execution/fix-drift/execute` | POST | execution.ts:297 | ✅ |
-| 57 | `/api/execution/trigger-rebalance` | POST | execution.ts:306 | ✅ |
-| 58 | `/api/execution/emergency-liquidate` | POST | execution.ts:316 | ✅ |
-| 59 | `/api/execution/pause-trading` | POST | execution.ts:325 | ✅ |
-| 60 | `/api/execution/resume-trading` | POST | execution.ts:332 | ✅ |
-| 61 | `/api/execution/trading-paused` | GET | execution.ts:257 | ✅ |
-| 62 | `/api/execution/alert-config` | PUT | — | ❌ |
-| 63 | `/api/execution/audit-log` | GET | execution.ts:262 | ✅ |
+| 44 | `/api/execution/pending-orders` | GET | execution.ts:295 | ✅ |
+| 45 | `/api/execution/log` | GET | execution.ts:304 | ✅ |
+| 46 | `/api/execution/algo-config` | GET | — | ⚠️ legacy display-only |
+| 47 | `/api/execution/qmt-status` | GET | execution.ts:270 | ✅ |
+| 48 | `/api/execution/positions` | GET | execution.ts:275 | ✅ |
+| 49 | `/api/execution/asset` | GET | execution.ts:280 | ✅ |
+| 50 | `/api/execution/orders` | GET | execution.ts:285 | ✅ |
+| 51 | `/api/execution/trades` | GET | execution.ts:290 | ✅ |
+| 52 | `/api/execution/drift` | GET | execution.ts:313 | ✅ |
+| 53 | `/api/execution/cancel-all` | POST | execution.ts:334 | ✅ |
+| 54 | `/api/execution/cancel/{order_id}` | POST | execution.ts:341 | ✅ |
+| 55 | `/api/execution/fix-drift/preview` | POST | execution.ts:348 | ✅ |
+| 56 | `/api/execution/fix-drift/execute` | POST | execution.ts:355 | ✅ |
+| 57 | `/api/execution/trigger-rebalance` | POST | execution.ts:367 | ✅ |
+| 58 | `/api/execution/emergency-liquidate` | POST | execution.ts:374 | ✅ |
+| 59 | `/api/execution/pause-trading` | POST | execution.ts:386 | ✅ |
+| 60 | `/api/execution/resume-trading` | POST | execution.ts:393 | ✅ |
+| 61 | `/api/execution/trading-paused` | GET | execution.ts:318 | ✅ |
+| 62 | `/api/execution/alert-config` | PUT | — | ⚠️ backend no-op |
+| 63 | `/api/execution/audit-log` | GET | execution.ts:323 | ✅ |
 | 64 | `/api/factors/health` | GET | factors.ts:96/217 | ✅ |
 | 65 | `/api/factors/correlation` | GET | factors.ts:212 | ✅ |
 | 66 | `/api/factors/summary` | GET | factors.ts:197 | ✅ |
@@ -692,6 +694,7 @@ snapshot.
 | # | Endpoint | Rationale |
 |---|----------|-----------|
 | 107–110 | `/api/pms/*` | **PHYSICALLY RETIRED iter 50 2026-05-24 (ADR-094)** — pms_engine.py + api/pms.py + frontend page/route/nav 同 PR 全部删除. V3 SSOT 走 V3 §4 L1 PMSRule + V3 §7.3 trailing_stop |
+| 46 | `/api/execution/algo-config` | Legacy display-only endpoint from the retired `TradeExecution` path; prior audits found it can expose stale `strategy_configs` display values and is not in the trading path |
 | 98 | `/api/params/changelog` | No frontend UI for changelog |
 | 99 | `/api/params/{key}` GET | Only PUT consumed; GET by key unused |
 | 101 | `/api/params/init-defaults` | Init script only |
@@ -701,10 +704,14 @@ snapshot.
 | # | Endpoint | Priority |
 |---|----------|----------|
 | 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
-| 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
-| 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 92–93 | `/api/paper-trading/status`, `/api/paper-trading/graduation` | Legacy PT status/criteria endpoints not wrapped by current frontend API layer |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
+
+### 5E — Needs Backend Semantics Before UI
+
+| # | Endpoint | Rationale |
+|---|----------|-----------|
+| 62 | `/api/execution/alert-config` PUT | Admin-gated endpoint only writes `operation_audit_log` and echoes the payload; no config store or runtime reload semantics exist yet, so wiring a UI would imply a mutation that does not persist |
 
 ---
 
@@ -1940,3 +1947,64 @@ Full regression/build/smoke results are recorded in the Batch 25 status report.
 
 Notification cleanup, preferences, and admin test endpoints remain backend/admin
 workflow candidates. They are not part of the current operator panel chain.
+
+## §27 Fresh verify — 2026-06-01 (Execution read-only DB fallback + mutation reclass)
+
+### §27.1 Finding
+
+Rows 44-46 and row 62 were grouped as frontend-unwired execution work, but fresh
+code review split them into three different classes:
+
+- Rows 44-45 are read-only DB trade-log visibility endpoints from
+  `backend/app/api/execution.py`; wiring them gives the Execution page useful
+  planned/executed trade visibility when QMT orders/trades are unavailable.
+- Row 46 `/api/execution/algo-config` is a legacy display-only endpoint. Prior
+  audits already found it can expose stale `strategy_configs` display values and
+  is not in the trading path.
+- Row 62 `/api/execution/alert-config` is admin-gated but only writes
+  `operation_audit_log` and echoes the payload. It does not persist config or
+  reload runtime rules, so a UI would imply a mutation that does not happen.
+
+Fresh evidence:
+- `backend/app/api/execution.py:29` / §pending-orders route — read-only
+  `trade_log` query for unexecuted rows; fresh verify 2026-06-01 18:15 +08.
+- `backend/app/api/execution.py:94` / §execution-log route — read-only
+  `trade_log` query with date/limit params; fresh verify 2026-06-01 18:15 +08.
+- `backend/app/api/execution.py:186` / §algo-config route — legacy
+  `strategy_configs` display endpoint; fresh verify 2026-06-01 18:15 +08.
+- `backend/app/api/execution_ops.py:880` / §alert-config route — audit-only
+  update endpoint with no config persistence; fresh verify 2026-06-01 18:15 +08.
+- `frontend/src/api/execution.ts:295` and `:304` / §execution API wrappers —
+  frontend now wraps pending orders and execution log; fresh verify 2026-06-01
+  18:15 +08.
+- `frontend/src/pages/Execution/index.tsx:149-160`, `:594-642`, and `:685-738`
+  / §Execution page — page fetches the DB fallback rows and displays them when
+  QMT orders/trades are absent; fresh verify 2026-06-01 18:15 +08.
+
+### §27.2 Closure
+
+- Added typed `getPendingOrders()` and `getExecutionLog()` wrappers.
+- Added query keys and Execution page fallback tables for DB pending orders and
+  DB execution log rows.
+- Added API contract and source-guard tests for rows 44-45.
+- Marked row 46 as legacy display-only and moved row 62 to §5E backend
+  semantics-needed.
+- Removed execution rows from §5D.
+
+### §27.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/execution-api-contract.test.ts` failed before
+  implementation because the wrappers and page imports did not exist.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/execution-api-contract.test.ts` -> 3 passed.
+- TypeScript:
+  `npx tsc -b --pretty false` -> exit 0.
+
+Full regression/build/smoke results are recorded in the Batch 26 status report.
+
+### §27.4 Remaining Work
+
+`PUT /api/execution/alert-config` needs an explicit backend design before UI:
+define storage, validation, diff preview, reload semantics, audit record, and
+rollback path. Until then, it should not be wired into the operator panel.

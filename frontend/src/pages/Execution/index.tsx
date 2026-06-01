@@ -18,6 +18,8 @@ import {
   getDrift,
   getOrders,
   getTrades,
+  getPendingOrders,
+  getExecutionLog,
   getAuditLog,
   getTradingPaused,
   getAdminToken,
@@ -29,6 +31,8 @@ import type {
   DriftFixPreview,
   Order,
   Trade,
+  PendingOrder,
+  ExecutionLogEntry,
   AuditLogItem,
 } from "@/api/execution";
 import {
@@ -74,6 +78,18 @@ function statusEmoji(status: string): string {
     case "underweight": return "\u{1F7E0}";
     default: return "\u{1F7E2}";
   }
+}
+
+function directionLabel(direction: string): string {
+  const normalized = direction.toLowerCase();
+  if (normalized === "buy" || normalized === "23") return "买入";
+  if (normalized === "sell" || normalized === "24") return "卖出";
+  return direction;
+}
+
+function directionColor(direction: string): string {
+  const normalized = direction.toLowerCase();
+  return normalized === "buy" || normalized === "23" ? C.up : C.down;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +144,20 @@ export default function Execution() {
     staleTime: 5_000,
     enabled: qmtStatus?.state === "connected",
     retry: false,
+  });
+
+  const { data: pendingOrders } = useQuery<PendingOrder[]>({
+    queryKey: [...queryKeys.executionPendingOrders],
+    queryFn: () => getPendingOrders({ execution_mode: "paper" }),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+
+  const { data: executionLog } = useQuery<ExecutionLogEntry[]>({
+    queryKey: [...queryKeys.executionLog],
+    queryFn: () => getExecutionLog({ date: "today", execution_mode: "paper", limit: 100 }),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
   });
 
   const { data: auditLog } = useQuery<AuditLogItem[]>({
@@ -273,6 +303,8 @@ export default function Execution() {
   const driftItems = drift?.items ?? [];
   const safeOrders = orders ?? [];
   const safeTrades = trades ?? [];
+  const safePendingOrders = pendingOrders ?? [];
+  const safeExecutionLog = executionLog ?? [];
   const safeAudit = auditLog ?? [];
 
   // --- QMT order status label ---
@@ -499,11 +531,7 @@ export default function Execution() {
             {tab === "今日委托" && (
               <Card>
                 <CardHeader title="今日委托" titleEn="Today Orders" />
-                {!isConnected ? (
-                  <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>QMT未连接</div>
-                ) : safeOrders.length === 0 ? (
-                  <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>暂无委托</div>
-                ) : (
+                {safeOrders.length > 0 ? (
                   <div className="px-3 pb-2">
                     <table className="w-full" style={{ fontSize: 11 }}>
                       <thead>
@@ -556,6 +584,58 @@ export default function Execution() {
                       </tbody>
                     </table>
                   </div>
+                ) : safePendingOrders.length === 0 ? (
+                  <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>
+                    {isConnected ? "暂无委托" : "QMT未连接，暂无待执行记录"}
+                  </div>
+                ) : (
+                  <div className="px-3 pb-2">
+                    <div className="py-2 text-[11px]" style={{ color: C.text4 }}>
+                      QMT委托不可用时显示 DB 待执行记录
+                    </div>
+                    <table className="w-full" style={{ fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ color: C.text4 }}>
+                          <th className="text-left py-2 font-normal">记录ID</th>
+                          <th className="text-left py-2 font-normal">代码</th>
+                          <th className="text-left py-2 font-normal">名称</th>
+                          <th className="text-center py-2 font-normal">方向</th>
+                          <th className="text-right py-2 font-normal">数量</th>
+                          <th className="text-right py-2 font-normal">目标价</th>
+                          <th className="text-left py-2 font-normal">交易日</th>
+                          <th className="text-center py-2 font-normal">状态</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {safePendingOrders.map((o) => (
+                          <tr key={o.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                            <td className="py-1.5" style={{ fontFamily: "monospace", color: C.text4, fontSize: 10 }}>{o.id.slice(0, 8)}</td>
+                            <td className="py-1.5" style={{ fontFamily: "monospace", color: C.text2 }}>{o.code}</td>
+                            <td className="py-1.5" style={{ color: C.text2 }}>{o.name}</td>
+                            <td className="text-center py-1.5">
+                              <span style={{ color: directionColor(o.direction), fontSize: 10 }}>
+                                {directionLabel(o.direction)}
+                              </span>
+                            </td>
+                            <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text1 }}>{o.quantity.toLocaleString()}</td>
+                            <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text2 }}>
+                              {o.target_price === null ? "—" : `¥${o.target_price.toFixed(2)}`}
+                            </td>
+                            <td className="py-1.5" style={{ color: C.text3 }}>{o.trade_date ?? "—"}</td>
+                            <td className="text-center py-1.5">
+                              <span className="px-1.5 py-0.5 rounded-full" style={{
+                                fontSize: 9,
+                                color: o.status === "rejected" ? C.up : C.warn,
+                                background: o.status === "rejected" ? `${C.up}10` : `${C.warn}10`,
+                              }}>
+                                {o.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </Card>
             )}
@@ -564,11 +644,7 @@ export default function Execution() {
             {tab === "今日成交" && (
               <Card>
                 <CardHeader title="今日成交" titleEn="Today Trades" />
-                {!isConnected ? (
-                  <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>QMT未连接</div>
-                ) : safeTrades.length === 0 ? (
-                  <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>暂无成交</div>
-                ) : (
+                {safeTrades.length > 0 ? (
                   <div className="px-3 pb-2">
                     <table className="w-full" style={{ fontSize: 11 }}>
                       <thead>
@@ -594,6 +670,64 @@ export default function Execution() {
                             <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text1 }}>¥{t.price.toFixed(2)}</td>
                             <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text2 }}>{t.volume.toLocaleString()}</td>
                             <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text2 }}>¥{fmtMoney(t.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : safeExecutionLog.length === 0 ? (
+                  <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>
+                    {isConnected ? "暂无成交" : "QMT未连接，暂无执行日志"}
+                  </div>
+                ) : (
+                  <div className="px-3 pb-2">
+                    <div className="py-2 text-[11px]" style={{ color: C.text4 }}>
+                      QMT成交不可用时显示 DB 执行日志
+                    </div>
+                    <table className="w-full" style={{ fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ color: C.text4 }}>
+                          <th className="text-left py-2 font-normal">记录ID</th>
+                          <th className="text-left py-2 font-normal">代码</th>
+                          <th className="text-left py-2 font-normal">名称</th>
+                          <th className="text-center py-2 font-normal">方向</th>
+                          <th className="text-right py-2 font-normal">数量</th>
+                          <th className="text-right py-2 font-normal">成交价</th>
+                          <th className="text-right py-2 font-normal">成本</th>
+                          <th className="text-left py-2 font-normal">时间</th>
+                          <th className="text-center py-2 font-normal">状态</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {safeExecutionLog.map((t) => (
+                          <tr key={t.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                            <td className="py-1.5" style={{ fontFamily: "monospace", color: C.text4, fontSize: 10 }}>{t.id.slice(0, 8)}</td>
+                            <td className="py-1.5" style={{ fontFamily: "monospace", color: C.text2 }}>{t.code}</td>
+                            <td className="py-1.5" style={{ color: C.text2 }}>{t.name}</td>
+                            <td className="text-center py-1.5">
+                              <span style={{ color: directionColor(t.direction), fontSize: 10 }}>
+                                {directionLabel(t.direction)}
+                              </span>
+                            </td>
+                            <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text1 }}>{t.quantity.toLocaleString()}</td>
+                            <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text2 }}>
+                              {t.fill_price === null || t.fill_price === undefined ? "—" : `¥${t.fill_price.toFixed(2)}`}
+                            </td>
+                            <td className="py-1.5 text-right" style={{ fontFamily: "monospace", color: C.text2 }}>
+                              {t.total_cost === null || t.total_cost === undefined ? "—" : `¥${fmtMoney(t.total_cost)}`}
+                            </td>
+                            <td className="py-1.5" style={{ color: C.text3 }}>
+                              {t.executed_at?.replace("T", " ").slice(0, 19) ?? t.trade_date ?? "—"}
+                            </td>
+                            <td className="text-center py-1.5">
+                              <span className="px-1.5 py-0.5 rounded-full" style={{
+                                fontSize: 9,
+                                color: t.status === "executed" ? C.down : t.status === "rejected" ? C.up : C.warn,
+                                background: t.status === "executed" ? `${C.down}10` : t.status === "rejected" ? `${C.up}10` : `${C.warn}10`,
+                              }}>
+                                {t.status}
+                              </span>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

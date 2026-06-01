@@ -15,6 +15,8 @@ export const queryKeys = {
   executionAsset: ["execution-asset"] as const,
   executionOrders: ["execution-orders"] as const,
   executionTrades: ["execution-trades"] as const,
+  executionPendingOrders: ["execution-pending-orders"] as const,
+  executionLog: ["execution-log"] as const,
   executionDrift: ["execution-drift"] as const,
   executionAuditLog: ["execution-audit-log"] as const,
   tradingPaused: ["trading-paused"] as const,

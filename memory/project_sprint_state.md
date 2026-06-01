@@ -1,77 +1,83 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 25.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 26.
 date: 2026-06-01 +08:00
-status: governance_batch_25_notification_detail_full_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_25.md
+status: governance_batch_26_execution_readonly_fallback_full_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_26.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 25
+## Current Handoff - 2026-06-01 Batch 26
 
-Mode: full-project closure/governance remediation, batch 25 notification detail
-API coverage and unread-count reclassification fully verified before
-commit/push.
+Mode: full-project closure/governance remediation, batch 26 execution read-only
+DB fallback coverage and unsafe/no-op execution endpoint reclassification fully
+verified before commit/push.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `29529dc1` (`close factor name
-  coverage drift`), and PR #523 checks were clean before Batch 25 edits.
+- Latest pushed head before this batch is `2dc316c7` (`wire notification detail
+  view`), and PR #523 checks were clean before Batch 26 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Row 88 `/api/notifications/unread-count` is redundant for the current
-  notification panel because the list endpoint already returns `unread_count`;
-  it was reclassified into §5A instead of adding a duplicate wrapper.
-- Row 89 `/api/notifications/{notification_id}` was a real frontend gap and is
-  now consumed by `fetchNotificationDetail()` plus the panel detail state.
-- During implementation, a close/reopen state bug surfaced: outside-click close
-  preserved stale detail content. A RED regression captured it before the
-  close-path fix.
+- Rows 44-45 `/api/execution/pending-orders` and `/api/execution/log` are
+  read-only DB `trade_log` visibility endpoints. They are useful when QMT
+  order/trade snapshots are unavailable.
+- Row 46 `/api/execution/algo-config` is legacy display-only behavior from the
+  retired `TradeExecution` path. Prior audits found it can show stale
+  `strategy_configs` values and is not in the trading path.
+- Row 62 `/api/execution/alert-config` is admin-gated but only writes an audit
+  row and echoes the payload; it has no config storage or runtime reload
+  semantics, so UI wiring would imply a mutation that does not persist.
 - Row 34 `/api/backtest/{run_id}/sensitivity` remains an intentional backend
   defer stub, not a missed frontend hook. Keep it in backlog unless the defer
   decision changes.
 
 Closed in this batch:
-- Added `fetchNotificationDetail()` to `frontend/src/api/notifications.ts`.
-- Wired no-link notification rows in
-  `frontend/src/components/ui/NotificationPanel.tsx` to render backend detail
-  payloads with load/error/back-to-list states.
-- Added notification API/UI contract tests and close/reopen regression coverage.
-- Updated `docs/API_COVERAGE.md` rows 88-90, §5A, §5D, §11, and new §26; added
-  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_25.md`.
+- Added typed `getPendingOrders()` and `getExecutionLog()` wrappers to
+  `frontend/src/api/execution.ts`.
+- Added `queryKeys.executionPendingOrders` and `queryKeys.executionLog`.
+- Wired `frontend/src/pages/Execution/index.tsx` to show DB fallback tables for
+  pending orders and execution log rows when QMT orders/trades are absent.
+- Added `frontend/src/__tests__/execution-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` rows 44-46, row 62, §3.5, §5C, §5D, new §5E,
+  and new §27; added
+  `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_26.md`.
 
 Verification:
-- RED detail contract:
-  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
-  failed before implementation on missing detail wrapper/panel call.
-- RED close-state regression:
-  `npx vitest --run src/__tests__/notifications-ui-contract.test.tsx -t "returns to the list"`
-  failed before the close-path fix.
-- Targeted notification contracts:
-  `npx vitest --run src/__tests__/notifications-api-contract.test.ts src/__tests__/notifications-ui-contract.test.tsx`
-  -> 13 passed.
+- RED execution contract:
+  `npx vitest --run src/__tests__/execution-api-contract.test.ts` failed before
+  implementation on missing wrappers/page usage.
+- Targeted execution contract:
+  `npx vitest --run src/__tests__/execution-api-contract.test.ts` -> 3 passed.
+- Backend endpoint compatibility:
+  `pytest backend/tests/test_sprint123_apis.py -q` -> 21 passed.
 - `npx tsc -b --pretty false` -> exit 0.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 149 passed.
+- `npx vitest --run` -> 152 passed.
 - `npm run build` -> exit 0 with existing Vite vendor-echarts chunk-size warning.
+- Browser smoke on `http://127.0.0.1:5173/execution?smoke=batch26`:
+  Execution screen rendered, `今日委托` and `今日成交` tabs opened, QMT-unavailable
+  fallback text rendered, and the timestamped console-error window after
+  `2026-06-01T10:23:16.466Z` had 0 new errors.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
 
 Still open:
-- Run banned-word scan, then stage/commit/push Batch 25 and verify PR #523
+- Run banned-word scan, then stage/commit/push Batch 26 and verify PR #523
   remote checks before treating the batch as merge-ready.
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Remaining §5D backlog: row 34 backtest sensitivity; rows 44-46 execution
-  pending-orders/log/algo-config; row 62 execution alert-config PUT; rows
-  92-93 legacy paper-trading status/graduation; rows 134-136 and 140-141
-  strategy versions/factors/backtest.
+- Remaining §5D backlog: row 34 backtest sensitivity; rows 92-93 legacy
+  paper-trading status/graduation; rows 134-136 and 140-141 strategy
+  versions/factors/backtest.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
 - Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
   and `beat`; then verify a fresh `realtime_risk_tick` row reports
   `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
@@ -81,8 +87,17 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Stage/commit/push Batch 25, update PR #523, then verify GitHub checks before
+- Stage/commit/push Batch 26, update PR #523, then verify GitHub checks before
   continuing.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 25
+
+Batch 25 closed notification detail row 89 and reclassified row 88 unread-count
+as redundant because the notification list already returns `unread_count`.
+Commit `2dc316c7` pushed as `wire notification detail view`; PR #523 checks
+passed before Batch 26 edits.
 
 ---
 
