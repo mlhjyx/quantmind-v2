@@ -83,6 +83,8 @@ ALL NEGATIVE.
 - regression + ci_matrix jobs run `scripts/ci_run_phase.py` as blocking GitHub
   checks; regression validates committed `cache/baseline/regression_result_*.json`
   artifacts with recorded `max_diff=0` evidence.
+- `ci_matrix` smoke execution uses the same bounded target/flags as pre-push:
+  `pytest backend/tests/ -m "smoke and not live_tushare" --tb=line -q --timeout=60`.
 - `pre_commit` now includes `scripts/audit/check_frontend_api_discipline.py`, a
   comment-aware raw axios scanner that keeps `frontend/src/api/client.ts` as the
   production axios SSOT without flagging tests or prose.

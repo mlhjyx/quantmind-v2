@@ -83,7 +83,21 @@ def default_matrix() -> list[MatrixCell]:
 
 def _build_pytest_cmd(cell: MatrixCell) -> list[str]:
     """Build pytest invocation cmd for a matrix cell."""
-    return ["pytest", "-m", cell.tags, "-q"]
+    return [
+        "pytest",
+        "backend/tests/",
+        "-m",
+        cell.tags,
+        "--tb=line",
+        "-q",
+        "--timeout=60",
+    ]
+
+
+def _last_nonempty_line(text: str) -> str:
+    """Return a bounded one-line tail suitable for CIResult.details."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1][:160] if lines else ""
 
 
 class CIMatrixOrchestrator:
@@ -132,10 +146,12 @@ class CIMatrixOrchestrator:
                 summary_parts = [f"rc={result.returncode}"]
                 if result.stdout:
                     summary_parts.append(f"stdout_len={len(result.stdout)}")
+                    if not cell_passed:
+                        stdout_tail = _last_nonempty_line(result.stdout)
+                        if stdout_tail:
+                            summary_parts.append(f"stdout_tail={stdout_tail}")
                 if result.stderr and not cell_passed:
-                    err_tail = (
-                        result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ""
-                    )
+                    err_tail = _last_nonempty_line(result.stderr)
                     if err_tail:
                         summary_parts.append(f"err_tail={err_tail[:80]}")
                 details[cell.cell_id] = " ".join(summary_parts)

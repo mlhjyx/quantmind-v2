@@ -23,6 +23,8 @@ Closed in this batch:
 - Added recorded `max_diff` validation for same-file committed artifacts while preserving baseline-vs-actual pair comparison for custom callers.
 - Removed advisory masking from GitHub `regression` and `ci_matrix` jobs.
 - Added `backend/tests/test_github_ci_workflow.py` and included it in bounded pre-commit collect coverage.
+- Followed the first GitHub blocking failure: `ci_matrix` failed while `regression`, `pre_commit`, and `pre_push` passed, exposing that matrix smoke used a bare pytest command and hid the pytest tail.
+- Aligned `CIMatrixOrchestrator` smoke execution with the passing pre-push smoke scope and added bounded stdout-tail detail for failed matrix cells.
 - Updated `docs/mvp/MVP_4_3_cicd.md` and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_10.md`.
 
 Verified so far:
@@ -32,6 +34,10 @@ Verified so far:
 - `python scripts/ci_run_phase.py --phase regression` -> PASS, both default artifacts reported `max_diff=0.0`.
 - `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
 - `python scripts/ci_run_phase.py --phase pre_commit` -> PASS.
+- GitHub first blocking run: `regression`, `pre_commit`, and `pre_push` passed; `ci_matrix` failed and was fixed in the follow-up commit.
+- Matrix command/tail RED tests failed before the follow-up fix; full matrix orchestrator tests -> 18 passed after the fix.
+- `ruff check backend/qm_platform/ci/ci_matrix.py backend/tests/test_qm_platform_ci_matrix.py` -> PASS.
+- Follow-up `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
 
 Still open:
 - Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.

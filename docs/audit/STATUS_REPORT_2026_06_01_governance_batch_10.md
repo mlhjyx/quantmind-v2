@@ -26,6 +26,7 @@ Active discovery:
 - Before the fix, `python scripts/ci_run_phase.py --phase regression` failed immediately with `FILE_MISSING` for the nonexistent `backtest_*` JSON files.
 - `python scripts/ci_run_phase.py --phase ci_matrix` already passed locally, so the advisory wrapper on that job was unnecessary noise.
 - Local pre-commit collect did not include a GitHub workflow contract test, so advisory masking could regress without tripping the bounded governance collect set.
+- After the first push, GitHub confirmed the new blocking behavior: `regression`, `pre_commit`, and `pre_push` passed, while `ci_matrix` failed instead of being masked. The matrix runner used a bare `pytest -m ... -q` command, unlike the passing pre-push smoke command on the same runner, and its failure detail exposed only `stdout_len`.
 
 ## Fixes
 
@@ -34,6 +35,8 @@ Active discovery:
 - Removed `--advisory` from GitHub `regression` and `ci_matrix` jobs.
 - Added `backend/tests/test_github_ci_workflow.py` to lock the workflow contract.
 - Added the workflow contract test to the bounded `pre_commit` collect target list.
+- Aligned `CIMatrixOrchestrator` smoke execution with the passing pre-push smoke scope: `pytest backend/tests/ -m "smoke and not live_tushare" --tb=line -q --timeout=60`.
+- Added bounded stdout-tail output for failed matrix cells so future GitHub failures include the last meaningful pytest line rather than only output length.
 - Updated `docs/mvp/MVP_4_3_cicd.md` to describe the blocking GitHub behavior.
 
 ## Verification
@@ -53,6 +56,11 @@ Green phase:
 - `python scripts/ci_run_phase.py --phase regression` -> PASS, both default artifacts reported `max_diff=0.0`.
 - `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
 - `python scripts/ci_run_phase.py --phase pre_commit` -> PASS.
+- Post-push RED: first GitHub blocking `ci_matrix` run failed while `regression`, `pre_commit`, and `pre_push` passed, exposing matrix command drift and opaque failure details.
+- Matrix RED: `pytest backend/tests/test_qm_platform_ci_matrix.py::test_default_cmd_builder_matches_prepush_smoke_scope backend/tests/test_qm_platform_ci_matrix.py::test_cell_failure_includes_stdout_tail_for_debugging -q` failed before the follow-up fix.
+- Matrix GREEN: `pytest backend/tests/test_qm_platform_ci_matrix.py::test_default_cmd_builder_matches_prepush_smoke_scope backend/tests/test_qm_platform_ci_matrix.py::test_cell_failure_includes_stdout_tail_for_debugging backend/tests/test_qm_platform_ci_matrix.py -q` -> 18 passed.
+- `ruff check backend/qm_platform/ci/ci_matrix.py backend/tests/test_qm_platform_ci_matrix.py` -> PASS.
+- Follow-up `python scripts/ci_run_phase.py --phase ci_matrix` -> PASS.
 
 ## Open Backlog
 
