@@ -16,12 +16,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
   compareBacktests,
+  getBacktestTrades,
   getNavSeries,
   listBacktestHistory,
+  type BacktestTradeRow,
+  type BacktestTradesResponse,
   type CompareRunSummary,
   type BacktestNavPoint,
 } from "@/api/backtest";
@@ -216,6 +220,207 @@ function SealField({ label, value }: { label: string; value: string | null }) {
       <span className="text-slate-500">{label}:</span>{" "}
       <span className="text-slate-300 font-mono break-all">{value ?? "—"}</span>
     </div>
+  );
+}
+
+// ── S5 TradeListDiff ───────────────────────────────────────────────────────
+
+function fmtTradeNumber(v: number | null | undefined, digits = 2): string {
+  if (v == null) return "—";
+  return Number(v).toFixed(digits);
+}
+
+function fmtTradeSide(side: string): string {
+  if (side === "buy") return "买入";
+  if (side === "sell") return "卖出";
+  return side;
+}
+
+function signedShares(row: BacktestTradeRow): number {
+  const shares = Number(row.shares ?? 0);
+  return row.side === "sell" ? -shares : shares;
+}
+
+function buildTradeDiffRows(
+  results: Array<BacktestTradesResponse | undefined>,
+): Array<{ stockCode: string; spread: number; perRun: number[] }> {
+  const byStock = new Map<string, number[]>();
+  results.forEach((result, runIdx) => {
+    for (const trade of result?.items ?? []) {
+      const current = byStock.get(trade.stock_code) ?? results.map(() => 0);
+      current[runIdx] = (current[runIdx] ?? 0) + signedShares(trade);
+      byStock.set(trade.stock_code, current);
+    }
+  });
+
+  return Array.from(byStock.entries())
+    .map(([stockCode, perRun]) => ({
+      stockCode,
+      perRun,
+      spread: Math.max(...perRun) - Math.min(...perRun),
+    }))
+    .filter((row) => row.spread > 0)
+    .sort((a, b) => b.spread - a.spread)
+    .slice(0, 10);
+}
+
+function TradeTable({
+  run,
+  result,
+}: {
+  run: CompareRunSummary | undefined;
+  result: BacktestTradesResponse | undefined;
+}) {
+  const trades = result?.items ?? [];
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="text-sm font-medium text-slate-200 font-mono truncate">
+          {run?.run_name || run?.run_id.slice(0, 8) || "run"}
+        </div>
+        <div className="text-xs text-slate-500">
+          {trades.length} / {result?.total ?? 0}
+        </div>
+      </div>
+      {trades.length === 0 ? (
+        <div className="text-xs text-slate-500 py-6 text-center">无交易记录</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead className="text-slate-500 border-b border-slate-800">
+              <tr>
+                <th className="text-left py-1.5 pr-2">日期</th>
+                <th className="text-left py-1.5 pr-2">代码</th>
+                <th className="text-left py-1.5 pr-2">方向</th>
+                <th className="text-right py-1.5 pr-2">数量</th>
+                <th className="text-right py-1.5 pr-2">价格</th>
+                <th className="text-right py-1.5 pr-2">成本</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.slice(0, 20).map((trade) => (
+                <tr key={trade.id} className="border-b border-slate-800/60">
+                  <td className="py-1.5 pr-2 text-slate-400 font-mono">
+                    {(trade.exec_date ?? trade.signal_date ?? "").slice(0, 10) || "—"}
+                  </td>
+                  <td className="py-1.5 pr-2 text-slate-200 font-mono">
+                    {trade.stock_code}
+                  </td>
+                  <td
+                    className="py-1.5 pr-2 font-medium"
+                    style={{ color: trade.side === "buy" ? "#ef4444" : "#22c55e" }}
+                  >
+                    {fmtTradeSide(trade.side)}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right text-slate-300 font-mono">
+                    {Number(trade.shares ?? 0).toLocaleString()}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right text-slate-300 font-mono">
+                    {fmtTradeNumber(trade.exec_price)}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right text-slate-400 font-mono">
+                    {fmtTradeNumber(trade.total_cost)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TradeListDiff({ runIds, runs }: { runIds: string[]; runs: CompareRunSummary[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const tradeQueries = useQueries({
+    queries: runIds.map((id) => ({
+      queryKey: ["backtest-compare", "trades", id, 1, 100],
+      queryFn: () => getBacktestTrades(id, { page: 1, pageSize: 100 }),
+      enabled: expanded,
+      staleTime: 5 * 60_000,
+    })),
+  });
+
+  const results = tradeQueries.map((q) => q.data);
+  const anyLoading = tradeQueries.some((q) => q.isLoading);
+  const firstError = tradeQueries.find((q) => q.error)?.error;
+  const diffRows = buildTradeDiffRows(results);
+  const ToggleIcon = expanded ? ChevronDown : ChevronRight;
+
+  return (
+    <section className="rounded-lg bg-slate-900/60 border border-slate-800 p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+        <h2 className="text-base font-semibold text-slate-100">
+          S5 — 交易明细差异
+        </h2>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="inline-flex items-center gap-1.5 self-start sm:self-auto text-xs rounded border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-slate-200 hover:bg-slate-900"
+          title={expanded ? "收起交易差异" : "展开交易差异"}
+        >
+          <ToggleIcon size={14} />
+          {expanded ? "收起" : "展开"}
+        </button>
+      </div>
+
+      {!expanded ? null : firstError ? (
+        <div className="text-sm text-red-400">
+          交易加载失败: {firstError instanceof Error ? firstError.message : "unknown"}
+        </div>
+      ) : anyLoading ? (
+        <div className="h-24 flex items-center justify-center text-slate-500 text-sm">
+          加载交易中...
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {diffRows.length > 0 && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="text-xs text-slate-400 mb-2">成交数量差异 Top 10</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead className="text-slate-500 border-b border-slate-800">
+                    <tr>
+                      <th className="text-left py-1.5 pr-2">代码</th>
+                      {runIds.map((id, idx) => (
+                        <th key={id} className="text-right py-1.5 pr-2">
+                          {runs[idx]?.run_name || id.slice(0, 8)}
+                        </th>
+                      ))}
+                      <th className="text-right py-1.5 pr-2">差值</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diffRows.map((row) => (
+                      <tr key={row.stockCode} className="border-b border-slate-800/60">
+                        <td className="py-1.5 pr-2 text-slate-200 font-mono">
+                          {row.stockCode}
+                        </td>
+                        {row.perRun.map((value, idx) => (
+                          <td key={idx} className="py-1.5 pr-2 text-right text-slate-300 font-mono">
+                            {value.toLocaleString()}
+                          </td>
+                        ))}
+                        <td className="py-1.5 pr-2 text-right text-slate-200 font-mono">
+                          {row.spread.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {runIds.map((id, idx) => (
+              <TradeTable key={id} run={runs[idx]} result={results[idx]} />
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -437,6 +642,7 @@ export default function BacktestCompare() {
         <>
           <MetricAndSealSection runs={runs} />
           <NavDrawdownSection runIds={selectedRuns} runs={runs} />
+          <TradeListDiff runIds={selectedRuns} runs={runs} />
         </>
       )}
     </div>

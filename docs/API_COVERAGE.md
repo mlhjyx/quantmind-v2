@@ -514,8 +514,8 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 21 | `/api/backtest/history` | GET | backtest.ts:189 | ✅ |
 | 22 | `/api/backtest/{run_id}` | GET | backtest.ts:135 | ✅ |
 | 23 | `/api/backtest/{run_id}/result` | GET | backtest.ts:150 | ✅ |
-| 24 | `/api/backtest/{run_id}/nav` | GET | — | ❌ |
-| 25 | `/api/backtest/{run_id}/trades` | GET | — | ❌ |
+| 24 | `/api/backtest/{run_id}/nav` | GET | backtest.ts:386 | ✅ |
+| 25 | `/api/backtest/{run_id}/trades` | GET | backtest.ts:394 | ✅ |
 | 26 | `/api/backtest/{run_id}/holdings` | GET | — | ❌ |
 | 27 | `/api/backtest/{run_id}/annual` | GET | — | ❌ |
 | 28 | `/api/backtest/{run_id}/monthly` | GET | — | ❌ |
@@ -677,7 +677,7 @@ snapshot.
 
 | # | Endpoint | Priority |
 |---|----------|----------|
-| 24–32, 34–35 | `/api/backtest/{run_id}/nav`, `/trades`, `/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest detail views not yet connected |
+| 26–32, 34–35 | `/api/backtest/{run_id}/holdings`, `/annual`, `/monthly`, `/attribution`, `/market-state`, `/cost-sensitivity`, `/report`, `/sensitivity`, `/live-compare` | Backtest deep-dive views not yet connected |
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
@@ -1516,3 +1516,69 @@ Fresh evidence:
 - Approval queue is no longer part of §5D.
 - Admin action browser smoke should not click approve/reject/hold without a
   separately scoped operator test fixture and explicit non-production target.
+
+## §21 Fresh verify — 2026-06-01 (BacktestCompare S5 trade diff closure)
+
+### §21.1 Finding
+
+MVP 5.3 promised a lazy S5 trade-diff section for BacktestCompare, and the page
+header still claimed lazy `/backtest/{run_id}/trades` usage, but fresh code
+review showed the page only rendered S1-S4. The coverage matrix also still
+classified both row 24 `/nav` and row 25 `/trades` as unwired even though NAV
+was already wrapped and consumed. Runtime browser verification then found a
+second API-contract gap: `/api/backtest/compare` returns Decimal fields as
+strings, while `MetricRow` assumed the API layer returned numbers.
+
+Fresh evidence:
+- `docs/mvp/MVP_5_3_backtest_compare.md:36` and `:74` / §MVP 5.3 design —
+  S5 trade diff was in scope; fresh verify 2026-06-01 16:31 +08.
+- `backend/app/api/backtest.py:429`, `:469`, and `:1081` / §backtest router —
+  NAV, trades, and compare endpoints; fresh verify 2026-06-01 16:38 +08.
+- `frontend/src/api/backtest.ts:340`, `:355`, `:419`, and `:427` /
+  §Backtest API wrappers — compare numeric normalization, `getNavSeries()`,
+  and `getBacktestTrades()`; fresh verify 2026-06-01 16:38 +08.
+- `frontend/src/pages/BacktestCompare.tsx:334`, `:339`, `:355`, and `:645` /
+  §BacktestCompare S5 — lazy trade section, query, heading, and render site;
+  fresh verify 2026-06-01 16:38 +08.
+
+### §21.2 Closure
+
+- Added `BacktestTradeRow`, `BacktestTradesResponse`, `BacktestTradesParams`,
+  and `getBacktestTrades()` to `frontend/src/api/backtest.ts`.
+- Added `TradeListDiff` to `BacktestCompare.tsx`. It is collapsed by default
+  and fetches each run's first trade page only after the operator expands S5.
+- Added a per-run trade table and first-page signed-share difference summary.
+- Normalized compare metric fields in `compareBacktests()` so Decimal strings
+  are converted before `BacktestCompare.tsx` renders metric cells.
+- Added `frontend/src/__tests__/backtest-compare-trade-contract.test.ts`.
+- Updated rows 24-25 and narrowed §5D to the remaining deep-dive backtest
+  endpoints.
+
+### §21.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts`
+  first failed because `getBacktestTrades()` was missing and `BacktestCompare`
+  did not contain `TradeListDiff`.
+- GREEN targeted:
+  `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts`
+  -> 3 passed after adding trade wrapper + Decimal-string normalization.
+- TypeScript: `npx tsc -b --pretty false` first caught a nullable aggregate
+  index in `buildTradeDiffRows`; after the fix, it exited 0.
+- Full frontend suite: `npx vitest --run` -> 135 tests passed across 27 files.
+- TypeScript/build: `npm run build` -> exit 0 with the existing Vite
+  vendor-echarts chunk-size warning.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened
+  `http://127.0.0.1:5173/backtest/compare?runs=2c91bd92-ee0f-4f52-9244-795365cc1037,3d7ecc84-0536-4d26-ac07-3eca4d53bdc4`,
+  verified S5 collapsed, expanded it, saw per-run `无交易记录` state from the
+  lazy trades endpoint, and fresh console errors were empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §21.4 Remaining API Governance Backlog
+
+- Backtest rows 26-32 and 34-35 remain backend-only until dedicated deep-dive
+  views need holdings, annual/monthly slices, attribution, market state,
+  cost sensitivity, report, sensitivity, or live-compare endpoints.

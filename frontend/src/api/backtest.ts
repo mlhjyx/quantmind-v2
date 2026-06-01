@@ -175,6 +175,12 @@ export interface RunBacktestResponse {
   message?: string;
 }
 
+function nullableNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function buildRunBacktestPayload(form: BacktestConfigFormPayload): RunBacktestPayload {
   const rebalanceFreq =
     form.execution.rebalance_freq === "custom" ? "monthly" : form.execution.rebalance_freq;
@@ -290,9 +296,9 @@ export async function listBacktestHistory(strategyId?: string): Promise<Backtest
     status: r.status,
     created_at: r.created_at,
     completed_at: r.completed_at ?? r.finished_at ?? null,
-    sharpe: r.sharpe ?? (r.sharpe_ratio != null ? Number(r.sharpe_ratio) : null),
-    mdd: r.mdd ?? (r.max_drawdown != null ? Number(r.max_drawdown) : null),
-    annual_return: r.annual_return != null ? Number(r.annual_return) : null,
+    sharpe: nullableNumber(r.sharpe ?? r.sharpe_ratio),
+    mdd: nullableNumber(r.mdd ?? r.max_drawdown),
+    annual_return: nullableNumber(r.annual_return),
   }));
 }
 
@@ -332,10 +338,37 @@ export interface CompareRunSummary {
  * normalized typed list for BacktestCompare page consumption.
  */
 export async function compareBacktests(runIds: string[]): Promise<CompareRunSummary[]> {
-  const res = await apiClient.post<CompareRunSummary[]>("/backtest/compare", {
+  const res = await apiClient.post<unknown[]>("/backtest/compare", {
     run_ids: runIds,
   });
-  return res.data;
+  const rows = Array.isArray(res.data) ? res.data : [];
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    const factorList = r.factor_list;
+    return {
+      run_id: String(r.run_id ?? ""),
+      strategy_id: r.strategy_id == null ? null : String(r.strategy_id),
+      run_name: r.run_name == null ? null : String(r.run_name),
+      status: String(r.status ?? ""),
+      start_date: String(r.start_date ?? ""),
+      end_date: String(r.end_date ?? ""),
+      annual_return: nullableNumber(r.annual_return),
+      sharpe_ratio: nullableNumber(r.sharpe_ratio),
+      max_drawdown: nullableNumber(r.max_drawdown),
+      calmar_ratio: nullableNumber(r.calmar_ratio),
+      total_turnover: nullableNumber(r.total_turnover),
+      win_rate: nullableNumber(r.win_rate),
+      annual_turnover: nullableNumber(r.annual_turnover),
+      sortino_ratio: nullableNumber(r.sortino_ratio),
+      factor_list: Array.isArray(factorList)
+        ? factorList.map(String)
+        : typeof factorList === "string"
+          ? factorList.split(",").map((v) => v.trim()).filter(Boolean)
+          : [],
+      config_yaml_hash: r.config_yaml_hash == null ? null : String(r.config_yaml_hash),
+      git_commit: r.git_commit == null ? null : String(r.git_commit),
+    };
+  });
 }
 
 export interface BacktestNavPoint {
@@ -349,10 +382,62 @@ export interface BacktestNavPoint {
   drawdown: number | null;
 }
 
+export type BacktestTradeSide = "buy" | "sell" | string;
+
+export interface BacktestTradeRow {
+  id: number;
+  signal_date: string | null;
+  exec_date: string | null;
+  stock_code: string;
+  side: BacktestTradeSide;
+  shares: number;
+  target_price: number | null;
+  exec_price: number | null;
+  slippage_bps: number | null;
+  commission: number | null;
+  stamp_tax: number | null;
+  transfer_fee: number | null;
+  total_cost: number | null;
+  reject_reason: string | null;
+}
+
+export interface BacktestTradesResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: BacktestTradeRow[];
+}
+
+export interface BacktestTradesParams {
+  page?: number;
+  pageSize?: number;
+  stockCode?: string;
+  side?: BacktestTradeSide;
+}
+
 /** Fetch full NAV series for a single backtest run (used by BacktestCompare S3/S4). */
 export async function getNavSeries(runId: string): Promise<BacktestNavPoint[]> {
   const res = await apiClient.get<BacktestNavPoint[]>(
     `/backtest/${runId}/nav`,
+  );
+  return res.data;
+}
+
+/** Fetch paged trade rows for a single backtest run (used by BacktestCompare S5). */
+export async function getBacktestTrades(
+  runId: string,
+  params: BacktestTradesParams = {},
+): Promise<BacktestTradesResponse> {
+  const requestParams: Record<string, string | number> = {
+    page: params.page ?? 1,
+    page_size: params.pageSize ?? 100,
+  };
+  if (params.stockCode) requestParams.stock_code = params.stockCode;
+  if (params.side) requestParams.side = params.side;
+
+  const res = await apiClient.get<BacktestTradesResponse>(
+    `/backtest/${runId}/trades`,
+    { params: requestParams },
   );
   return res.data;
 }

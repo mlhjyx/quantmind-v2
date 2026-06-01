@@ -1,45 +1,48 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 19.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 20.
 date: 2026-06-01 +08:00
-status: governance_batch_19_approval_queue_coverage_drift_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_19.md
+status: governance_batch_20_backtest_compare_trade_diff_local_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_20.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 19
+## Current Handoff - 2026-06-01 Batch 20
 
-Mode: full-project closure/governance remediation, batch 19 ApprovalQueue API coverage drift verified locally before final commit/CI.
+Mode: full-project closure/governance remediation, batch 20 BacktestCompare S5 trade diff locally verified before final commit/push.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `aba3d0e` (`close pt graduation api contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 19 edits.
-- This handoff records the Batch 19 local verification set. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
+- Latest pushed head before this batch is `7c4ccdf` (`close approval api coverage drift`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 20 edits.
+- This handoff records the Batch 20 local verification set before commit/push. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
 - SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
-- Previous Batch 18 handoff said commit/push/CI were open, but fresh git + PR state showed Batch 18 was already pushed and CI-clean at `aba3d0e`. Use git/PR state for branch truth after every push.
-- `docs/API_COVERAGE.md` rows 12-16 still marked approval detail/approve/reject/hold/history as unwired, but fresh code review showed the implementation already exists in `frontend/src/api/approval.ts` and `ApprovalQueue.tsx`.
-- `/approval-queue` is mounted in `frontend/src/router.tsx` and exposed in the sidebar, so this batch is documentation/governance drift closure rather than a production behavior change.
+- Previous Batch 19 handoff said commit/push/CI were open, but fresh git + PR state showed Batch 19 was already pushed and CI-clean at `7c4ccdf`. Use git/PR state for branch truth after every push.
+- `docs/mvp/MVP_5_3_backtest_compare.md` and `BacktestCompare.tsx` both promised lazy S5 trade diff, but current page code only implemented S1-S4.
+- `docs/API_COVERAGE.md` row 24 `/api/backtest/{run_id}/nav` was stale because `getNavSeries()` already consumed it; row 25 `/trades` was a real missing wrapper/UI gap.
+- Browser runtime verification exposed an additional API-contract bug: live `/api/backtest/compare` Decimal metrics arrived as strings, but `MetricRow` called `toFixed()` directly and crashed before S5 could be exercised.
 
 Closed in this batch:
-- Audited `ApprovalQueue.tsx`, backend `approval.py`, `frontend/src/api/approval.ts`, route/nav wiring, and `docs/API_COVERAGE.md`.
-- Added `frontend/src/__tests__/approval-api-contract.test.ts`.
-- Updated `docs/API_COVERAGE.md` rows 12-16, removed the stale approval row from §5D, and added §20 evidence.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_19.md`.
+- Audited `BacktestCompare.tsx`, backend `backtest.py`, `frontend/src/api/backtest.ts`, `docs/API_COVERAGE.md`, and `docs/mvp/MVP_5_3_backtest_compare.md`.
+- Added `frontend/src/__tests__/backtest-compare-trade-contract.test.ts`.
+- Added `BacktestTradeRow`, `BacktestTradesResponse`, `BacktestTradesParams`, and `getBacktestTrades()` to `frontend/src/api/backtest.ts`.
+- Normalized `compareBacktests()` numeric fields so live Decimal strings render safely in `BacktestCompare.tsx`.
+- Added collapsed-by-default `TradeListDiff` S5 section to `BacktestCompare.tsx`.
+- Updated `docs/API_COVERAGE.md` rows 24-25 and §21, added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_20.md`, and added a governance note to MVP 5.3.
 
 Verification:
-- Characterization contract + page guard:
-  `npx vitest --run src/__tests__/approval-api-contract.test.ts src/__tests__/ApprovalQueue.test.tsx` -> 9 passed.
-- `npx tsc -b --pretty false` -> exit 0.
-- `npx vitest --run` -> 132 tests passed across 26 files.
-- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- RED: `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` failed because `getBacktestTrades()` and `TradeListDiff` were missing.
+- GREEN targeted: `npx vitest --run src/__tests__/backtest-compare-trade-contract.test.ts` -> 3 passed.
+- `npx tsc -b --pretty false` first caught nullable aggregate indexing; after fix it exited 0.
+- Browser smoke opened `http://127.0.0.1:5173/backtest/compare?runs=2c91bd92-ee0f-4f52-9244-795365cc1037,3d7ecc84-0536-4d26-ac07-3eca4d53bdc4`, verified S5 collapsed, expanded it, saw read-only per-run `无交易记录` states, and fresh console errors were empty.
+- Full frontend suite: `npx vitest --run` -> 135 passed across 27 files.
+- `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size warning.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- Browser smoke opened `http://127.0.0.1:5173/approval-queue`; `因子审批队列`, `待审批`, and `历史` were visible, empty-state backend data loaded, and console errors were empty. No approval actions were clicked.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
-- Still pending for this batch: pre-push and GitHub checks.
+- Still pending for this batch: local diff hygiene, pre-push, and GitHub checks.
 
 Still open:
 - After this batch is pushed, fresh-read PR #523 checks and merge state before continuing.
@@ -49,9 +52,10 @@ Still open:
 - Direct `apiClient` imports in production pages/components: none found by the current audit scan.
 - Paper-trading rows 92-93 remain unwrapped legacy endpoints until a current frontend workflow needs them.
 - Approval queue is no longer part of §5D after this batch.
+- Backtest rows 26-32 and 34-35 remain backend-only until dedicated deep-dive views need them.
 
 Next safe step:
-- Finish Batch 19 verification, stage/commit/push, then wait for GitHub checks before continuing.
+- Run diff hygiene, stage/commit/push Batch 20, then wait for GitHub checks before continuing.
 
 ---
 
