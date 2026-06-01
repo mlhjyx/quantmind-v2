@@ -188,8 +188,9 @@ class LiteLLMCallWindowSnapshot:
     """Rule 2 input — LiteLLM API 调用窗口聚合快照 (HC-1b 5min window pre-aggregate).
 
     Args:
-      total_calls: window 内 LiteLLM API 调用总数 (≥ 0).
-      failed_calls: window 内失败调用数 (0 ≤ failed_calls ≤ total_calls).
+      total_calls: window 内 LiteLLM API-attempt 调用总数 (≥ 0); intentional
+        budget-cap local fallback 不计入 API-attempt denominator.
+      failed_calls: window 内 API-attempt 失败调用数 (0 ≤ failed_calls ≤ total_calls).
       window_seconds: 聚合 window 长度秒 (HC-1b 传 LITELLM_FAILURE_RATE_WINDOW_S).
       now: 评估时刻 (tz-aware).
     """

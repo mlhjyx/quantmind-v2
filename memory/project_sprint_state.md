@@ -1,11 +1,41 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 1.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 2.
 date: 2026-06-01 +08:00
-status: governance_batch_1_verified_open_runtime_backlog
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_1.md
+status: governance_batch_2_meta_monitor_verified_open_secret_backlog
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_2.md
 ---
 
 # Project Sprint State
+
+## Current Handoff — 2026-06-01 Batch 2
+
+Mode: full-project closure/governance remediation, batch 2 verified.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker calls, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT startup unless specifically required.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Diagnosed GB1-B1 `meta_alert:litellm_failure_rate` from runtime evidence rather than the stale-looking `alert_dedup` row alone.
+- Confirmed the alert condition cleared after the 2026-06-01 11:15 Asia/Shanghai fire: `meta_monitor` rows at 11:20, 11:25, 11:30, 11:35, and 11:40 all reported `triggered=0`.
+- Root cause remains primary DeepSeek authentication rejection in `logs/celery-slow-stderr.log`, followed by LiteLLM fallback to local Qwen; `.env` / secret rotation was not performed.
+- Fixed latent meta-monitor noise: `_collect_litellm` now excludes intentional `budget_capped` local fallback from both API-attempt denominator and failure numerator.
+- Added regression coverage in `backend/tests/test_meta_monitor_service.py`.
+
+Verified:
+- Focused collector regression: 3 passed.
+- `ruff check` on touched files: PASS.
+- `pytest backend/tests/test_meta_monitor_service.py backend/tests/test_meta_alert_rules.py -q`: 106 passed.
+- Read-only live SQL at 11:39-11:40: recent 1-hour API-attempt classification remained 13 failures / 13 attempts / 0 budget-cap rows; latest 5-minute window had 0 calls and 0 failures.
+
+Still open:
+- P0 runtime blocker: DeepSeek primary provider credential is rejected; requires user/operator secret rotation or provider-side account fix. Acceptance: controlled primary LiteLLM call succeeds, `llm_call_log` primary rows show `error_class IS NULL`, and `meta_monitor` stays `triggered=0` across at least two 5-minute ticks with LLM traffic.
+- P1 observability backlog: fallback-success rows only persist `primary_fail_fallback_engaged`; sanitized provider error category is not durable after logs rotate.
+- Batch-1 runtime backlog remains: realtime risk/QMT input path verification is still open and was not touched.
+
+Next safe step:
+- Continue with either the realtime risk/QMT runtime-input audit (read-only until an explicit ops touchpoint is chosen) or a frontend/API contract closure batch. Do not mutate secrets autonomously.
 
 ## Current Handoff — 2026-06-01
 

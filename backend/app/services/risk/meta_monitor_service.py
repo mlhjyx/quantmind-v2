@@ -6,7 +6,8 @@
   - app/tasks/meta_monitor_tasks = Beat dispatch (5min cadence)
 
 Collector status (post-WU-3 — 7 real, 0 deferred):
-  - LiteLLM 失败率: real query `llm_call_log` (error_class NULL=success) ✅ HC-1b
+  - LiteLLM 失败率: real query `llm_call_log` (error_class NULL=success;
+    intentional budget-cap fallback excluded from API-attempt denominator) ✅ HC-1b
   - STAGED overdue: real query `execution_plans` (status='PENDING_CONFIRM') ✅ HC-1b
   - DingTalk push status: real query `alert_dedup.last_push_ok` ✅ HC-1b3
   - News 全源 timeout: real read Redis `qm:news:last_run_stats` ✅ HC-1b3
@@ -74,6 +75,7 @@ from backend.qm_platform.risk.realtime.runtime_keys import CACHE_L1_HEARTBEAT
 logger = logging.getLogger(__name__)
 
 _PENDING_CONFIRM_STATUS = "PENDING_CONFIRM"
+_LITELLM_INTENTIONAL_NON_API_FAILURE = "budget_capped"
 
 # HC-1b3: NEWS_RUN_STATS_REDIS_KEY imported from meta_alert_interface (SSOT — single
 # definition shared by the News-ingest Beat writer + this collector reader).
@@ -305,23 +307,36 @@ class MetaMonitorService:
 
     @staticmethod
     def _collect_litellm(conn: Any, now: datetime) -> LiteLLMCallWindowSnapshot:
-        """Real collector — llm_call_log 5min window total + failed (error_class NOT NULL).
+        """Real collector — llm_call_log 5min window API-attempt total + failed.
 
-        `COUNT(error_class)` counts non-NULL rows = failures (llm_call_log DDL:
-        error_class NULL on success / class name on failure). Window is bounded
-        both ends [window_start, now] — upper bound 反 clock-skew / injected-past
-        `now` in tests (reviewer MEDIUM).
+        `budget_capped` means the budget guard intentionally routed to local fallback
+        before attempting the primary API; it is cost-control state, not an API outage.
+        Other non-NULL error_class values remain failure signals. Window is bounded
+        both ends [window_start, now] — upper bound prevents clock-skew / injected-past
+        `now` in tests.
         """
         window_start = now - timedelta(seconds=LITELLM_FAILURE_RATE_WINDOW_S)
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                SELECT COUNT(*) AS total, COUNT(error_class) AS failed
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE error_class IS DISTINCT FROM %s
+                    ) AS total,
+                    COUNT(*) FILTER (
+                        WHERE error_class IS NOT NULL
+                          AND error_class <> %s
+                    ) AS failed
                 FROM llm_call_log
                 WHERE triggered_at >= %s AND triggered_at <= %s
                 """,
-                (window_start, now),
+                (
+                    _LITELLM_INTENTIONAL_NON_API_FAILURE,
+                    _LITELLM_INTENTIONAL_NON_API_FAILURE,
+                    window_start,
+                    now,
+                ),
             )
             row = cur.fetchone()
             total = int(row[0]) if row and row[0] is not None else 0
