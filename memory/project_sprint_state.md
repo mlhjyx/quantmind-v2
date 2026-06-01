@@ -1,13 +1,61 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 14.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 15.
 date: 2026-06-01 +08:00
-status: governance_batch_14_report_center_api_layer_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_14.md
+status: governance_batch_15_risk_management_api_layer_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_15.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 14
+## Current Handoff - 2026-06-01 Batch 15
+
+Mode: full-project closure/governance remediation, batch 15 Risk Management API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `30f80231` (`close report center api layer contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 15 edits.
+- This handoff records the Batch 15 local verification set. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
+- Previous Batch 14 handoff still said commit/push/CI were open, but fresh git + PR state showed Batch 14 was already pushed and CI-clean at `30f80231`. Use git/PR state for branch truth after every push.
+- `RiskManagement.tsx` consumed implemented `/api/risk/*` endpoints directly, while `docs/API_COVERAGE.md` rows 121-129 marked those endpoints as unwired. The page also expected display shapes that differed from backend risk responses.
+
+Closed in this batch:
+- Audited `RiskManagement.tsx`, backend `risk.py`, `frontend/src/api/risk.ts`, and `docs/API_COVERAGE.md`.
+- Added risk history, summary, overview, limits, and stress-test wrappers to `frontend/src/api/risk.ts`.
+- Normalized risk overview scalars, limit statuses, and stress-test rows in the API layer.
+- Preserved live-to-paper fallback by keeping `data_days <= 0` overview responses as empty metric sets.
+- Removed direct `apiClient` import and all direct `/risk/*` GET calls from `RiskManagement.tsx`.
+- Added `frontend/src/__tests__/risk-management-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §16 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_15.md`.
+
+Verification:
+- RED: `npx vitest --run src/__tests__/risk-management-api-contract.test.ts` failed before the fix because wrappers were missing and `RiskManagement.tsx` imported `apiClient` directly.
+- GREEN targeted risk-management contract -> 7 passed.
+- Focused frontend/API pack -> 37 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest --run` -> 123 tests passed across 23 files.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `http://127.0.0.1:5173/risk`; `风控管理`, `风控总览`, and `限额监控` each resolved once; console errors were empty. Existing dev server on port 5173 was reused and not stopped.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+
+Still open:
+- After this batch is pushed, fresh-read PR #523 checks and merge state before continuing.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- If these Batch 15 edits are not yet on PR #523, stage/commit/push them and wait for GitHub checks. If they are already pushed and checks are clean, continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 14
 
 Mode: full-project closure/governance remediation, batch 14 Report Center API-layer closure verified locally before final commit/CI.
 

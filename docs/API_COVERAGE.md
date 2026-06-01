@@ -611,15 +611,15 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 118 | `/api/reports/list` | GET | reports.ts:143 | ✅ |
 | 119 | `/api/reports/quick-stats` | GET | reports.ts:150 | ✅ |
 | 120 | `/api/reports/generate` | POST | reports.ts:168 | ✅ |
-| 121 | `/api/risk/state/{strategy_id}` | GET | — | ❌ |
-| 122 | `/api/risk/history/{strategy_id}` | GET | — | ❌ |
-| 123 | `/api/risk/summary/{strategy_id}` | GET | — | ❌ |
+| 121 | `/api/risk/state/{strategy_id}` | GET | risk.ts:159 | ✅ |
+| 122 | `/api/risk/history/{strategy_id}` | GET | risk.ts:183 | ✅ |
+| 123 | `/api/risk/summary/{strategy_id}` | GET | risk.ts:199 | ✅ |
 | 124 | `/api/risk/l4-recovery/{strategy_id}` | POST | — | ❌ |
 | 125 | `/api/risk/l4-approve/{approval_id}` | POST | — | ❌ |
-| 126 | `/api/risk/force-reset/{strategy_id}` | POST | — | ❌ |
-| 127 | `/api/risk/overview` | GET | — | ❌ |
-| 128 | `/api/risk/limits` | GET | — | ❌ |
-| 129 | `/api/risk/stress-tests` | GET | — | ❌ |
+| 126 | `/api/risk/force-reset/{strategy_id}` | POST | risk.ts:170 | ✅ |
+| 127 | `/api/risk/overview` | GET | risk.ts:219 | ✅ |
+| 128 | `/api/risk/limits` | GET | risk.ts:226 | ✅ |
+| 129 | `/api/risk/stress-tests` | GET | risk.ts:235 | ✅ |
 | 130 | `/api/risk/dingtalk-webhook` | POST | — | ❌ |
 | 131 | `/api/sse/risk-events` | GET | — | ❌ |
 | 132 | `/api/strategies` | GET | strategies.ts:47 | ✅ |
@@ -683,7 +683,7 @@ snapshot.
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
-| 121–129 | `/api/risk/*` (10 endpoints) | Risk framework dashboard not wired |
+| 124–125 | `/api/risk/l4-*` approval mutations | `SafetyControlPanel` still owns direct component calls; needs API-layer wrapper + admin-flow contract test |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 | 144 | `/api/system/streams` | Streams viewer not wired |
 
@@ -1172,6 +1172,90 @@ Fresh evidence:
 ### §15.4 Remaining API Governance Backlog
 
 - Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
-  `RiskManagement.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
+  `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
+- Continue selecting the next contraction only from current code evidence:
+  response conversion bug, coverage-matrix blind spot, or broken user workflow.
+
+## §16 Fresh verify — 2026-06-01 (risk management API-layer closure)
+
+### §16.1 Finding
+
+`frontend/src/pages/RiskManagement.tsx` previously consumed implemented risk
+routes directly from the page, while rows 121–129 in this matrix still marked
+most `/api/risk/*` endpoints as unwired.
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Status history tab | `/risk/history/{strategy_id}` | `fetchRiskHistory()` |
+| Status summary card | `/risk/summary/{strategy_id}` | `fetchRiskSummary()` |
+| Overview metric cards | `/risk/overview` | `fetchRiskOverviewDisplay()` |
+| Limit monitor tab | `/risk/limits` | `fetchRiskLimits()` |
+| Stress-test tab | `/risk/stress-tests` | `fetchStressTests()` |
+| Header circuit badge | already wrapped | `fetchCircuitBreakerState()` |
+
+Risk: the backend returns raw scalar overview fields, limit statuses
+`normal/warning/danger`, and stress-test fields such as `estimated_loss` and
+`period`. The page expected display metrics, `ok/warn/critical`, and
+`impact/probability/recovery`, so direct page calls could silently show empty
+overview cards and miscount risk-limit severity.
+
+Fresh evidence:
+- `frontend/src/api/risk.ts:183` / §Risk wrappers — history wrapper in place;
+  fresh verify 2026-06-01 15:30 +08.
+- `frontend/src/api/risk.ts:219-235` / §Risk display wrappers — overview,
+  limits, and stress-test normalization in the API layer; fresh verify
+  2026-06-01 15:30 +08.
+- `frontend/src/pages/RiskManagement.tsx:179` / §RiskStatusHistoryPanel —
+  page now calls `fetchRiskHistory`; fresh verify 2026-06-01 15:30 +08.
+- `frontend/src/pages/RiskManagement.tsx:384-400` / §Risk overview loader —
+  page now calls risk API wrappers for live/paper fallback; fresh verify
+  2026-06-01 15:30 +08.
+
+### §16.2 Closure
+
+- Added risk history, summary, overview, limit, and stress-test wrappers to
+  `frontend/src/api/risk.ts`.
+- Normalized backend overview scalars into the six metric cards the page
+  renders.
+- Normalized risk-limit status and percentage display in the API layer.
+- Normalized stress-test rows for the existing stress-test cards without
+  inventing missing time series or exposure data.
+- Kept empty `data_days <= 0` overview responses as empty metric sets so the
+  page still falls back from live to paper data.
+- Removed direct `apiClient` import and all direct `/risk/*` GET calls from
+  `RiskManagement.tsx`.
+- Added `frontend/src/__tests__/risk-management-api-contract.test.ts` to lock
+  wrapper endpoints, response normalization, and the page boundary.
+- Updated rows 121–129 and narrowed the §5D risk backlog to L4 admin mutations.
+
+### §16.3 Verification
+
+- RED: `npx vitest --run src/__tests__/risk-management-api-contract.test.ts`
+  failed before the fix on missing wrapper exports and the direct page
+  `apiClient` import.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts`
+  -> 7 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts src/__tests__/report-center-api-contract.test.ts src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 37 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 123 tests passed across 23 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/risk`; heading
+  `风控管理`, tab `风控总览`, and tab `限额监控` each resolved once; console error
+  list was empty. Existing dev server on port 5173 was reused and not stopped.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §16.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
+- `SafetyControlPanel` is the next risk-domain candidate only if current code
+  proves an admin mutation contract gap for rows 124–125.
 - Continue selecting the next contraction only from current code evidence:
   response conversion bug, coverage-matrix blind spot, or broken user workflow.

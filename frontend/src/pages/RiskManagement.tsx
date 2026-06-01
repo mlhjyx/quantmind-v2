@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
-import apiClient from "@/api/client";
 import { Shield, AlertTriangle, History, TrendingUp, ArrowDown, ArrowUp, Activity } from "lucide-react";
 // iter 140 W2-F F5 — getPaperStrategyId for real UUID (sibling iter 137 P0 fix)
 import { getPaperStrategyId } from "@/api/system";
@@ -19,16 +17,24 @@ import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons, ChartTooltip } from "@/components/shared";
 import { RiskEventTracePanel } from "@/components/risk/RiskEventTracePanel";
 import { SafetyControlPanel } from "@/components/safety/SafetyControlPanel";
-import { fetchCircuitBreakerState } from "@/api/risk";
+import {
+  fetchCircuitBreakerState,
+  fetchRiskHistory,
+  fetchRiskLimits,
+  fetchRiskOverviewDisplay,
+  fetchRiskSummary,
+  fetchStressTests,
+} from "@/api/risk";
+import type {
+  ExposureItem,
+  OverviewMetric,
+  RiskLimit,
+  RiskTransition,
+  StressTest,
+  VarPoint,
+} from "@/api/risk";
 import type { CircuitBreakerState } from "@/types/dashboard";
 import { useRiskEventsSSE } from "@/hooks/useRiskEventsSSE";
-
-// ── Types ──
-interface OverviewMetric { label: string; value: string; color?: string; }
-interface RiskLimit      { name: string; current: string; limit: string; usage: number; status: string; }
-interface StressTest     { scenario: string; impact: number; probability: string; recovery: string; }
-interface VarPoint       { date: string; var95: number; var99: number; limit: number; }
-interface ExposureItem   { factor: string; exposure: number; limit: number; color: string; }
 
 
 // Session 58 round-5 ADR-084 Phase 1 closure: SSE EventSource live events tab.
@@ -140,27 +146,6 @@ function LiveRiskEventsPanel() {
 // 140 despite backend service existing. UUID strategy_id via getPaperStrategyId
 // (iter 137 P0 fix canonical pattern).
 
-interface RiskTransition {
-  trade_date: string;
-  prev_level: number;
-  new_level: number;
-  transition_type: string;
-  reason: string | null;
-  metrics: Record<string, number> | null;
-}
-
-interface RiskSummaryResponse {
-  current_level?: number;
-  current_level_name?: string;
-  days_in_current_state?: number;
-  total_escalations?: number;
-  total_recoveries?: number;
-  last_transition_date?: string | null;
-  max_level_30d?: number;
-  // 后端 schema 容错 — 实际字段可能扩展
-  [k: string]: unknown;
-}
-
 function formatTransitionType(t: string): { label: string; color: string; icon: typeof ArrowUp } {
   switch (t) {
     case "escalate":
@@ -190,10 +175,7 @@ function RiskStatusHistoryPanel() {
     queryKey: ["risk-history", strategyId],
     queryFn: async () => {
       if (!strategyId) return [] as RiskTransition[];
-      const { data } = await apiClient.get<RiskTransition[]>(`/risk/history/${strategyId}`, {
-        params: { execution_mode: "paper", limit: 50 },
-      });
-      return data;
+      return fetchRiskHistory(strategyId, { execution_mode: "paper", limit: 50 });
     },
     enabled: strategyId != null,
     staleTime: 30_000,
@@ -203,10 +185,7 @@ function RiskStatusHistoryPanel() {
     queryKey: ["risk-summary", strategyId],
     queryFn: async () => {
       if (!strategyId) return null;
-      const { data } = await apiClient.get<RiskSummaryResponse>(`/risk/summary/${strategyId}`, {
-        params: { execution_mode: "paper" },
-      });
-      return data;
+      return fetchRiskSummary(strategyId, "paper");
     },
     enabled: strategyId != null,
     staleTime: 30_000,
@@ -401,33 +380,33 @@ export default function RiskManagement() {
         // 先请求live数据，如果为空fallback到paper
         let mode = "live";
         const [overview, limits, stress] = await Promise.allSettled([
-          apiClient.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/risk/overview", { params: { execution_mode: mode } }),
-          apiClient.get<RiskLimit[]>("/risk/limits", { params: { execution_mode: mode } }),
-          apiClient.get<StressTest[]>("/risk/stress-tests", { params: { execution_mode: mode } }),
+          fetchRiskOverviewDisplay({ execution_mode: mode }),
+          fetchRiskLimits({ execution_mode: mode }),
+          fetchStressTests({ execution_mode: mode }),
         ]);
         if (!live) return;
 
         // 检查live数据是否足够
-        const liveMetrics = overview.status === "fulfilled" ? overview.value.data.metrics : undefined;
+        const liveMetrics = overview.status === "fulfilled" ? overview.value.metrics : undefined;
         const liveEmpty = !liveMetrics || liveMetrics.length === 0;
 
         // 如果live数据不足，fallback到paper
         if (liveEmpty && mode === "live") {
           mode = "paper";
           const [ov2, li2, st2] = await Promise.allSettled([
-            apiClient.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/risk/overview", { params: { execution_mode: mode } }),
-            apiClient.get<RiskLimit[]>("/risk/limits", { params: { execution_mode: mode } }),
-            apiClient.get<StressTest[]>("/risk/stress-tests", { params: { execution_mode: mode } }),
+            fetchRiskOverviewDisplay({ execution_mode: mode }),
+            fetchRiskLimits({ execution_mode: mode }),
+            fetchStressTests({ execution_mode: mode }),
           ]);
           if (!live) return;
           if (ov2.status === "fulfilled") {
-            const d = ov2.value.data;
-            if (d.metrics)    setOverviewMetrics(d.metrics);
-            if (d.var_series) setVarData(d.var_series);
-            if (d.exposure)   setExposure(d.exposure);
+            const d = ov2.value;
+            setOverviewMetrics(d.metrics);
+            setVarData(d.var_series);
+            setExposure(d.exposure);
           }
-          if (li2.status === "fulfilled") setRiskLimits(li2.value.data);
-          if (st2.status === "fulfilled") setStressTests(st2.value.data);
+          if (li2.status === "fulfilled") setRiskLimits(li2.value);
+          if (st2.status === "fulfilled") setStressTests(st2.value);
         } else {
           const allFailed =
             overview.status === "rejected" &&
@@ -437,13 +416,13 @@ export default function RiskManagement() {
             setFetchError(true);
           } else {
             if (overview.status === "fulfilled") {
-              const d = overview.value.data;
-              if (d.metrics)    setOverviewMetrics(d.metrics);
-              if (d.var_series) setVarData(d.var_series);
-              if (d.exposure)   setExposure(d.exposure);
+              const d = overview.value;
+              setOverviewMetrics(d.metrics);
+              setVarData(d.var_series);
+              setExposure(d.exposure);
             }
-            if (limits.status === "fulfilled") setRiskLimits(limits.value.data);
-            if (stress.status === "fulfilled") setStressTests(stress.value.data);
+            if (limits.status === "fulfilled") setRiskLimits(limits.value);
+            if (stress.status === "fulfilled") setStressTests(stress.value);
           }
         }
       } catch {
