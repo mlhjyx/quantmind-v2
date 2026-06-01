@@ -1,4 +1,52 @@
 ---
+---
+description: Codex remediation handoff updated after 2026-06-01 governance batch 3.
+date: 2026-06-01 +08:00
+status: governance_batch_3_qmt_cache_guard_verified_ops_backlog
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_3.md
+---
+
+# Project Sprint State
+
+## Current Handoff — 2026-06-01 Batch 3
+
+Mode: full-project closure/governance remediation, batch 3 verified locally.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited the L1 realtime risk and QMT cache input chain from code plus read-only service, Redis, and DB evidence.
+- Fixed realtime risk context ambiguity: empty positions without `portfolio:nav` now raises `PositionSourceError(reason="qmt_cache_unavailable")` instead of returning a clean empty context.
+- Preserved the source error reason in `realtime_risk_tick` audit output so missing QMT cache is visible in `scheduler_task_log.result_json`.
+- Wired the existing `QMTFallbackTriggeredRule` into `build_intraday_risk_engine()` with a new read-only `RedisPortfolioCacheHealthReader`.
+- Chose `portfolio:*` key counting so a clean empty account with fresh `portfolio:nav` does not false-fire the cache fallback guard.
+
+Runtime evidence:
+- `QuantMind-QMTData` was stopped/manual; no service restart was performed.
+- Redis `EXISTS portfolio:nav portfolio:current risk:l1_heartbeat qmt:connection_status` returned `0`.
+- DB read-only query showed 120 recent `realtime_risk_tick` rows in 2 hours, latest at `2026-06-01 11:56:00+08`, with zero positions/evaluations/triggers.
+- `trade_event_risk_consumer` rows were current and successful but consumed/processed 0 events.
+
+Verified:
+- `ruff format` on touched Python files.
+- `ruff check` on touched Python files: PASS.
+- `pytest backend/tests/test_realtime_context_builder.py backend/tests/test_realtime_risk_tasks.py backend/tests/test_risk_wiring.py backend/tests/test_qmt_fallback_rule.py -q`: 56 passed.
+- `pytest backend/tests/test_daily_pipeline_multi_strategy.py backend/tests/test_risk_rules_intraday.py -q`: 41 passed.
+- `pytest -m "smoke and not live_tushare" -q`: 90 passed, 2 skipped, 6999 deselected.
+
+Still open:
+- Ops deployment: FastAPI/Celery/Celery Beat reload is needed before runtime rows reflect the new `qmt_cache_unavailable` path.
+- QMTData runtime: `QuantMind-QMTData` remains stopped/manual; restart was intentionally not performed in this code batch.
+- Direct miniQMT read-only account probe failed at broker connect return code `-1`; cash/position direct account verification is still blocked by local QMT availability.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Push this batch to PR #523, then continue with either the ops-readiness plan for deploying/rechecking the QMT cache guards or another code-only governance closure batch. Keep service restarts and account-probe remediation as explicit ops work.
+
+---
 description: Codex remediation handoff updated after 2026-06-01 governance batch 2.
 date: 2026-06-01 +08:00
 status: governance_batch_2_meta_monitor_verified_open_secret_backlog

@@ -34,7 +34,7 @@ class TestContextBuilder:
     """Verify RiskContext construction across 0/1/5 position states."""
 
     def test_empty_portfolio_returns_empty_positions(self):
-        """0 positions + nav cash = valid post-清仓 state (sustained 27+ days)."""
+        """0 positions + nav cash = valid post-清仓 state (verified 27+ days)."""
         qmt = _make_qmt_mock(
             positions={},
             nav={"cash": 993520.66, "total_value": 993520.66, "position_count": 0},
@@ -108,6 +108,16 @@ class TestContextBuilder:
 class TestStaleDataRaises:
     """Stale Redis market data → PositionSourceError per Chunk 1 spec."""
 
+    def test_empty_positions_without_nav_raises_qmt_cache_unavailable(self):
+        """0 positions without portfolio:nav means QMT cache is unavailable, not clean empty."""
+        qmt = _make_qmt_mock(positions={}, nav=None)
+        builder = RealtimeRiskContextBuilder(qmt_client=qmt)
+
+        with pytest.raises(PositionSourceError) as exc:
+            builder.build_context()
+        assert exc.value.reason == "qmt_cache_unavailable"
+        assert "portfolio:nav" in str(exc.value)
+
     def test_no_prices_raises(self):
         """When positions exist but ALL prices missing (QMT Data Service down)."""
         qmt = _make_qmt_mock(
@@ -119,6 +129,7 @@ class TestStaleDataRaises:
 
         with pytest.raises(PositionSourceError) as exc:
             builder.build_context()
+        assert exc.value.reason == "stale_market_data"
         assert "No market:latest:* prices" in str(exc.value)
         assert "QMT Data Service may be down" in str(exc.value)
 
