@@ -122,6 +122,198 @@ export interface EvaluateFactorPayload {
   run_quick_only?: boolean;
 }
 
+type RawObject = Record<string, unknown>;
+
+function asObject(value: unknown): RawObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as RawObject) : {};
+}
+
+function firstDefined(...values: unknown[]): unknown {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function toStringValue(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  const text = toStringValue(value).trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function toNumberValue(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function normalizeEngine(value: unknown): MiningEngine {
+  const engine = toStringValue(value).toLowerCase();
+  if (engine === "gp" || engine === "llm" || engine === "bruteforce") return engine;
+  return "gp";
+}
+
+function normalizeTaskStatus(value: unknown): TaskStatus {
+  const status = toStringValue(value).toLowerCase();
+  if (
+    status === "idle" ||
+    status === "running" ||
+    status === "paused" ||
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled"
+  ) {
+    return status;
+  }
+  if (status === "timeout" || status === "error") return "failed";
+  return "idle";
+}
+
+function normalizeGateStatus(value: unknown): GateStatus {
+  const status = toStringValue(value).toLowerCase();
+  if (["passed", "pass", "approved", "accepted", "archived"].includes(status)) return "passed";
+  if (["failed", "fail", "rejected", "reject", "invalid"].includes(status)) return "failed";
+  return "pending";
+}
+
+function gateData(gates: RawObject, gateName: string): RawObject {
+  return asObject(asObject(gates[gateName]).data);
+}
+
+function gateMetric(gates: RawObject, gateName: string, ...keys: string[]): unknown {
+  const gate = asObject(gates[gateName]);
+  const data = asObject(gate.data);
+  const candidates = keys.flatMap((key) => [data[key], gate[key]]);
+  return firstDefined(...candidates, gate.metric_value);
+}
+
+function normalizeProgress(value: unknown, generation?: number, totalGenerations?: number): number {
+  let progress = toOptionalNumber(value);
+  if (progress === undefined && generation !== undefined && totalGenerations && totalGenerations > 0) {
+    progress = (generation / totalGenerations) * 100;
+  }
+  if (progress === undefined) return 0;
+  const percent = progress > 0 && progress <= 1 ? progress * 100 : progress;
+  return Math.max(0, Math.min(100, Math.round(percent)));
+}
+
+function normalizeTaskSummary(rawValue: unknown): MiningTaskSummary {
+  const raw = asObject(rawValue);
+  const stats = asObject(firstDefined(raw.stats, raw.result_summary));
+  const config = asObject(raw.config);
+  const generation = toOptionalNumber(
+    firstDefined(raw.generation, stats.generation, stats.current_generation, stats.n_generations_completed)
+  );
+  const totalGenerations = toOptionalNumber(
+    firstDefined(raw.total_generations, stats.total_generations, stats.max_generations, config.max_generations, config.generations)
+  );
+
+  return {
+    task_id: toStringValue(firstDefined(raw.task_id, raw.run_id)),
+    engine: normalizeEngine(firstDefined(raw.engine, raw.engine_type)),
+    status: normalizeTaskStatus(raw.status),
+    progress: normalizeProgress(firstDefined(raw.progress, stats.progress, stats.progress_pct), generation, totalGenerations),
+    generation,
+    total_generations: totalGenerations,
+    best_fitness: toOptionalNumber(firstDefined(raw.best_fitness, stats.best_fitness, stats.best_ic_ir)),
+    discovered: toNumberValue(firstDefined(raw.discovered, stats.discovered, stats.n_candidates, stats.candidates), 0),
+    passed: toNumberValue(firstDefined(raw.passed, stats.passed, stats.n_passed, stats.passed_count), 0),
+    archived: toNumberValue(firstDefined(raw.archived, stats.archived, stats.n_archived, stats.archived_count), 0),
+    started_at: toStringValue(raw.started_at),
+    completed_at: toOptionalString(firstDefined(raw.completed_at, raw.finished_at)),
+  };
+}
+
+function normalizeEvolutionHistory(value: unknown): MiningTaskDetail["evolution_history"] {
+  if (!Array.isArray(value)) return undefined;
+  return value.map((entry) => {
+    const raw = asObject(entry);
+    return {
+      generation: toNumberValue(raw.generation, 0),
+      best_fitness: toNumberValue(raw.best_fitness, 0),
+      avg_fitness: toNumberValue(raw.avg_fitness, 0),
+    };
+  });
+}
+
+function normalizeCandidate(rawValue: unknown, task: MiningTaskSummary): CandidateFactor {
+  const raw = asObject(rawValue);
+  const gateReport = asObject(raw.gate_report);
+  const gates = asObject(firstDefined(gateReport.gates, gateReport.gate_results));
+  const metrics = asObject(gateReport.metrics);
+  const summary = asObject(gateReport.summary);
+  const g1Data = gateData(gates, "G1");
+  const g2Data = gateData(gates, "G2");
+  const g6Data = gateData(gates, "G6");
+  const g3Data = gateData(gates, "G3");
+  const id = toStringValue(firstDefined(raw.id, raw.candidate_id, raw.factor_id, raw.factor_name));
+  const name = toStringValue(firstDefined(raw.name, raw.factor_name, raw.factorName), id);
+  const gateScore = toOptionalNumber(firstDefined(raw.gate_score, gateReport.gate_score, gateReport.score));
+
+  return {
+    id,
+    name,
+    expression: toStringValue(firstDefined(raw.expression, raw.expr, raw.factor_expr, raw.factorExpression)),
+    engine: normalizeEngine(firstDefined(raw.engine, task.engine)),
+    task_id: toStringValue(firstDefined(raw.task_id, raw.run_id), task.task_id),
+    ic_mean: toNumberValue(firstDefined(raw.ic_mean, gateReport.ic_mean, metrics.ic_mean, summary.ic_mean, g1Data.ic_mean, gateMetric(gates, "G1", "ic_mean")), 0),
+    t_stat: toNumberValue(
+      firstDefined(
+        raw.t_stat,
+        gateReport.t_stat,
+        metrics.t_stat,
+        summary.t_stat,
+        g6Data.raw_t_stat,
+        g6Data.t_stat_newey_west,
+        g3Data.raw_t_stat,
+        g3Data.t_stat_newey_west,
+        gateMetric(gates, "G6", "raw_t_stat", "t_stat", "t_stat_newey_west"),
+        gateMetric(gates, "G3", "raw_t_stat", "t_stat", "t_stat_newey_west")
+      ),
+      0
+    ),
+    fdr_t_stat: toNumberValue(
+      firstDefined(raw.fdr_t_stat, gateReport.fdr_t_stat, metrics.fdr_t_stat, g6Data.fdr_t_stat, g3Data.fdr_t_stat),
+      0
+    ),
+    ic_ir: toNumberValue(firstDefined(raw.ic_ir, gateReport.ic_ir, metrics.ic_ir, summary.ic_ir, g2Data.ic_ir, gateMetric(gates, "G2", "ic_ir")), 0),
+    coverage: toNumberValue(firstDefined(raw.coverage, gateReport.coverage, metrics.coverage, summary.coverage, g1Data.coverage, g1Data.coverage_rate), 0),
+    gate_status: normalizeGateStatus(firstDefined(raw.gate_status, raw.status, gateReport.status)),
+    ...(gateScore !== undefined ? { gate_score: gateScore } : {}),
+    created_at: toStringValue(raw.created_at),
+  };
+}
+
+function normalizeTaskDetail(rawValue: unknown): MiningTaskDetail {
+  const raw = asObject(rawValue);
+  const summary = normalizeTaskSummary(raw);
+  const candidatesValue = raw.candidates;
+  const evolutionHistory = normalizeEvolutionHistory(firstDefined(raw.evolution_history, asObject(raw.stats).evolution_history));
+
+  return {
+    ...summary,
+    config: asObject(raw.config) as unknown as GPConfig | LLMConfig | BruteForceConfig,
+    candidates: Array.isArray(candidatesValue)
+      ? candidatesValue.map((candidate) => normalizeCandidate(candidate, summary))
+      : [],
+    ...(evolutionHistory ? { evolution_history: evolutionHistory } : {}),
+  };
+}
+
 // ---- API calls ----
 
 export async function startGPMining(config: GPConfig): Promise<{ task_id: string }> {
@@ -162,27 +354,13 @@ export async function startBruteForceMining(config: BruteForceConfig): Promise<{
 }
 
 export async function getMiningTasks(): Promise<MiningTaskSummary[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res = await apiClient.get<any[]>("/mining/tasks");
-  return (res.data ?? []).map((d) => ({
-    task_id: d.run_id ?? d.task_id ?? "",
-    engine: d.engine ?? "gp",
-    status: d.status ?? "unknown",
-    progress: d.progress ?? 0,
-    generation: d.generation,
-    total_generations: d.total_generations,
-    best_fitness: d.best_fitness,
-    discovered: d.discovered ?? 0,
-    passed: d.passed ?? 0,
-    archived: d.archived ?? 0,
-    started_at: d.started_at ?? "",
-    completed_at: d.completed_at ?? d.finished_at,
-  }));
+  const res = await apiClient.get<unknown[]>("/mining/tasks");
+  return Array.isArray(res.data) ? res.data.map(normalizeTaskSummary) : [];
 }
 
 export async function getMiningTaskDetail(taskId: string): Promise<MiningTaskDetail> {
-  const res = await apiClient.get<MiningTaskDetail>(`/mining/tasks/${taskId}`);
-  return res.data;
+  const res = await apiClient.get<unknown>(`/mining/tasks/${taskId}`);
+  return normalizeTaskDetail(res.data);
 }
 
 /** 后端只有cancel端点，pause语义通过cancel实现 */
@@ -218,6 +396,20 @@ export async function submitCandidatesToGate(candidates: { expr: string; name?: 
       apiClient.post("/mining/evaluate", { factor_expr: c.expr, factor_name: c.name } satisfies EvaluateFactorPayload)
     )
   );
+}
+
+export function buildCandidateGatePayloads(
+  candidateIds: string[],
+  candidates: CandidateFactor[]
+): { expr: string; name?: string }[] {
+  const candidatesById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  return candidateIds.map((id) => {
+    const candidate = candidatesById.get(id);
+    if (!candidate?.expression?.trim()) {
+      throw new Error(`Missing candidate expression for ${id}; refresh task detail before Gate submission.`);
+    }
+    return { expr: candidate.expression, name: candidate.name || undefined };
+  });
 }
 
 /** 引擎统计需从task列表聚合计算（后端无专用端点） */

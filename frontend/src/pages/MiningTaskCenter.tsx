@@ -27,12 +27,14 @@ import {
   archiveMiningTask,
   getEngineStats,
   submitCandidatesToGate,
+  buildCandidateGatePayloads,
 } from "@/api/mining";
 import type {
   MiningTaskSummary,
   MiningTaskDetail,
   EngineStats,
   MiningEngine,
+  CandidateFactor,
 } from "@/api/mining";
 
 // ---- Types ----
@@ -75,7 +77,7 @@ function formatDuration(startedAt: string, completedAt?: string): string {
 interface TaskDetailModalProps {
   taskId: string;
   onClose: () => void;
-  onGateSubmit: (ids: string[]) => Promise<void>;
+  onGateSubmit: (ids: string[], candidates: CandidateFactor[]) => Promise<void>;
 }
 
 function TaskDetailModal({ taskId, onClose, onGateSubmit }: TaskDetailModalProps) {
@@ -92,9 +94,10 @@ function TaskDetailModal({ taskId, onClose, onGateSubmit }: TaskDetailModalProps
   }, [taskId]);
 
   async function handleGate(ids: string[]) {
+    if (!detail) return;
     setGateSubmitting(true);
     try {
-      await onGateSubmit(ids);
+      await onGateSubmit(ids, detail.candidates);
       // Refresh detail
       const updated = await getMiningTaskDetail(taskId);
       setDetail(updated);
@@ -302,10 +305,14 @@ export default function MiningTaskCenter() {
     }
   }
 
-  async function handleGateSubmit(ids: string[]) {
-    // Gate评估需要DSL表达式，目前只传占位 — 实际应从task detail获取candidate expressions
-    const payloads = ids.map((id) => ({ expr: id, name: undefined }));
-    await submitCandidatesToGate(payloads);
+  async function handleGateSubmit(ids: string[], candidates: CandidateFactor[]) {
+    try {
+      const payloads = buildCandidateGatePayloads(ids, candidates);
+      await submitCandidatesToGate(payloads);
+    } catch (e: unknown) {
+      setError((e as Error).message ?? "提交Gate失败");
+      throw e;
+    }
   }
 
   // Running count stats

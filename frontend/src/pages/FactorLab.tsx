@@ -13,6 +13,7 @@ import {
   startBruteForceMining,
   submitCandidatesToGate,
   getMiningTaskDetail,
+  buildCandidateGatePayloads,
 } from "@/api/mining";
 import type { GPConfig, LLMConfig, BruteForceConfig, CandidateFactor, MiningEngine } from "@/api/mining";
 
@@ -31,7 +32,7 @@ export default function FactorLab() {
   const [gateSubmitting, setGateSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // local candidates list (merged from WS + initial load)
+  // Local candidates list loaded through the supported REST polling path.
   const [candidates, setCandidates] = useState<CandidateFactor[]>([]);
   const [evolutionHistory, setEvolutionHistory] = useState<
     { generation: number; best_fitness: number; avg_fitness: number }[]
@@ -164,10 +165,7 @@ export default function FactorLab() {
   async function handleSubmitGate(ids: string[]) {
     setGateSubmitting(true);
     try {
-      // Gate评估需要DSL表达式，从候选因子中提取
-      const gatePayloads = candidates
-        .filter((c) => ids.includes(c.id))
-        .map((c) => ({ expr: c.expression, name: c.name }));
+      const gatePayloads = buildCandidateGatePayloads(ids, candidates);
       await submitCandidatesToGate(gatePayloads);
       setCandidates((prev) =>
         prev.map((c) => ids.includes(c.id) ? { ...c, gate_status: "pending" as const } : c)

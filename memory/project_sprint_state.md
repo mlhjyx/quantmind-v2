@@ -1,13 +1,49 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 6.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 7.
 date: 2026-06-01 +08:00
-status: governance_batch_6_mining_websocket_contract_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_6.md
+status: governance_batch_7_mining_candidate_gate_contract_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_7.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 6
+## Current Handoff - 2026-06-01 Batch 7
+
+Mode: full-project closure/governance remediation, batch 7 mining candidate normalization and Gate payload closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited current backend mining task-detail output: candidates arrive as `factor_name` / `factor_expr` / `status` / `gate_report`, while the frontend table and Gate submit path expect normalized `CandidateFactor` fields.
+- Added normalization in `frontend/src/api/mining.ts` for task summaries and task details, including task counters/progress and candidate metrics/status fields.
+- Added shared `buildCandidateGatePayloads()` fail-loud helper to resolve selected IDs to factor expressions and names.
+- Updated `FactorLab` to use the shared helper.
+- Updated `MiningTaskCenter` detail modal to submit selected IDs together with loaded detail candidates, then send expression-based Gate payloads.
+- Added `frontend/src/__tests__/mining-api-contract.test.ts`.
+
+Verified so far:
+- RED: `npx vitest run src/__tests__/mining-api-contract.test.ts` failed before the fix on missing normalized fields, missing helper, and missing fail-loud expression guard.
+- GREEN: `npx vitest run src/__tests__/mining-api-contract.test.ts` -> 3 passed.
+- `npx vitest run src/__tests__/mining-websocket-contract.test.tsx src/__tests__/mining-api-contract.test.ts` -> 5 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `npx vitest run src/__tests__` -> 90 passed.
+- `npm run build` -> exit 0 with the existing Vite large chunk warning only.
+- `pytest -m "smoke and not live_tushare" -q` -> 90 passed, 2 skipped, 7003 deselected.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run final diff checks, commit/push Batch 7 into PR #523, wait for CI, then continue with the next code-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 6
 
 Mode: full-project closure/governance remediation, batch 6 mining transport fix verified locally before final smoke/CI.
 
