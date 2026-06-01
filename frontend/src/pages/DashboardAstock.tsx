@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
-// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
-import apiClient from "@/api/client";
 import { Link, useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { fetchSummary, fetchNAVSeries } from "@/api/dashboard";
+import { fetchSummary, fetchNAVSeries, fetchMonthlyReturns } from "@/api/dashboard";
+import { fetchFactorsStats } from "@/api/factors";
+import { fetchPortfolioSectorDistribution, type PortfolioSectorItem } from "@/api/portfolio";
 import type { DashboardSummary, NAVPoint } from "@/types/dashboard";
 
 const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
@@ -18,7 +18,7 @@ const STRATEGIES = [
   { id: "v1.2", label: "动量反转 v1.2 (测试)" },
 ];
 
-interface SectorItem { value: number; name: string; }
+type SectorItem = Pick<PortfolioSectorItem, "value" | "name">;
 interface FactorStatusData { active: number; new: number; warning: number; failed: number; }
 
 function pnlColorClass(v: number) {
@@ -513,21 +513,21 @@ export default function DashboardAstock() {
     }
 
     // Supplementary data — show empty on error, do not silently hide
-    apiClient.get<SectorItem[]>("/portfolio/sector-distribution", { params: { execution_mode: "live" } })
-      .then((r) => setSectors(r.data))
+    fetchPortfolioSectorDistribution()
+      .then((rows) => setSectors(rows.map(({ name, value }) => ({ name, value }))))
       .catch(() => setSectors([]));
 
-    apiClient.get<Record<string, (number | null)[]>>("/dashboard/monthly-returns", { params: { execution_mode: "live" } })
-      .then((r) => setMonthlyData(r.data))
+    fetchMonthlyReturns()
+      .then(setMonthlyData)
       .catch(() => setMonthlyData({}));
 
-    apiClient.get<{ total: number; active: number; candidate: number; warning: number; critical: number; retired: number }>("/factors/stats")
-      .then((r) => {
+    fetchFactorsStats()
+      .then((data) => {
         setFactorStatus({
-          active: r.data.active ?? 0,
-          new: r.data.candidate ?? 0,
-          warning: r.data.warning ?? 0,
-          failed: r.data.critical ?? 0,
+          active: data.active ?? 0,
+          new: data.candidate ?? 0,
+          warning: data.warning ?? 0,
+          failed: data.critical ?? 0,
         });
       })
       .catch(() => setFactorStatus({ active: 0, new: 0, warning: 0, failed: 0 }));

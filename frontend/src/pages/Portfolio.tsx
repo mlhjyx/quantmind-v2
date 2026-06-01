@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
-import apiClient from "@/api/client";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis } from "recharts";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, ChartTooltip } from "@/components/shared";
@@ -8,6 +6,13 @@ import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { usePortfolio } from "@/hooks/useRealtimeData";
+import {
+  fetchHoldingDaysMap,
+  fetchPortfolioDailyPnl,
+  fetchPortfolioSectorDistribution,
+  type PortfolioDailyPnl,
+  type PortfolioSectorItem,
+} from "@/api/portfolio";
 
 // ── Types ──
 interface Holding {
@@ -16,8 +21,8 @@ interface Holding {
   pnl: number; pnlAmt: number; days: number; signal: number;
   marketValue: number; dailyReturn: number;
 }
-interface SectorItem { name: string; value: number; color: string; }
-interface DailyPnl   { trade_date: string; nav: number; daily_return: number; cumulative_return: number; drawdown: number; }
+type SectorItem = PortfolioSectorItem;
+type DailyPnl = PortfolioDailyPnl;
 
 
 function SkeletonRow() {
@@ -71,34 +76,28 @@ export default function Portfolio() {
     let live = true;
     const load = async () => {
       const [s, p, h] = await Promise.allSettled([
-        apiClient.get<SectorItem[]>("/portfolio/sector-distribution", { params: { execution_mode: "live" } }),
-        apiClient.get<DailyPnl[]>("/portfolio/daily-pnl", { params: { days: 20, execution_mode: "live" } }),
-        apiClient.get<Array<{ code: string; holding_days: number }>>("/portfolio/holdings", { params: { execution_mode: "live" } }),
+        fetchPortfolioSectorDistribution(),
+        fetchPortfolioDailyPnl(20),
+        fetchHoldingDaysMap(),
       ]);
       if (!live) return;
 
       // Build holding_days map from DB (Frontend Design v3 §3.2.5)
-      if (h.status === "fulfilled" && Array.isArray(h.value.data)) {
-        const map: Record<string, number> = {};
-        for (const row of h.value.data) {
-          if (row.code && typeof row.holding_days === "number") {
-            map[row.code] = row.holding_days;
-          }
-        }
-        setHoldingDaysMap(map);
+      if (h.status === "fulfilled") {
+        setHoldingDaysMap(h.value);
       }
 
       const newErrors: string[] = [];
 
       if (s.status === "fulfilled") {
-        setSectorData(s.value.data);
+        setSectorData(s.value);
       } else {
         setSectorData([]);
         newErrors.push("行业分布数据加载失败");
       }
 
       if (p.status === "fulfilled") {
-        setPnlByDay(p.value.data);
+        setPnlByDay(p.value);
       } else {
         setPnlByDay([]);
         newErrors.push("每日盈亏数据加载失败");

@@ -1,13 +1,53 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 11.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 12.
 date: 2026-06-01 +08:00
-status: governance_batch_11_dashboard_api_layer_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_11.md
+status: governance_batch_12_portfolio_api_layer_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_12.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 11
+## Current Handoff - 2026-06-01 Batch 12
+
+Mode: full-project closure/governance remediation, batch 12 Portfolio API-layer closure verified locally before final commit/CI.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Audited Portfolio and A-share dashboard frontend/API contracts from code: `Portfolio.tsx` and `DashboardAstock.tsx` used page-level `apiClient` calls for `/portfolio/sector-distribution`, `/portfolio/daily-pnl`, and `/portfolio/holdings`.
+- Confirmed the backend portfolio route returns sector `pct` as percentage and `value` as market value, while chart consumers treated `value` as the percentage field.
+- Added `frontend/src/api/portfolio.ts` wrappers: `fetchPortfolioSectorDistribution`, `fetchPortfolioDailyPnl`, `fetchPortfolioHoldings`, and `fetchHoldingDaysMap`.
+- Normalized sector rows so chart-facing `value` equals backend `pct`, while preserving backend market value as `marketValue` and adding deterministic colors.
+- Removed direct `apiClient` import and usage from `Portfolio.tsx` and `DashboardAstock.tsx` for portfolio endpoints.
+- Added `frontend/src/__tests__/portfolio-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §13 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_12.md`.
+
+Verified so far:
+- RED: `npx vitest --run src/__tests__/portfolio-api-contract.test.ts` failed before the fix because `@/api/portfolio` did not exist.
+- GREEN targeted portfolio contract -> 4 passed.
+- Broader frontend/API suite -> 24 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite -> 110 passed.
+- `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning only.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- Browser smoke opened `/portfolio` and `/dashboard/astock`; headings were visible and console errors were empty.
+- `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`, `MarketData.tsx`, `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+
+Next safe step:
+- Run full frontend/build/API-discipline/backend-smoke verification, commit/push Batch 12 into PR #523, wait for CI, then continue with the next evidence-backed governance slice.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 11
 
 Mode: full-project closure/governance remediation, batch 11 Dashboard API-layer closure verified locally before final commit/CI.
 

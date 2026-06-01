@@ -33,6 +33,9 @@ matrix body is retained as historical audit evidence.
   industry distribution, factor rows, and pipeline steps now go through
   `frontend/src/api/dashboard.ts` wrappers instead of page-level `apiClient`
   calls.
+- Portfolio endpoints are closed in §13: holdings, sector distribution, and
+  daily PnL now go through `frontend/src/api/portfolio.ts`; sector `value` is
+  normalized to percentage for chart consumers.
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -598,9 +601,9 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 108 | `/api/pms/history` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
 | 109 | `/api/pms/config` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
 | 110 | `/api/pms/check` | POST | — | 🗑️ RETIRED iter 50 (ADR-094) |
-| 111 | `/api/portfolio/holdings` | GET | — | ❌ |
-| 112 | `/api/portfolio/sector-distribution` | GET | — | ❌ |
-| 113 | `/api/portfolio/daily-pnl` | GET | — | ❌ |
+| 111 | `/api/portfolio/holdings` | GET | portfolio.ts:93 | ✅ |
+| 112 | `/api/portfolio/sector-distribution` | GET | portfolio.ts:63 | ✅ |
+| 113 | `/api/portfolio/daily-pnl` | GET | portfolio.ts:83 | ✅ |
 | 114 | `/api/realtime/portfolio` | GET | realtime.ts:84 | ✅ |
 | 115 | `/api/realtime/market` | GET | realtime.ts:89 | ✅ |
 | 116 | `/api/v1/ping` | GET | — | ❌ |
@@ -654,9 +657,11 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 83–85 | `/api/news/ingest*` | Script-triggered ingest, not user-facing UI |
 | 91 | `/api/notifications/test` | Admin test only |
 
-### 5B — Dashboard Module Gap (8 endpoints)
+### 5B — Dashboard Module Gap (historical)
 
-All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consumer. `dashboard.ts` exists but contains only a comment. Dashboard data is likely fetched via react-query hooks in page components directly, bypassing the api layer — **check `frontend/src/pages/` for direct axios/fetch usage**.
+Historical 2026-05-20 snapshot. Dashboard secondary panels were closed in §12;
+remaining dashboard work should be assessed from fresh code, not this stale
+snapshot.
 
 ### 5C — Deprecated / Low Priority
 
@@ -679,7 +684,6 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 | 75–77 | `/api/market/*` | Market data not consumed by any frontend module |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
-| 111–113 | `/api/portfolio/*` | Portfolio panel bypasses API module |
 | 118–120 | `/api/reports/*` | Report generation not wired |
 | 121–129 | `/api/risk/*` (10 endpoints) | Risk framework dashboard not wired |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
@@ -963,8 +967,73 @@ API layer per LL-035.
 
 ### §12.4 Remaining API Governance Backlog
 
-- `DashboardAstock.tsx`, `PTGraduation.tsx`, `Portfolio.tsx`,
-  `RiskManagement.tsx`, `ReportCenter.tsx`, `MarketData.tsx`, and a few
-  shared widgets still import `apiClient` directly. They are not broken by this
-  batch, but they remain candidates for follow-up API-layer contraction if their
-  page-level calls contain response conversion or hide consumers from the matrix.
+- `DashboardAstock.tsx` and `Portfolio.tsx` are closed in §13 for portfolio
+  endpoint usage and sector-chart normalization.
+- `PTGraduation.tsx`, `RiskManagement.tsx`, `ReportCenter.tsx`,
+  `MarketData.tsx`, and a few shared widgets still import `apiClient`
+  directly. They are candidates for follow-up API-layer contraction only when a
+  code-backed page/API contract gap is confirmed.
+
+## §13 Fresh verify — 2026-06-01 (portfolio API-layer closure)
+
+### §13.1 Finding
+
+`frontend/src/pages/Portfolio.tsx` and `frontend/src/pages/DashboardAstock.tsx`
+previously imported `apiClient` directly for portfolio-side data:
+
+| UI surface | Previous page-level call | Current wrapper |
+|---|---|---|
+| Portfolio sector chart | `/portfolio/sector-distribution` | `fetchPortfolioSectorDistribution()` |
+| Portfolio daily PnL | `/portfolio/daily-pnl` | `fetchPortfolioDailyPnl()` |
+| Portfolio holding-days map | `/portfolio/holdings` | `fetchHoldingDaysMap()` |
+| A-share dashboard sector chart | `/portfolio/sector-distribution` | `fetchPortfolioSectorDistribution()` |
+
+Risk: the backend `portfolio.py` route returns sector `pct` as percentage and
+`value` as market value. Both frontend charts were using `value` as the
+percentage label/data key, so the page-level contract could display market
+value as a percent and also hid the `/api/portfolio/*` consumers from this
+matrix.
+
+### §13.2 Closure
+
+- Added `frontend/src/api/portfolio.ts` with wrappers for sector distribution,
+  daily PnL, holdings, and holding-days lookup.
+- Normalized sector rows so chart-facing `value` equals `pct`, while
+  `marketValue` preserves the backend value.
+- Added deterministic colors for sector chart consumers.
+- Removed direct `apiClient` imports and calls from `Portfolio.tsx` and
+  `DashboardAstock.tsx`.
+- Added `frontend/src/__tests__/portfolio-api-contract.test.ts` to lock wrapper
+  params, sector normalization, holding-days mapping, and the two page
+  boundaries.
+
+### §13.3 Verification
+
+- RED: `npx vitest --run src/__tests__/portfolio-api-contract.test.ts` failed
+  before the fix because `@/api/portfolio` did not exist.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/portfolio-api-contract.test.ts`
+  -> 4 passed.
+- Broader frontend/API suite:
+  `npx vitest --run src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 24 passed.
+- TypeScript: `npx tsc -b --pretty false` -> exit 0.
+- Full frontend suite: `npx vitest --run` -> 110 passed.
+- Frontend build: `npm run build` -> exit 0 with the existing Vite vendor
+  chunk-size warning only.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/portfolio`
+  and `http://127.0.0.1:5173/dashboard/astock`; headings `持仓管理` and
+  `A股详情` were visible and console error lists were empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §13.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
+  `RiskManagement.tsx`, `ReportCenter.tsx`, `MarketData.tsx`,
+  `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
+- The next contraction should be selected only after confirming a response
+  conversion bug, coverage-matrix blind spot, or broken user workflow from
+  current code.
