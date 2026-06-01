@@ -611,15 +611,15 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 118 | `/api/reports/list` | GET | reports.ts:143 | ✅ |
 | 119 | `/api/reports/quick-stats` | GET | reports.ts:150 | ✅ |
 | 120 | `/api/reports/generate` | POST | reports.ts:168 | ✅ |
-| 121 | `/api/risk/state/{strategy_id}` | GET | risk.ts:159 | ✅ |
-| 122 | `/api/risk/history/{strategy_id}` | GET | risk.ts:183 | ✅ |
-| 123 | `/api/risk/summary/{strategy_id}` | GET | risk.ts:199 | ✅ |
-| 124 | `/api/risk/l4-recovery/{strategy_id}` | POST | — | ❌ |
-| 125 | `/api/risk/l4-approve/{approval_id}` | POST | — | ❌ |
-| 126 | `/api/risk/force-reset/{strategy_id}` | POST | risk.ts:170 | ✅ |
-| 127 | `/api/risk/overview` | GET | risk.ts:219 | ✅ |
-| 128 | `/api/risk/limits` | GET | risk.ts:226 | ✅ |
-| 129 | `/api/risk/stress-tests` | GET | risk.ts:235 | ✅ |
+| 121 | `/api/risk/state/{strategy_id}` | GET | risk.ts:176 | ✅ |
+| 122 | `/api/risk/history/{strategy_id}` | GET | risk.ts:225 | ✅ |
+| 123 | `/api/risk/summary/{strategy_id}` | GET | risk.ts:241 | ✅ |
+| 124 | `/api/risk/l4-recovery/{strategy_id}` | POST | risk.ts:200 | ✅ |
+| 125 | `/api/risk/l4-approve/{approval_id}` | POST | risk.ts:213 | ✅ |
+| 126 | `/api/risk/force-reset/{strategy_id}` | POST | risk.ts:187 | ✅ |
+| 127 | `/api/risk/overview` | GET | risk.ts:252 | ✅ |
+| 128 | `/api/risk/limits` | GET | risk.ts:268 | ✅ |
+| 129 | `/api/risk/stress-tests` | GET | risk.ts:277 | ✅ |
 | 130 | `/api/risk/dingtalk-webhook` | POST | — | ❌ |
 | 131 | `/api/sse/risk-events` | GET | — | ❌ |
 | 132 | `/api/strategies` | GET | strategies.ts:47 | ✅ |
@@ -683,7 +683,6 @@ snapshot.
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
-| 124–125 | `/api/risk/l4-*` approval mutations | `SafetyControlPanel` still owns direct component calls; needs API-layer wrapper + admin-flow contract test |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 | 144 | `/api/system/streams` | Streams viewer not wired |
 
@@ -1200,9 +1199,9 @@ Risk: the backend returns raw scalar overview fields, limit statuses
 overview cards and miscount risk-limit severity.
 
 Fresh evidence:
-- `frontend/src/api/risk.ts:183` / §Risk wrappers — history wrapper in place;
+- `frontend/src/api/risk.ts:225` / §Risk wrappers — history wrapper in place;
   fresh verify 2026-06-01 15:30 +08.
-- `frontend/src/api/risk.ts:219-235` / §Risk display wrappers — overview,
+- `frontend/src/api/risk.ts:252-277` / §Risk display wrappers — overview,
   limits, and stress-test normalization in the API layer; fresh verify
   2026-06-01 15:30 +08.
 - `frontend/src/pages/RiskManagement.tsx:179` / §RiskStatusHistoryPanel —
@@ -1226,7 +1225,8 @@ Fresh evidence:
   `RiskManagement.tsx`.
 - Added `frontend/src/__tests__/risk-management-api-contract.test.ts` to lock
   wrapper endpoints, response normalization, and the page boundary.
-- Updated rows 121–129 and narrowed the §5D risk backlog to L4 admin mutations.
+- Updated rows 121–129 and narrowed the §5D risk backlog to L4 admin mutations
+  before the follow-up admin-flow closure in §17.
 
 ### §16.3 Verification
 
@@ -1253,9 +1253,84 @@ Fresh evidence:
 
 ### §16.4 Remaining API Governance Backlog
 
-- Remaining direct page/component imports after this batch: `PTGraduation.tsx`,
-  `SafetyControlPanel.tsx`, and `QMTStatusBadge.tsx`.
-- `SafetyControlPanel` is the next risk-domain candidate only if current code
-  proves an admin mutation contract gap for rows 124–125.
+- Superseded by §17 for `SafetyControlPanel` rows 124–125.
 - Continue selecting the next contraction only from current code evidence:
   response conversion bug, coverage-matrix blind spot, or broken user workflow.
+
+## §17 Fresh verify — 2026-06-01 (SafetyControlPanel L4 API-layer closure)
+
+### §17.1 Finding
+
+`frontend/src/components/safety/SafetyControlPanel.tsx` directly posted L4
+recovery and approval mutations from the component while this matrix still
+marked rows 124–125 as unwired. That left the most privileged risk UI path
+outside the `frontend/src/api/risk.ts` wrapper boundary used by the rest of the
+risk surface.
+
+| UI surface | Previous component-level call | Current wrapper |
+|---|---|---|
+| L4 recovery request | `/risk/l4-recovery/{strategy_id}` | `requestL4Recovery()` |
+| L4 approve/reject | `/risk/l4-approve/{approval_id}` | `approveL4Recovery()` |
+
+Fresh evidence:
+- `backend/app/api/risk.py:206` / §L4 recovery endpoint — POST
+  `/l4-recovery/{strategy_id}` requires admin token and accepts
+  `reviewer_note`; fresh verify 2026-06-01 15:47 +08.
+- `backend/app/api/risk.py:239` / §L4 approve endpoint — POST
+  `/l4-approve/{approval_id}` requires admin token and accepts `approved` plus
+  `reviewer_note`; fresh verify 2026-06-01 15:47 +08.
+- `frontend/src/api/risk.ts:200` and `frontend/src/api/risk.ts:213` /
+  §Risk wrappers — L4 mutation wrappers now own both HTTP calls; fresh verify
+  2026-06-01 15:47 +08.
+- `frontend/src/components/safety/SafetyControlPanel.tsx:151` and
+  `frontend/src/components/safety/SafetyControlPanel.tsx:182` /
+  §Safety panel handlers — component now calls wrappers and no longer imports
+  `apiClient`; fresh verify 2026-06-01 15:47 +08.
+
+### §17.2 Closure
+
+- Added typed `L4RecoveryResponse`, `L4RecoveryState`, and `L4ApproveResponse`
+  contracts to `frontend/src/api/risk.ts`.
+- Added `requestL4Recovery()` and `approveL4Recovery()` wrappers.
+- Refactored `SafetyControlPanel.tsx` to consume the wrappers while preserving
+  existing modal behavior and success/error handling.
+- Extended `frontend/src/__tests__/risk-management-api-contract.test.ts` to
+  lock the two L4 endpoint calls and the component boundary.
+- Updated `frontend/src/__tests__/SafetyControlPanel.test.tsx` mocks so the
+  existing L4 flow tests continue to exercise the UI flow through wrappers.
+- Updated rows 124–125 to covered and removed the L4 row from §5D.
+
+### §17.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts`
+  failed before the fix on missing `requestL4Recovery` /
+  `approveL4Recovery` exports and the direct `SafetyControlPanel` `apiClient`
+  import.
+- GREEN targeted contract/UI:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts src/__tests__/SafetyControlPanel.test.tsx`
+  -> 17 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/risk-management-api-contract.test.ts src/__tests__/SafetyControlPanel.test.tsx src/__tests__/report-center-api-contract.test.ts src/__tests__/market-api-contract.test.ts src/__tests__/portfolio-api-contract.test.ts src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 47 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 126 tests passed across 23 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Browser smoke: in-app browser opened `http://127.0.0.1:5173/risk`, clicked
+  `紧急控制`, and the DOM contained `熔断状态`, `紧急操作`, and `ENV: paper`;
+  console error list was empty. Existing dev server on port 5173 was reused and
+  not stopped.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §17.4 Remaining API Governance Backlog
+
+- Remaining direct page/component imports after this batch: `PTGraduation.tsx`
+  and `QMTStatusBadge.tsx`.
+- Keep `/api/risk/dingtalk-webhook` classified as webhook/ops, not a frontend
+  wrapper target unless a UI workflow is added.
+- Continue choosing the next closure from current code evidence rather than
+  historical matrix drift alone.

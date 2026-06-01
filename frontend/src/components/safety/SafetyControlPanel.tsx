@@ -17,9 +17,13 @@ import { Shield, AlertCircle, Zap, RefreshCw, History, ShieldCheck, ShieldX } fr
 import { C } from "@/theme";
 import { Card, CardHeader } from "@/components/shared";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import apiClient from "@/api/client";
 import type { CircuitBreakerState } from "@/types/dashboard";
-import { fetchCircuitBreakerState, forceResetCircuitBreaker } from "@/api/risk";
+import {
+  approveL4Recovery,
+  fetchCircuitBreakerState,
+  forceResetCircuitBreaker,
+  requestL4Recovery,
+} from "@/api/risk";
 import { fetchEnvState, type EnvState, getPaperStrategyId } from "@/api/system";
 import { isAdminAuthed } from "@/api/execution";
 
@@ -144,15 +148,15 @@ export function SafetyControlPanel() {
       return;
     }
     try {
-      const res = await apiClient.post<{ approval_id: string; status: string }>(
-        `/risk/l4-recovery/${strategyId}`,
-        { reviewer_note: meta.reason ?? "L4 recovery request from operator UI" },
+      const res = await requestL4Recovery(
+        strategyId,
+        meta.reason ?? "L4 recovery request from operator UI",
       );
-      setPendingApprovalId(res.data.approval_id);
+      setPendingApprovalId(res.approval_id);
       setShowRequestRecovery(false); // close modal only on success
       setActionMsg({
         ok: true,
-        text: `L4 恢复请求已创建: ${res.data.approval_id.slice(0, 8)}… (待 admin 审批)`,
+        text: `L4 恢复请求已创建: ${res.approval_id.slice(0, 8)}… (待 admin 审批)`,
       });
       void load();
     } catch (err) {
@@ -175,12 +179,13 @@ export function SafetyControlPanel() {
     if (!pendingApprovalId || !showApproveRecovery) return;
     const approved = showApproveRecovery === "approve";
     try {
-      const res = await apiClient.post<{ status: string; new_state?: { level: number } }>(
-        `/risk/l4-approve/${pendingApprovalId}`,
-        { approved, reviewer_note: meta.reason ?? "" },
+      const res = await approveL4Recovery(
+        pendingApprovalId,
+        approved,
+        meta.reason ?? "",
       );
       const verdict = approved ? "已批准" : "已拒绝";
-      const newLvl = res.data.new_state?.level;
+      const newLvl = res.new_state?.level;
       setActionMsg({
         ok: true,
         text: `L4 恢复${verdict}${newLvl != null ? ` (新状态: L${newLvl})` : ""}`,

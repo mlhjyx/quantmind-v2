@@ -37,6 +37,15 @@ vi.mock("@/api/risk", () => ({
   fetchCircuitBreakerState: (strategyId: string) => mockFetchCircuitBreakerState(strategyId),
   forceResetCircuitBreaker: (strategyId: string, reason: string) =>
     mockForceResetCircuitBreaker(strategyId, reason),
+  requestL4Recovery: (strategyId: string, reviewerNote: string) =>
+    mockApiClientPost(`/risk/l4-recovery/${strategyId}`, {
+      reviewer_note: reviewerNote,
+    }).then((res) => res.data),
+  approveL4Recovery: (approvalId: string, approved: boolean, reviewerNote: string) =>
+    mockApiClientPost(`/risk/l4-approve/${approvalId}`, {
+      approved,
+      reviewer_note: reviewerNote,
+    }).then((res) => res.data),
 }));
 vi.mock("@/api/system", () => ({
   fetchEnvState: () => mockFetchEnvState(),

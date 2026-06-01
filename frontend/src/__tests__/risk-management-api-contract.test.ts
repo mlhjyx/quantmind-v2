@@ -59,6 +59,49 @@ describe("risk management API contract", () => {
     });
   });
 
+  it("requests L4 recovery through the risk API layer", async () => {
+    const api = await import("@/api/risk");
+    apiClientMock.post.mockResolvedValueOnce({
+      data: { approval_id: "approval-1", status: "pending" },
+    });
+
+    expect(typeof api.requestL4Recovery).toBe("function");
+    await expect(
+      api.requestL4Recovery("strategy-1", "risk metrics recovered", "live"),
+    ).resolves.toEqual({ approval_id: "approval-1", status: "pending" });
+
+    expect(apiClientMock.post).toHaveBeenCalledWith(
+      "/risk/l4-recovery/strategy-1",
+      { reviewer_note: "risk metrics recovered" },
+      { params: { execution_mode: "live" } },
+    );
+  });
+
+  it("approves L4 recovery through the risk API layer", async () => {
+    const api = await import("@/api/risk");
+    apiClientMock.post.mockResolvedValueOnce({
+      data: {
+        status: "approved",
+        approval_id: "approval-1",
+        new_state: { level: 0, level_name: "NORMAL", position_multiplier: 1 },
+      },
+    });
+
+    expect(typeof api.approveL4Recovery).toBe("function");
+    await expect(
+      api.approveL4Recovery("approval-1", true, "reviewed and approved"),
+    ).resolves.toMatchObject({
+      status: "approved",
+      approval_id: "approval-1",
+      new_state: { level: 0 },
+    });
+
+    expect(apiClientMock.post).toHaveBeenCalledWith("/risk/l4-approve/approval-1", {
+      approved: true,
+      reviewer_note: "reviewed and approved",
+    });
+  });
+
   it("normalizes raw overview scalars into dashboard metrics", async () => {
     const api = await import("@/api/risk");
     apiClientMock.get.mockResolvedValueOnce({
@@ -210,6 +253,13 @@ describe("risk management API contract", () => {
 
   it("keeps RiskManagement behind src/api wrappers", () => {
     const source = readFileSync("src/pages/RiskManagement.tsx", "utf8");
+
+    expect(source).not.toContain('import apiClient from "@/api/client"');
+    expect(source).not.toMatch(/\bapiClient\.(get|post|put|delete|patch)\s*\(/);
+  });
+
+  it("keeps SafetyControlPanel L4 mutations behind src/api wrappers", () => {
+    const source = readFileSync("src/components/safety/SafetyControlPanel.tsx", "utf8");
 
     expect(source).not.toContain('import apiClient from "@/api/client"');
     expect(source).not.toMatch(/\bapiClient\.(get|post|put|delete|patch)\s*\(/);

@@ -147,6 +147,23 @@ export interface RiskEventsResponse {
   total_count: number;
 }
 
+export interface L4RecoveryResponse {
+  approval_id: string;
+  status: string;
+}
+
+export interface L4RecoveryState {
+  level: number;
+  level_name?: string;
+  position_multiplier?: number;
+}
+
+export interface L4ApproveResponse {
+  status: string;
+  approval_id: string;
+  new_state?: L4RecoveryState;
+}
+
 export interface RiskEventsFilter {
   severity?: RiskEventSeverity | string;
   rule_id?: string;
@@ -176,6 +193,31 @@ export async function forceResetCircuitBreaker(
     `/risk/force-reset/${strategyId}`,
     { reason },
     { params: { execution_mode: executionMode } },
+  );
+  return data;
+}
+
+export async function requestL4Recovery(
+  strategyId: string,
+  reviewerNote: string,
+  executionMode: RiskExecutionMode = "paper",
+): Promise<L4RecoveryResponse> {
+  const { data } = await apiClient.post<L4RecoveryResponse>(
+    `/risk/l4-recovery/${strategyId}`,
+    { reviewer_note: reviewerNote },
+    { params: { execution_mode: executionMode } },
+  );
+  return data;
+}
+
+export async function approveL4Recovery(
+  approvalId: string,
+  approved: boolean,
+  reviewerNote = "",
+): Promise<L4ApproveResponse> {
+  const { data } = await apiClient.post<L4ApproveResponse>(
+    `/risk/l4-approve/${approvalId}`,
+    { approved, reviewer_note: reviewerNote },
   );
   return data;
 }
