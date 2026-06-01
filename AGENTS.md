@@ -122,8 +122,8 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
 | Preview | `cd frontend ; npm run preview` |
 
 ### 服务管理 (Servy v7.6, 见 §部署规则)
-- 全重启: `powershell -File scripts\service_manager.ps1 restart all`
-- 单服务: `powershell -File scripts\service_manager.ps1 restart fastapi` (or `celery` / `celery-beat` / `qmt-data`)
+- 核心服务重启: `powershell -File scripts\service_manager.ps1 restart all` (FastAPI / Celery / CelerySlow / CeleryBeat; **不隐式启动 QMTData**)
+- 单服务: `powershell -File scripts\service_manager.ps1 restart fastapi` (or `worker`/`celery`, `slow-worker`, `beat`/`celery-beat`, explicit `qmt`/`qmt-data`)
 - 状态: `powershell -File scripts\service_manager.ps1 status`
 
 ### 回测 / IC / 因子
@@ -218,7 +218,7 @@ quantmind-v2/
 ### 部署规则（Servy服务管理）
 - **服务管理工具**: Servy v7.6 (`D:\tools\Servy\servy-cli.exe`)，替代NSSM（2026-04-04迁移）
 - 后端代码修改后重启: `powershell -File scripts\service_manager.ps1 restart fastapi`
-- 重启所有服务: `powershell -File scripts\service_manager.ps1 restart all`
+- 重启核心服务: `powershell -File scripts\service_manager.ps1 restart all` (不含 QMTData; QMTData 需 explicit `qmt`/`qmt-data`)
 - 查看服务状态: `powershell -File scripts\service_manager.ps1 status`
 - 前端代码修改后: `npm run build`（生产模式）或确认dev server自动热更新
 - 开发调试时可手动启动: `cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`

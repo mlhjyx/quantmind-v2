@@ -1,14 +1,46 @@
 ---
----
-description: Codex remediation handoff updated after 2026-06-01 governance batch 3.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 4.
 date: 2026-06-01 +08:00
-status: governance_batch_3_qmt_cache_guard_verified_ops_backlog
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_3.md
+status: governance_batch_4_service_reload_gate_blocked_ops_guarded
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_4.md
 ---
 
 # Project Sprint State
 
-## Current Handoff — 2026-06-01 Batch 3
+## Current Handoff — 2026-06-01 Batch 4
+
+Mode: full-project closure/governance remediation, batch 4 completed code/docs guardrails; runtime reload remains ops-blocked.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Closed in this batch:
+- Attempted scoped Celery/Beat reload for Batch 3 runtime verification; Servy restart and direct Windows service stop are blocked by current process permissions.
+- Confirmed running Celery still uses pre-Batch-3 code: `realtime_risk_tick` rows at `2026-06-01 12:14-12:16 +08` still report `success` with zero positions/nav and no `qmt_cache_unavailable` reason.
+- Hardened `scripts/service_manager.ps1`: documented aliases work, `all` no longer implicitly manages QMTData, Servy failure output is printed, and failed service actions exit nonzero.
+- Added static regression tests for service-manager behavior.
+- Fixed duplicate YAML delimiter at the top of this handoff file.
+- Updated `AGENTS.md` service-manager quick reference to document core-services-only `all` plus explicit QMTData management.
+
+Verified:
+- `pytest backend/tests/test_service_manager_script.py -q`: 4 passed.
+- `pytest -m "smoke and not live_tushare" -q`: 90 passed, 2 skipped, 7003 deselected.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\service_manager.ps1 status`: exit 0, core services running, QMTData stopped/manual.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\service_manager.ps1 restart celery`: exit 1 and surfaces `Failed to restart service.`
+
+Still open:
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Commit/push Batch 4 into PR #523, wait for CI, then continue with either elevated ops handoff verification or another code-only governance closure batch.
+
+---
+
+## Previous Handoff — 2026-06-01 Batch 3
 
 Mode: full-project closure/governance remediation, batch 3 verified locally.
 
