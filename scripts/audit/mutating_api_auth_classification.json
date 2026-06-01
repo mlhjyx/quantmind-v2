@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "generated_from": "docs/audit/STATUS_REPORT_2026_06_01_governance_batch_37.md",
+  "entries": {
+    "backend/app/api/auth.py|POST|/api/auth/admin-token|set_admin_token_cookie": {
+      "classification": "public_bootstrap",
+      "priority": "EXCEPTION",
+      "reason": "Admin-token cookie bootstrap validates X-Admin-Token before setting the cookie."
+    },
+    "backend/app/api/backtest.py|POST|/api/backtest/run|submit_backtest": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Backtest job submission is a resource-cost mutation surface."
+    },
+    "backend/app/api/backtest.py|POST|/api/backtest/{run_id}/cancel|cancel_backtest": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Backtest cancellation mutates job state."
+    },
+    "backend/app/api/backtest.py|POST|/api/backtest/compare|compare_strategies": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Comparison can trigger resource-cost backend work."
+    },
+    "backend/app/api/backtest.py|POST|/api/backtest/{run_id}/sensitivity|run_sensitivity_analysis": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Sensitivity analysis is a deferred resource-cost endpoint."
+    },
+    "backend/app/api/factors.py|POST|/api/factors/{name}/archive|archive_factor": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Factor archive mutates factor lifecycle state."
+    },
+    "backend/app/api/factors.py|POST|/api/factors/health-check|trigger_factor_health_check": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Manual factor health check triggers backend work."
+    },
+    "backend/app/api/factors.py|POST|/api/factors/correlation-prune|trigger_correlation_prune": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Correlation prune can mutate factor candidate state."
+    },
+    "backend/app/api/mining.py|POST|/api/mining/run|run_mining": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Mining run starts resource-cost discovery work."
+    },
+    "backend/app/api/mining.py|POST|/api/mining/tasks/{task_id}/cancel|cancel_mining_task": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Mining cancellation mutates task state."
+    },
+    "backend/app/api/mining.py|POST|/api/mining/evaluate|evaluate_factor": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Factor evaluation is resource-cost backend work."
+    },
+    "backend/app/api/news.py|POST|/api/news/ingest|ingest_news": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Manual news ingest can write data and consume external resources."
+    },
+    "backend/app/api/news.py|POST|/api/news/ingest_rsshub|ingest_news_rsshub": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "RSSHub ingest can write data and consume external resources."
+    },
+    "backend/app/api/news.py|POST|/api/news/ingest_announcement|ingest_announcement": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Announcement ingest can write data and consume external resources."
+    },
+    "backend/app/api/notifications.py|PUT|/api/notifications/read-all|mark_all_read": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "Notification read state needs an explicit operator/session ownership decision."
+    },
+    "backend/app/api/notifications.py|DELETE|/api/notifications/clear-old|clear_old": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "Notification cleanup needs an admin or retention-policy decision."
+    },
+    "backend/app/api/notifications.py|PUT|/api/notifications/preferences|update_preferences": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "Notification preferences need ownership and auth semantics before gating."
+    },
+    "backend/app/api/notifications.py|PUT|/api/notifications/{notification_id}/read|mark_read": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "Notification item read state needs an explicit operator/session ownership decision."
+    },
+    "backend/app/api/notifications.py|POST|/api/notifications/test|test_notification": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "Notification test send is an operator action and needs an auth decision."
+    },
+    "backend/app/api/params.py|PUT|/api/params/{key:path}|update_param": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Runtime parameter update mutates configuration."
+    },
+    "backend/app/api/params.py|POST|/api/params/init-defaults|init_defaults": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Default parameter bootstrap mutates configuration."
+    },
+    "backend/app/api/params.py|POST|/api/params/rollback|rollback_params": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Parameter rollback mutates configuration."
+    },
+    "backend/app/api/pipeline.py|POST|/api/pipeline/trigger|trigger_pipeline": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Pipeline trigger starts backend workflow execution."
+    },
+    "backend/app/api/pipeline.py|POST|/api/pipeline/runs/{run_id}/cancel|cancel_pipeline_run": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Pipeline cancel mutates workflow state."
+    },
+    "backend/app/api/pipeline.py|PUT|/api/pipeline/automation-level|set_automation_level": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Automation-level update mutates operator workflow controls."
+    },
+    "backend/app/api/pipeline.py|POST|/api/pipeline/pause|pause_pipeline": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Pipeline pause mutates operator workflow controls."
+    },
+    "backend/app/api/pipeline.py|POST|/api/pipeline/resume|resume_pipeline": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Pipeline resume mutates operator workflow controls."
+    },
+    "backend/app/api/pipeline.py|POST|/api/pipeline/runs/{run_id}/approve/{factor_id}|approve_factor": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Factor approval mutates promotion state."
+    },
+    "backend/app/api/pipeline.py|POST|/api/pipeline/runs/{run_id}/reject/{factor_id}|reject_factor": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Factor rejection mutates promotion state."
+    },
+    "backend/app/api/report.py|POST|/api/reports/generate|generate_report": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "Report generation is resource-cost work and needs an auth/rate decision."
+    },
+    "backend/app/api/risk.py|POST|/api/risk/dingtalk-webhook|dingtalk_inbound_webhook": {
+      "classification": "inbound_secret_required",
+      "priority": "P1",
+      "reason": "Inbound webhook should use a callback secret or signature model, not operator cookie auth."
+    },
+    "backend/app/api/strategies.py|POST|/api/strategies/{strategy_id}/versions|create_strategy_version": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Strategy version creation mutates strategy governance state."
+    },
+    "backend/app/api/strategies.py|POST|/api/strategies/{strategy_id}/rollback|rollback_strategy_version": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Strategy rollback mutates strategy governance state."
+    },
+    "backend/app/api/strategies.py|POST|/api/strategies|create_strategy": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Strategy creation mutates strategy registry state."
+    },
+    "backend/app/api/strategies.py|PUT|/api/strategies/{strategy_id}|update_strategy": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Strategy update mutates strategy registry state."
+    },
+    "backend/app/api/strategies.py|DELETE|/api/strategies/{strategy_id}|delete_strategy": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Strategy deletion mutates strategy registry state."
+    },
+    "backend/app/api/strategies.py|POST|/api/strategies/{strategy_id}/backtest|trigger_strategy_backtest": {
+      "classification": "admin_gate_backlog",
+      "priority": "P0",
+      "reason": "Direct strategy backtest trigger starts resource-cost work."
+    },
+    "backend/app/api/system.py|POST|/api/system/test-notification|test_notification": {
+      "classification": "decision_required",
+      "priority": "P1",
+      "reason": "System test notification is an operator action and needs an auth decision."
+    }
+  }
+}

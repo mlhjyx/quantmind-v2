@@ -1,13 +1,93 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 37.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 38.
 date: 2026-06-01 +08:00
-status: governance_batch_37_mutating_api_auth_inventory_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_37.md
+status: governance_batch_38_mutating_api_auth_guard_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_38.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 37
+## Current Handoff - 2026-06-01 Batch 38
+
+Mode: full-project closure/governance remediation, batch 38 mechanized guard
+for mutating API auth classification.
+
+Current scope:
+- Current PR branch is `codex/runtime-governance-followup`.
+- Latest pushed head before this batch is `3e7f18f9` (`record mutating api auth
+  inventory`), and PR #523 checks were clean after Batch 37.
+- Continue avoiding broker order APIs, `.env` edits, production YAML edits,
+  destructive DB changes, Servy config edits, Task Scheduler mutations, and
+  QMT service startup unless a separate ops step is explicitly chosen.
+- Do not commit, stage, unstage, or revert unrelated user-owned changes.
+
+Active discovery:
+- Batch 37 route inventory needed a machine guard; documentation alone would
+  not catch a newly added mutating route.
+- The new audit script parses `backend/app/api/*.py` with AST and requires each
+  no-admin mutating route to have an explicit JSON classification.
+- The current-repo check is marked `smoke`, so the existing pre-push guard will
+  fail if a new mutating route is added without classification.
+
+Closed in this batch:
+- Added `scripts/audit/check_mutating_api_auth.py`.
+- Added `scripts/audit/mutating_api_auth_classification.json`.
+- Added `backend/tests/test_mutating_api_auth_audit.py` with RED/GREEN TDD
+  coverage.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_38.md`.
+- Registered the script in `scripts/audit/README.md`.
+
+Verification:
+- RED: `pytest backend/tests/test_mutating_api_auth_audit.py -q` failed because
+  `scripts.audit.check_mutating_api_auth` did not exist.
+- GREEN: `pytest backend/tests/test_mutating_api_auth_audit.py -q` -> 4 passed.
+- `ruff check scripts/audit/check_mutating_api_auth.py backend/tests/test_mutating_api_auth_audit.py`
+  -> all checks passed.
+- `python scripts/audit/check_mutating_api_auth.py` -> PASS with
+  58 mutating routes, 20 admin-gated, 38 classified no-admin routes.
+- `pytest -m "smoke and not live_tushare"` -> 91 passed, 2 skipped,
+  7031 deselected; the new mutating-route guard test was selected by `smoke`.
+- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke
+  92 passed, 2 skipped, 6987 deselected.
+- Pending: banned-word scan, commit, push, PR body append, and PR #523 check
+  watch.
+
+Still open:
+- Params admin-gate security fix remains blocked by
+  `python scripts/_verify_account_oneshot.py` failing with
+  `broker.connect() failed: miniQMT连接失败，返回码: -1`.
+- The P0 admin-gate backlog remains: params, pipeline, strategies, factors,
+  mining, news ingest, and backtest resource-cost mutations.
+- P1/decision route groups remain: notification state/test send, system test
+  notification, report generation, and DingTalk inbound webhook control model.
+- Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
+  endpoint fixes are reflected in that running listener.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
+- Rows 135-136 strategy version create/rollback need a version-management UI
+  design with diff preview, required changelog, rollback confirmation, audit
+  display, post-mutation reload, and rollback refresh regression coverage.
+- Row 141 direct strategy backtest remains superseded by the confirmation-page
+  flow unless a later product decision changes it.
+- Row 93 `/api/paper-trading/graduation` stays outside current operator UI
+  unless caller-supplied backtest baselines are reintroduced.
+- Row 62 alert-config requires a backend design for storage, validation, diff
+  preview, reload behavior, audit payload, and rollback path before UI.
+- Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`,
+  and `beat`; then verify a fresh `realtime_risk_tick` row reports
+  `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
+- QMTData runtime remains intentionally stopped/manual; do not start it
+  implicitly.
+- Batch 2 backlog remains: DeepSeek primary provider credential/account failure
+  requires operator secret/provider fix; no secret rotation was performed.
+
+Next safe step:
+- Run full smoke/pre-push, commit and push Batch 38, then continue a non-redline
+  audit surface or retry params admin-gate only after read-only account
+  verification is available or explicitly waived.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 37
 
 Mode: full-project closure/governance remediation, batch 37 docs-only
 mutating API admin-gate inventory.
