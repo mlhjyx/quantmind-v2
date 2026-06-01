@@ -43,6 +43,8 @@ check still cannot connect to miniQMT.
   `PASS: 58 mutating routes, 20 admin-gated, 38 classified no-admin routes`.
 - `python scripts/_verify_account_oneshot.py` -> exit 1,
   `broker.connect()` returned `-1`.
+- `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke
+  92 passed, 2 skipped, 6987 deselected.
 
 ## Risk Impact
 
