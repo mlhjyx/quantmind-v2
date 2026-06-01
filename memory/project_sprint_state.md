@@ -1,83 +1,60 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 28.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 29.
 date: 2026-06-01 +08:00
-status: governance_batch_28_strategy_workspace_full_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_28.md
+status: governance_batch_29_backtest_sensitivity_reclass_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_29.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 28
+## Current Handoff - 2026-06-01 Batch 29
 
-Mode: full-project closure/governance remediation, batch 28 strategy edit-route
-loading, strategy metadata coverage, and strategy API request-shape drift
-remediation locally verified before commit/push.
+Mode: full-project closure/governance remediation, batch 29 backtest
+sensitivity endpoint reclassification in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `a23f762b` (`wire pt status summary`),
-  and PR #523 checks were clean before Batch 28 edits.
+- Latest pushed head before this batch is `2c37d474` (`wire strategy workspace
+  metadata`), and PR #523 checks were clean before Batch 29 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Strategy rows 134-136 and 140-141 are not one class of gap. Versions GET and
-  factors GET are read-only and useful in the edit workspace; version create
-  and rollback are real mutations and need diff/confirm/audit semantics.
-- `/strategy/:id` already existed but `StrategyWorkspace.tsx` ignored the route
-  id, so edit links opened a blank editor instead of the selected strategy.
-- Existing strategy create/update wrappers sent the old editor payload directly;
-  backend request models require `market/config/factor_names` for create and
-  `factor_config/backtest_config` for update.
-- Row 141 direct strategy backtest trigger stays outside the workspace because
-  `/backtest/config?strategy_id=...` is the safer confirmation path.
+- Row 34 `/api/backtest/{run_id}/sensitivity` is not a missed frontend hook.
+  The backend endpoint intentionally returns `status="deferred"` with
+  ADR-DRAFT row 18 tracking metadata.
+- Current working UI already consumes row 31 `/api/backtest/{run_id}/cost-sensitivity`.
+  Wiring row 34 would expose a deferred placeholder rather than a working
+  analysis feature.
+- Future implementation needs an architecture decision covering parameter
+  whitelist, override path, child-run lineage/storage, aggregation, result
+  delivery, and shared-data-load strategy.
 
 Closed in this batch:
-- Added typed strategy detail/version/factor wrappers and backend-shape
-  normalization in `frontend/src/api/strategies.ts`.
-- Adapted strategy create/update wrappers to backend request bodies.
-- Wired `frontend/src/pages/StrategyWorkspace.tsx` to load `/strategy/:id`,
-  display versions/factors metadata, and route run-backtest through
-  `/backtest/config?strategy_id=...`.
-- Added query keys for strategy versions/factors.
-- Added `frontend/src/__tests__/strategy-api-contract.test.ts`.
-- Added a partial-update regression so name-only updates do not send empty
-  config blocks to the backend.
-- Updated `docs/API_COVERAGE.md` §3.10, rows 132-141, §5C, §5D, §5E, and new
-  §29; added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_28.md`.
+- Updated `docs/API_COVERAGE.md` §5D to show no remaining generic
+  backend-implemented/frontend-unwired rows.
+- Moved row 34 to §5E as backend-semantics-before-UI.
+- Added `docs/API_COVERAGE.md` §30 with evidence, verification plan, and
+  future design prerequisites.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_29.md`.
 
 Verification:
-- RED strategy contract:
-  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` failed before
-  implementation on detail normalization, missing versions/factors wrappers,
-  create/update request-shape adaptation, and route-id workspace wiring.
-- Targeted strategy contract:
-  `npx vitest --run src/__tests__/strategy-api-contract.test.ts` -> 5
-  passed.
-- Backend strategy API compatibility:
-  `pytest backend/tests/test_api_routes.py::TestStrategiesAPI -q` -> 11
-  passed.
-- `npx tsc -b --pretty false` -> exit 0.
-- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- `npx vitest --run` -> 159 passed.
-- `npm run build` -> exit 0 with existing Vite vendor-echarts chunk-size warning.
-- Browser smoke on
-  `http://127.0.0.1:5173/strategy/28fc37e5-2d32-4ada-92e0-41c11a5103d0?smoke=batch28`:
-  saved strategy name, versions/factors panel, and run-backtest button rendered
-  with 0 new console errors. Clicking run-backtest navigated to
-  `/backtest/config?strategy_id=28fc37e5-2d32-4ada-92e0-41c11a5103d0` with 0
-  new console errors.
+- `pytest backend/tests/test_backtest_sensitivity_defer.py -q` -> 3 passed.
+- `pytest backend/tests/test_backtest_api.py::test_sensitivity_analysis -q` ->
+  1 passed.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
+- Pending before closure: commit, push, PR body append, and PR #523 check watch.
 
 Still open:
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Remaining §5D backlog: row 34 backtest sensitivity only.
+- Remaining §5D backlog: none after row 34 reclassification.
+- Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
 - Rows 135-136 strategy version create/rollback need a version-management UI
   design with diff preview, required changelog, rollback confirmation, audit
   display, post-mutation reload, and rollback refresh regression coverage.
@@ -96,8 +73,18 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Stage/commit/push Batch 28, update PR #523, then verify GitHub checks before
-  continuing.
+- Run Batch 29 targeted tests, smoke/pre-push, then stage/commit/push and
+  verify PR #523 checks.
+
+---
+
+## Previous Handoff - 2026-06-01 Batch 28
+
+Batch 28 closed strategy rows 134 and 140 through typed wrappers and
+`StrategyWorkspace.tsx` route-id consumption, fixed strategy create/update
+request-shape drift, and reclassified rows 135-136 plus 141. Commit `2c37d474`
+pushed as `wire strategy workspace metadata`; PR #523 checks passed before
+Batch 29 edits.
 
 ---
 

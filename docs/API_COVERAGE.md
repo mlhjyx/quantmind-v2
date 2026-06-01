@@ -707,13 +707,14 @@ snapshot.
 
 | # | Endpoint | Priority |
 |---|----------|----------|
-| 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
+| — | — | No remaining backend-implemented/frontend-unwired item after §30 reclassified row 34 |
 
 ### 5E — Needs Backend Semantics Before UI
 
 | # | Endpoint | Rationale |
 |---|----------|-----------|
 | 62 | `/api/execution/alert-config` PUT | Admin-gated endpoint only writes `operation_audit_log` and echoes the payload; no config store or runtime reload semantics exist yet, so wiring a UI would imply a mutation that does not persist |
+| 34 | `/api/backtest/{run_id}/sensitivity` POST | Endpoint is an explicit deferred contract returning `status="deferred"` and ADR-DRAFT row 18 tracking metadata. UI needs the Phase B architecture decision first: parameter whitelist, storage/lineage, aggregation metrics, result delivery, and shared-data-load strategy |
 | 135–136 | `/api/strategies/{strategy_id}/versions` POST, `/rollback` POST | Version creation and rollback are real mutations. UI needs explicit diff preview, changelog policy, rollback confirmation, audit trail, and post-mutation reload semantics before these controls should be exposed |
 
 ---
@@ -2149,3 +2150,61 @@ record display, post-mutation reload, and a regression proving the editor
 refreshes after rollback. Row 141 should remain outside the workspace unless a
 separate "quick run" product decision replaces the safer config-confirmation
 path.
+
+## §30 Fresh verify — 2026-06-01 (Backtest sensitivity defer reclass)
+
+### §30.1 Finding
+
+Row 34 `/api/backtest/{run_id}/sensitivity` was the last §5D item, but fresh
+code review shows it is not a missed frontend integration. The backend endpoint
+is intentionally preserved as a 200/`status="deferred"` contract that explains
+why real sensitivity execution was deferred to a Phase B architecture pass.
+
+Wiring this endpoint into the UI today would show a deferred placeholder, not a
+working sensitivity analysis. The usable quick what-if surface already exists
+through row 31 `/api/backtest/{run_id}/cost-sensitivity`, which is consumed by
+`BacktestResults.tsx`.
+
+Fresh evidence:
+- `backend/app/api/backtest.py:1191` and `:1198` / §SensitivityRequest +
+  route — endpoint accepts a param name and values but enters the deferred
+  branch; fresh verify 2026-06-01 19:14 +08.
+- `backend/app/api/backtest.py:1228-1277` / §DEFER sediment — inline rationale
+  lists missing dispatch-time override, child backtest cost, aggregation,
+  lineage, delivery, and shared-load decisions; fresh verify 2026-06-01
+  19:14 +08.
+- `docs/adr/ADR-DRAFT.md:29` / row 18 — architecture backlog records the
+  sensitivity defer decision and future implementation prerequisites; fresh
+  verify 2026-06-01 19:14 +08.
+- `backend/tests/test_backtest_sensitivity_defer.py:51`, `:82`, and `:111` /
+  §defer contract tests — regression coverage locks deferred status, message,
+  tracking ref, and validation; fresh verify 2026-06-01 19:14 +08.
+- `frontend/src/api/backtest.ts:682` and
+  `frontend/src/pages/BacktestResults.tsx:888` / §cost sensitivity — current
+  BacktestResults UI consumes the working cost-sensitivity endpoint instead;
+  fresh verify 2026-06-01 19:14 +08.
+
+### §30.2 Closure
+
+- Removed row 34 from §5D because there is no remaining generic
+  backend-implemented/frontend-unwired item.
+- Moved row 34 to §5E as a backend-semantics-before-UI item.
+- Preserved the main matrix row as backend-only (`❌`) because no frontend UI
+  should call a deferred placeholder.
+
+### §30.3 Verification
+
+- Backend defer contract:
+  `pytest backend/tests/test_backtest_sensitivity_defer.py -q` -> 3 passed.
+- Existing backtest API compatibility:
+  `pytest backend/tests/test_backtest_api.py::test_sensitivity_analysis -q` ->
+  1 passed.
+
+Full smoke/pre-push results are recorded in the Batch 29 status report.
+
+### §30.4 Remaining Work
+
+Implementing row 34 requires a design decision first: allowed parameters,
+config override path, child-run lineage/storage, aggregation metrics, result
+delivery, and shared-data-load strategy. Until that design exists, row 34
+should remain in §5E rather than being offered as an operator-facing UI.
