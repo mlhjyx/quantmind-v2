@@ -71,6 +71,24 @@ export interface SystemHealth {
   data_freshness?: { latest_kline_date: string | null; days_stale: number };
 }
 
+export interface QmtAccountAsset {
+  total_asset: number;
+  cash: number;
+  market_value: number;
+}
+
+export interface QmtHealth {
+  execution_mode: string;
+  state: string;
+  account_id: string | null;
+  qmt_path?: string | null;
+  connected_at: string | null;
+  last_error: string | null;
+  is_healthy: boolean;
+  probe_error?: string;
+  account_asset?: QmtAccountAsset;
+}
+
 export interface NotificationParam {
   key: string;
   value: string;
@@ -160,6 +178,11 @@ export async function fetchBeatSchedule(): Promise<BeatScheduleResponse> {
 
 export async function fetchSystemHealth(): Promise<SystemHealth> {
   const { data } = await apiClient.get<SystemHealth>("/system/health");
+  return data;
+}
+
+export async function fetchQmtHealth(): Promise<QmtHealth> {
+  const { data } = await apiClient.get<QmtHealth>("/health/qmt");
   return data;
 }
 

@@ -564,7 +564,7 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 71 | `/api/factors/{name}/archive` | POST | factors.ts:196 | ✅ |
 | 72 | `/api/health` | GET | — | ❌ |
 | 73 | `/api/health/checks` | GET | — | ❌ |
-| 74 | `/api/health/qmt` | GET | — | ❌ |
+| 74 | `/api/health/qmt` | GET | system.ts:184 | ✅ |
 | 75 | `/api/market/indices` | GET | market.ts:34 | ✅ |
 | 76 | `/api/market/sectors` | GET | market.ts:39 | ✅ |
 | 77 | `/api/market/top-movers` | GET | market.ts:47 | ✅ |
@@ -650,7 +650,8 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 
 | # | Endpoint | Rationale |
 |---|----------|-----------|
-| 72–74 | `/api/health`, `/api/health/checks`, `/api/health/qmt` | Consumed by Servy / monitoring, not frontend |
+| 72–73 | `/api/health`, `/api/health/checks` | Consumed by Servy / monitoring, not frontend |
+| 74 | `/api/health/qmt` | Wrapped by `fetchQmtHealth()` for `QMTStatusBadge`; badge is exported but not mounted by current frontend routes |
 | 116–117 | `/api/v1/ping`, `/api/v1/status` | Remote ops script (`remote_status.py`) — external monitoring |
 | 130 | `/api/risk/dingtalk-webhook` | DingTalk webhook receiver — not frontend-initiated |
 | 131 | `/api/sse/risk-events` | SSE stream — consumed via `EventSource` in frontend JS, not apiClient |
@@ -1334,3 +1335,64 @@ Fresh evidence:
   wrapper target unless a UI workflow is added.
 - Continue choosing the next closure from current code evidence rather than
   historical matrix drift alone.
+
+## §18 Fresh verify — 2026-06-01 (QMTStatusBadge health API-layer closure)
+
+### §18.1 Finding
+
+`frontend/src/components/shared/QMTStatusBadge.tsx` directly called
+`/health/qmt`, while row 74 in this matrix still classified the endpoint as
+backend-only monitoring. Fresh grep also showed the badge is exported from the
+shared component barrel but not mounted by current routes, so this is a
+low-blast-radius wrapper-boundary cleanup rather than an active visible page
+bug.
+
+Fresh evidence:
+- `backend/app/api/health.py:78` / §QMT health endpoint — POST-free GET
+  `/qmt` returns `qmt_manager.health_check()`; fresh verify 2026-06-01
+  16:00 +08.
+- `backend/app/services/qmt_connection_manager.py:142` / §health_check —
+  response includes `execution_mode`, `state`, `account_id`, `connected_at`,
+  `last_error`, and `is_healthy`; fresh verify 2026-06-01 16:00 +08.
+- `frontend/src/api/system.ts:184` / §System wrappers — `fetchQmtHealth()`
+  now owns the `/health/qmt` call; fresh verify 2026-06-01 16:00 +08.
+- `frontend/src/components/shared/QMTStatusBadge.tsx:16` / §Badge query —
+  badge now uses `fetchQmtHealth`; fresh verify 2026-06-01 16:00 +08.
+
+### §18.2 Closure
+
+- Added `QmtAccountAsset` and `QmtHealth` types to
+  `frontend/src/api/system.ts`.
+- Added `fetchQmtHealth()` as the typed `/health/qmt` wrapper.
+- Refactored `QMTStatusBadge.tsx` to consume `fetchQmtHealth` and remove direct
+  `apiClient` usage.
+- Added `frontend/src/__tests__/health-api-contract.test.ts` to lock the
+  wrapper endpoint and component boundary.
+- Updated row 74 and clarified §5A so `/health/qmt` is no longer counted as
+  pure backend-only monitoring.
+
+### §18.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/health-api-contract.test.ts` first failed on
+  the missing `fetchQmtHealth` export and direct `QMTStatusBadge` `apiClient`
+  import after tightening the test to the existing `system.ts` API module.
+- GREEN targeted contract:
+  `npx vitest --run src/__tests__/health-api-contract.test.ts` -> 2 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/health-api-contract.test.ts src/__tests__/system-api-scheduler.test.ts src/__tests__/system-api-paper-sid.test.ts src/__tests__/risk-management-api-contract.test.ts src/__tests__/SafetyControlPanel.test.tsx src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
+  -> 44 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 128 tests passed across 24 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §18.4 Remaining API Governance Backlog
+
+- Remaining direct page/component import after this batch: `PTGraduation.tsx`.
+- Since `QMTStatusBadge` is not mounted by current routes, browser smoke should
+  remain an app-load smoke unless a route starts rendering the badge.

@@ -1,56 +1,55 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 16.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 17.
 date: 2026-06-01 +08:00
-status: governance_batch_16_safety_control_api_layer_verified
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_16.md
+status: governance_batch_17_qmt_status_badge_api_layer_verified
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_17.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 16
+## Current Handoff - 2026-06-01 Batch 17
 
-Mode: full-project closure/governance remediation, batch 16 SafetyControlPanel L4 API-layer closure verified locally before final commit/CI.
+Mode: full-project closure/governance remediation, batch 17 QMTStatusBadge health API-layer closure verified locally before final commit/CI.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `4057c34a` (`close risk management api layer contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 16 edits.
-- This handoff records the Batch 16 local verification set. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
+- Latest pushed head before this batch is `a00ab003` (`close safety control risk api contract`), and PR #523 was fresh-verified CLEAN with all GitHub checks passing before Batch 17 edits.
+- This handoff records the Batch 17 local verification set. For post-push state, fresh-read git and PR #523 rather than inferring from this file.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits, destructive DB changes, Servy config edits, Task Scheduler mutations, and QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
 - SessionStart hook reported "未找到当前 handoff", but this file has a `Current Handoff` section. Treat hook detection as stale/fragile, not as source of truth.
-- Previous Batch 15 handoff still said commit/push/CI were open, but fresh git + PR state showed Batch 15 was already pushed and CI-clean at `4057c34a`. Use git/PR state for branch truth after every push.
-- `SafetyControlPanel.tsx` directly posted L4 recovery/approve mutations even though the rest of the risk surface had moved behind `frontend/src/api/risk.ts`; `docs/API_COVERAGE.md` rows 124-125 were still red.
+- Previous Batch 16 handoff still said commit/push/CI were open, but fresh git + PR state showed Batch 16 was already pushed and CI-clean at `a00ab003`. Use git/PR state for branch truth after every push.
+- `QMTStatusBadge.tsx` directly called `/health/qmt`, while `docs/API_COVERAGE.md` row 74 still marked that endpoint as backend-only. Fresh grep showed the badge is exported but not mounted by current frontend routes.
 
 Closed in this batch:
-- Audited `SafetyControlPanel.tsx`, backend `risk.py`, `frontend/src/api/risk.ts`, existing safety panel tests, and `docs/API_COVERAGE.md`.
-- Added `requestL4Recovery()` and `approveL4Recovery()` wrappers plus typed L4 responses to `frontend/src/api/risk.ts`.
-- Removed direct `apiClient` import and direct L4 mutation calls from `SafetyControlPanel.tsx`.
-- Extended `frontend/src/__tests__/risk-management-api-contract.test.ts` with L4 wrapper endpoint assertions and a SafetyControlPanel boundary guard.
-- Updated `frontend/src/__tests__/SafetyControlPanel.test.tsx` mocks so existing L4 UI flow tests still exercise wrapper-shaped calls.
-- Updated `docs/API_COVERAGE.md` §17 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_16.md`.
+- Audited `QMTStatusBadge.tsx`, backend `health.py`, `qmt_connection_manager.py`, `frontend/src/api/system.ts`, and `docs/API_COVERAGE.md`.
+- Added `QmtAccountAsset`, `QmtHealth`, and `fetchQmtHealth()` to `frontend/src/api/system.ts`.
+- Removed direct `apiClient` usage from `QMTStatusBadge.tsx`.
+- Added `frontend/src/__tests__/health-api-contract.test.ts`.
+- Updated `docs/API_COVERAGE.md` §18 and added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_17.md`.
 
 Verification:
-- RED: `npx vitest --run src/__tests__/risk-management-api-contract.test.ts` failed before the fix because the L4 wrappers were missing and `SafetyControlPanel.tsx` imported `apiClient` directly.
-- GREEN targeted risk-management/safety contract -> 17 passed.
-- Focused frontend/API pack -> 47 passed.
+- RED: `npx vitest --run src/__tests__/health-api-contract.test.ts` failed before the fix because `fetchQmtHealth()` was missing and `QMTStatusBadge.tsx` imported `apiClient` directly.
+- GREEN targeted health contract -> 2 passed.
+- Focused frontend/API pack -> 44 passed.
 - `npx tsc -b --pretty false` -> exit 0.
-- `npx vitest --run` -> 126 tests passed across 23 files.
+- `npx vitest --run` -> 128 tests passed across 24 files.
 - `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
 - `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
-- Browser smoke opened `http://127.0.0.1:5173/risk`, clicked `紧急控制`, and found `熔断状态`, `紧急操作`, and `ENV: paper`; console errors were empty. Existing dev server on port 5173 was reused and not stopped.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7013 deselected.
+- Route-specific browser smoke not used: `QMTStatusBadge` is not mounted by current frontend routes.
 
 Still open:
 - After this batch is pushed, fresh-read PR #523 checks and merge state before continuing.
 - Ops deployment: an elevated/admin shell must reload `worker`, `slow-worker`, and `beat`; then verify a fresh `realtime_risk_tick` row reports `status='skipped'` and `result_json.reason='qmt_cache_unavailable'`.
 - QMTData runtime remains intentionally stopped/manual; do not start it implicitly.
 - Batch 2 backlog remains: DeepSeek primary provider credential/account failure requires operator secret/provider fix; no secret rotation was performed.
-- Remaining direct `apiClient` page/component imports: `PTGraduation.tsx` and `QMTStatusBadge.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
+- Remaining direct `apiClient` page/component import: `PTGraduation.tsx`; contract only when current code proves a response conversion, coverage, or workflow gap.
 
 Next safe step:
-- If these Batch 16 edits are not yet on PR #523, stage/commit/push them and wait for GitHub checks. If they are already pushed and checks are clean, continue with the next evidence-backed governance slice.
+- If these Batch 17 edits are not yet on PR #523, stage/commit/push them and wait for GitHub checks. If they are already pushed and checks are clean, continue with the next evidence-backed governance slice.
 
 ---
 
