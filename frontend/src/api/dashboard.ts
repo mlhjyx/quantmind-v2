@@ -6,6 +6,7 @@ import type {
   DashboardSummary,
   FactorRow,
   IndustryItem,
+  MarketTickerItem,
   MonthlyReturns,
   NAVPoint,
   NAVPeriod,
@@ -59,6 +60,11 @@ export async function fetchIndustryDistribution(): Promise<IndustryItem[]> {
     "/dashboard/industry-distribution",
     { params: { execution_mode: "live" } },
   );
+  return data;
+}
+
+export async function fetchMarketTicker(): Promise<MarketTickerItem[]> {
+  const { data } = await api.get<MarketTickerItem[]>("/dashboard/market-ticker");
   return data;
 }
 

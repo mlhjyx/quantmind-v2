@@ -10,6 +10,7 @@ import {
   fetchDashboardFactorRows,
   fetchDashboardPipelineSteps,
   fetchIndustryDistribution,
+  fetchMarketTicker,
   fetchMonthlyReturns,
   fetchNAVSeries,
   fetchPendingActions,
@@ -23,6 +24,7 @@ import type {
   DashboardSummary,
   FactorRow,
   IndustryItem,
+  MarketTickerItem,
   MonthlyReturns,
   PendingAction,
   PipelineStep,
@@ -55,6 +57,7 @@ export default function DashboardOverview() {
   const [pendingActions, setPendingActions] = useState<PendingAction[] | null>(null);
   const [monthlyData, setMonthlyData] = useState<MonthlyReturns | null>(null);
   const [industryDist, setIndustryDist] = useState<IndustryItem[] | null>(null);
+  const [marketTicker, setMarketTicker] = useState<MarketTickerItem[]>([]);
   const [navChartData, setNavChartData] = useState<NavChartPoint[]>([]);
   const [factorData, setFactorData] = useState<FactorRow[]>([]);
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
@@ -117,6 +120,10 @@ export default function DashboardOverview() {
         setIndustryError(`行业分布加载失败: ${msg}`);
         setIndustryDist([]);
       });
+
+    fetchMarketTicker()
+      .then(setMarketTicker)
+      .catch(() => setMarketTicker([]));
 
     // NAV series → transform to chart format
     fetchNAVSeries("all")
@@ -243,6 +250,32 @@ export default function DashboardOverview() {
           <ChevronRight size={12} color={C.text4} />
         </Link>
         {/* 外汇策略 link 已移除 (DEV_FOREX DEFERRED, Phase H Week 6 cleanup) */}
+        {marketTicker.length > 0 && (
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            {marketTicker.map((item) => (
+              <div
+                key={item.code || item.label}
+                className="flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5"
+                style={{ background: C.bg1, border: `1px solid ${C.border}` }}
+              >
+                <span style={{ fontSize: 11, color: C.text3 }}>{item.label}</span>
+                <span style={{ fontSize: 12, color: C.text1, fontVariantNumeric: "tabular-nums" }}>
+                  {Number(item.value).toFixed(2)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: item.is_up ? C.down : C.up,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {item.change_pct >= 0 ? "+" : ""}
+                  {Number(item.change_pct).toFixed(2)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Scrollable content */}

@@ -1,59 +1,65 @@
 ---
-description: Codex remediation handoff updated after 2026-06-01 governance batch 29.
+description: Codex remediation handoff updated after 2026-06-01 governance batch 30.
 date: 2026-06-01 +08:00
-status: governance_batch_29_backtest_sensitivity_reclass_pending_push
-source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_29.md
+status: governance_batch_30_dashboard_matrix_reconciliation_pending_push
+source_report: docs/audit/STATUS_REPORT_2026_06_01_governance_batch_30.md
 ---
 
 # Project Sprint State
 
-## Current Handoff - 2026-06-01 Batch 29
+## Current Handoff - 2026-06-01 Batch 30
 
-Mode: full-project closure/governance remediation, batch 29 backtest
-sensitivity endpoint reclassification in progress.
+Mode: full-project closure/governance remediation, batch 30 dashboard coverage
+matrix reconciliation in progress.
 
 Current scope:
 - Current PR branch is `codex/runtime-governance-followup`.
-- Latest pushed head before this batch is `2c37d474` (`wire strategy workspace
-  metadata`), and PR #523 checks were clean before Batch 29 edits.
+- Latest pushed head before this batch is `bff3e03e` (`reclass backtest
+  sensitivity defer`), and PR #523 checks were clean before Batch 30 edits.
 - Continue avoiding broker order APIs, `.env` edits, production YAML edits,
   destructive DB changes, Servy config edits, Task Scheduler mutations, and
   QMT service startup unless a separate ops step is explicitly chosen.
 - Do not commit, stage, unstage, or revert unrelated user-owned changes.
 
 Active discovery:
-- Row 34 `/api/backtest/{run_id}/sensitivity` is not a missed frontend hook.
-  The backend endpoint intentionally returns `status="deferred"` with
-  ADR-DRAFT row 18 tracking metadata.
-- Current working UI already consumes row 31 `/api/backtest/{run_id}/cost-sensitivity`.
-  Wiring row 34 would expose a deferred placeholder rather than a working
-  analysis feature.
-- Future implementation needs an architecture decision covering parameter
-  whitelist, override path, child-run lineage/storage, aggregation, result
-  delivery, and shared-data-load strategy.
+- API coverage rows 36-38 and 40-43 were stale matrix negatives: the Dashboard
+  wrappers already existed in `frontend/src/api/dashboard.ts`.
+- Row 39 `/api/dashboard/market-ticker` was the actual Dashboard gap: backend
+  route/service existed, but the frontend wrapper and page consumer were
+  missing.
+- Full Vitest initially exposed `pages.test.tsx` total-mock drift after the new
+  Dashboard import; adding the mock export removed the unhandled rejection.
 
 Closed in this batch:
-- Updated `docs/API_COVERAGE.md` §5D to show no remaining generic
-  backend-implemented/frontend-unwired rows.
-- Moved row 34 to §5E as backend-semantics-before-UI.
-- Added `docs/API_COVERAGE.md` §30 with evidence, verification plan, and
-  future design prerequisites.
-- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_29.md`.
+- Added `MarketTickerItem`, `fetchMarketTicker()`, and Dashboard market ticker
+  rendering.
+- Extended dashboard API contract coverage and the page-suite dashboard mock.
+- Updated `docs/API_COVERAGE.md` rows 36-43 and added §31.
+- Added `docs/audit/STATUS_REPORT_2026_06_01_governance_batch_30.md`.
 
 Verification:
-- `pytest backend/tests/test_backtest_sensitivity_defer.py -q` -> 3 passed.
-- `pytest backend/tests/test_backtest_api.py::test_sensitivity_analysis -q` ->
-  1 passed.
+- RED `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed
+  before implementation on missing `fetchMarketTicker()` and page references.
+- Targeted GREEN `npx vitest --run src/__tests__/dashboard-api-contract.test.ts`
+  -> 7 passed.
+- `npx tsc -b --pretty false` -> exit 0.
+- `python scripts/audit/check_frontend_api_discipline.py` -> PASS.
+- `npx vitest --run` -> 33 files passed, 160 tests passed.
+- `npm run build` -> exit 0 with existing large `vendor-echarts` warning.
+- Browser smoke `/dashboard?smoke=batch30` rendered `驾驶舱`, showed ticker
+  content including `沪深300`, and had 0 console errors.
 - `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
   deselected.
 - `bash config/hooks/pre-push` -> X10 clean, LLM import guard clean, smoke 91
   passed, 2 skipped, 6976 deselected.
-- Pending before closure: commit, push, PR body append, and PR #523 check watch.
+- Pending before closure: commit, push, PR body append, and PR #523 check
+  watch.
 
 Still open:
 - Port 8000 FastAPI needs a separate Servy reload before the Batch 21 backend
   endpoint fixes are reflected in that running listener.
-- Remaining §5D backlog: none after row 34 reclassification.
+- Remaining §5D backlog: none after row 34 reclassification and dashboard row
+  reconciliation.
 - Row 34 remains in §5E until a Phase B sensitivity architecture design exists.
 - Rows 135-136 strategy version create/rollback need a version-management UI
   design with diff preview, required changelog, rollback confirmation, audit
@@ -73,8 +79,7 @@ Still open:
   requires operator secret/provider fix; no secret rotation was performed.
 
 Next safe step:
-- Run Batch 29 targeted tests, smoke/pre-push, then stage/commit/push and
-  verify PR #523 checks.
+- Stage/commit/push and verify PR #523 checks.
 
 ---
 

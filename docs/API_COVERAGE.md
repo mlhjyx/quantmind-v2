@@ -29,8 +29,8 @@ matrix body is retained as historical audit evidence.
   not frontend-only orphan work.
 - Notification panel mock seeding is closed in §11: list, per-row read, and
   read-all flows now consume `frontend/src/api/notifications.ts`.
-- Dashboard secondary panels are closed in §12: alerts, monthly returns,
-  industry distribution, factor rows, and pipeline steps now go through
+- Dashboard secondary panels are closed in §12 and §31: alerts, market ticker,
+  monthly returns, industry distribution, factor rows, and pipeline steps now go through
   `frontend/src/api/dashboard.ts` wrappers instead of page-level `apiClient`
   calls.
 - Portfolio endpoints are closed in §13: holdings, sector distribution, and
@@ -383,8 +383,8 @@ Axios instance definition only. No direct API calls. **0 calls**.
 Historical 2026-05-20 snapshot. Superseded by §12 Fresh verify.
 
 Current wrapper coverage includes Dashboard summary, NAV, pending actions,
-alerts, monthly returns, industry distribution, paper status, paper trades, positions,
-strategy overview, factor rows, and pipeline steps.
+market ticker, alerts, monthly returns, industry distribution, paper status,
+paper trades, positions, strategy overview, factor rows, and pipeline steps.
 
 ### 3.5 execution.ts (`frontend/src/api/execution.ts`)
 
@@ -552,14 +552,14 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 33 | `/api/backtest/compare` | POST | backtest.ts:348 | ✅ |
 | 34 | `/api/backtest/{run_id}/sensitivity` | POST | — | ❌ |
 | 35 | `/api/backtest/{run_id}/live-compare` | GET | backtest.ts:742 | ✅ |
-| 36 | `/api/dashboard/summary` | GET | — | ❌ |
-| 37 | `/api/dashboard/nav-series` | GET | — | ❌ |
-| 38 | `/api/dashboard/pending-actions` | GET | — | ❌ |
-| 39 | `/api/dashboard/market-ticker` | GET | — | ❌ |
-| 40 | `/api/dashboard/alerts` | GET | — | ❌ |
-| 41 | `/api/dashboard/strategies` | GET | — | ❌ |
-| 42 | `/api/dashboard/monthly-returns` | GET | — | ❌ |
-| 43 | `/api/dashboard/industry-distribution` | GET | — | ❌ |
+| 36 | `/api/dashboard/summary` | GET | dashboard.ts:21 | ✅ |
+| 37 | `/api/dashboard/nav-series` | GET | dashboard.ts:28 | ✅ |
+| 38 | `/api/dashboard/pending-actions` | GET | dashboard.ts:37 | ✅ |
+| 39 | `/api/dashboard/market-ticker` | GET | dashboard.ts:66 | ✅ |
+| 40 | `/api/dashboard/alerts` | GET | dashboard.ts:44 | ✅ |
+| 41 | `/api/dashboard/strategies` | GET | dashboard.ts:166 | ✅ |
+| 42 | `/api/dashboard/monthly-returns` | GET | dashboard.ts:51 | ✅ |
+| 43 | `/api/dashboard/industry-distribution` | GET | dashboard.ts:58 | ✅ |
 | 44 | `/api/execution/pending-orders` | GET | execution.ts:295 | ✅ |
 | 45 | `/api/execution/log` | GET | execution.ts:304 | ✅ |
 | 46 | `/api/execution/algo-config` | GET | — | ⚠️ legacy display-only |
@@ -981,13 +981,15 @@ API layer per LL-035.
 - Added `frontend/src/__tests__/dashboard-api-contract.test.ts` to lock wrapper
   exports, endpoint params, factor-row normalization, pipeline-step
   normalization, and the Dashboard page boundary.
+- Batch 30 extended the same contract to row 39
+  `/api/dashboard/market-ticker` and added the compact Dashboard ticker strip.
 
 ### §12.3 Verification
 
 - RED: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed
   before the fix on missing wrapper exports and the direct `apiClient` import.
-- GREEN targeted contract: `npx vitest --run src/__tests__/dashboard-api-contract.test.ts`
-  -> 6 passed.
+- GREEN targeted contract after Batch 30:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` -> 7 passed.
 - Broader frontend/API suite:
   `npx vitest --run src/__tests__/dashboard-api-contract.test.ts src/__tests__/pages.test.tsx src/__tests__/api.test.ts`
   -> 20 passed.
@@ -2208,3 +2210,57 @@ Implementing row 34 requires a design decision first: allowed parameters,
 config override path, child-run lineage/storage, aggregation metrics, result
 delivery, and shared-data-load strategy. Until that design exists, row 34
 should remain in §5E rather than being offered as an operator-facing UI.
+
+## §31 Fresh verify — 2026-06-01 (Dashboard matrix row reconciliation)
+
+### §31.1 Finding
+
+Rows 36-38 and 40-43 were stale matrix negatives. Fresh code review showed
+their wrappers already existed in `frontend/src/api/dashboard.ts` and the
+Dashboard page already consumed the relevant data flows. Row 39
+`/api/dashboard/market-ticker` was the actual missing dashboard row: the backend
+route existed, but there was no typed frontend wrapper or page consumer.
+
+Fresh evidence:
+- `backend/app/api/dashboard.py:84` / §market-ticker route and
+  `backend/app/services/dashboard_service.py:158` / §service delegation —
+  backend route and service path existed before this batch; fresh verify
+  2026-06-01 19:27 +08.
+- `frontend/src/api/dashboard.ts:21`, `:28`, `:37`, `:44`, `:51`, `:58`,
+  and `:166` / §dashboard wrappers — rows 36-38 and 40-43 had existing
+  API-layer wrappers; fresh verify 2026-06-01 19:27 +08.
+- `frontend/src/api/dashboard.ts:66` / §market ticker wrapper —
+  row 39 now has a typed API-layer wrapper; fresh verify 2026-06-01 19:27 +08.
+- `frontend/src/pages/Dashboard/index.tsx:60`, `:124`, and `:253` /
+  §market ticker page state and strip — Dashboard now consumes and renders row
+  39 data when available; fresh verify 2026-06-01 19:27 +08.
+- `frontend/src/__tests__/dashboard-api-contract.test.ts:24`, `:86`, and
+  `:189` / §contract guard — regression coverage locks the wrapper export,
+  endpoint call, and Dashboard page boundary; fresh verify 2026-06-01
+  19:27 +08.
+
+### §31.2 Closure
+
+- Added `MarketTickerItem` to `frontend/src/types/dashboard.ts`.
+- Added `fetchMarketTicker()` to `frontend/src/api/dashboard.ts`.
+- Wired `Dashboard/index.tsx` to load and render a compact market ticker strip.
+- Updated matrix rows 36-43 from stale negatives to current wrapper line
+  anchors.
+
+### §31.3 Verification
+
+- RED:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` failed before
+  the fix on missing `fetchMarketTicker()` and Dashboard page references.
+- Targeted GREEN:
+  `npx vitest --run src/__tests__/dashboard-api-contract.test.ts` -> 7 passed.
+
+Full frontend/build/smoke/pre-push results are recorded in the Batch 30 status
+report.
+
+### §31.4 Remaining Work
+
+No dashboard rows remain classified as backend-implemented/frontend-unwired in
+the API matrix. Further work should come from route semantics, runtime
+verification, or operator-workflow findings rather than the stale dashboard
+matrix labels.

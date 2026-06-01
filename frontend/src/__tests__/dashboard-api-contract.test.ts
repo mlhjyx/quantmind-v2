@@ -21,6 +21,7 @@ describe("dashboard API contract", () => {
     expect(typeof api.fetchAlerts).toBe("function");
     expect(typeof api.fetchMonthlyReturns).toBe("function");
     expect(typeof api.fetchIndustryDistribution).toBe("function");
+    expect(typeof api.fetchMarketTicker).toBe("function");
     expect(typeof api.fetchDashboardFactorRows).toBe("function");
     expect(typeof api.fetchDashboardPipelineSteps).toBe("function");
   });
@@ -80,6 +81,32 @@ describe("dashboard API contract", () => {
       "/dashboard/industry-distribution",
       { params: { execution_mode: "live" } },
     );
+  });
+
+  it("fetches the dashboard market ticker through the API layer", async () => {
+    const api = await import("@/api/dashboard");
+    apiClientMock.get.mockResolvedValueOnce({
+      data: [
+        {
+          label: "沪深300",
+          code: "000300.SH",
+          value: 3850.12,
+          change_pct: 0.42,
+          is_up: true,
+        },
+      ],
+    });
+
+    await expect(api.fetchMarketTicker()).resolves.toEqual([
+      {
+        label: "沪深300",
+        code: "000300.SH",
+        value: 3850.12,
+        change_pct: 0.42,
+        is_up: true,
+      },
+    ]);
+    expect(apiClientMock.get).toHaveBeenCalledWith("/dashboard/market-ticker");
   });
 
   it("normalizes factor rows for the dashboard factor panel", async () => {
@@ -159,5 +186,7 @@ describe("dashboard API contract", () => {
 
     expect(source).not.toContain('import apiClient from "@/api/client"');
     expect(source).not.toMatch(/\bapiClient\.(get|post|put|delete|patch)\s*\(/);
+    expect(source).toContain("fetchMarketTicker");
+    expect(source).toContain("marketTicker");
   });
 });

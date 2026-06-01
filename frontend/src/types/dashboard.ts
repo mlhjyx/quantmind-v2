@@ -46,6 +46,15 @@ export interface IndustryItem {
   color: string;
 }
 
+/** Dashboard market ticker row */
+export interface MarketTickerItem {
+  label: string;
+  code: string;
+  value: number;
+  change_pct: number;
+  is_up: boolean;
+}
+
 /** Dashboard 因子库行 */
 export interface FactorRow {
   name: string;
