@@ -416,17 +416,21 @@ strategy overview, factor rows, and pipeline steps.
 
 | File:Line | Method | URL |
 |-----------|--------|-----|
-| factors.ts:100 | GET | `/factors/summary` |
-| factors.ts:105 | GET | `/factors` |
-| factors.ts:110 | GET | `/factors/stats` |
-| factors.ts:115 | GET | `/factors/correlation` |
-| factors.ts:120 | GET | `/factors/health` |
-| factors.ts:126 | GET | `/factors/{name}/report` |
-| factors.ts:196 | POST | `/factors/{name}/archive` |
-| factors.ts:200 | POST | `/factors/health` |
-| factors.ts:204 | POST | `/factors/correlation-prune` |
+| factors.ts:35 | GET | `/factors/ic-monitoring` |
+| factors.ts:61 | GET | `/factors/{name}` |
+| factors.ts:78 | GET | `/factors/stats` |
+| factors.ts:96 | GET | `/factors/health` |
+| factors.ts:197 | GET | `/factors/summary` |
+| factors.ts:202 | GET | `/factors` |
+| factors.ts:207 | GET | `/factors/stats` |
+| factors.ts:212 | GET | `/factors/correlation` |
+| factors.ts:217 | GET | `/factors/health` |
+| factors.ts:223 | GET | `/factors/{name}/report` |
+| factors.ts:293 | POST | `/factors/{name}/archive` |
+| factors.ts:300 | POST | `/factors/health-check` |
+| factors.ts:304 | POST | `/factors/correlation-prune` |
 
-**9 calls → 7 consumed; 2 orphans** (`POST /factors/health` — backend has only GET; `POST /factors/correlation-prune` — no backend endpoint)
+**13 calls → all 13 consumed** (IcMonitoring + factor library/evaluation + O9/O10 repaired)
 
 ### 3.7 mining.ts (`frontend/src/api/mining.ts`)
 
@@ -572,14 +576,14 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 61 | `/api/execution/trading-paused` | GET | execution.ts:257 | ✅ |
 | 62 | `/api/execution/alert-config` | PUT | — | ❌ |
 | 63 | `/api/execution/audit-log` | GET | execution.ts:262 | ✅ |
-| 64 | `/api/factors/health` | GET | factors.ts:120 | ✅ |
-| 65 | `/api/factors/correlation` | GET | factors.ts:115 | ✅ |
-| 66 | `/api/factors/summary` | GET | factors.ts:100 | ✅ |
-| 67 | `/api/factors/stats` | GET | factors.ts:110 | ✅ |
-| 68 | `/api/factors` | GET | factors.ts:105 | ✅ |
-| 69 | `/api/factors/{name}` | GET | — | ❌ |
-| 70 | `/api/factors/{name}/report` | GET | factors.ts:126 | ✅ |
-| 71 | `/api/factors/{name}/archive` | POST | factors.ts:196 | ✅ |
+| 64 | `/api/factors/health` | GET | factors.ts:96/217 | ✅ |
+| 65 | `/api/factors/correlation` | GET | factors.ts:212 | ✅ |
+| 66 | `/api/factors/summary` | GET | factors.ts:197 | ✅ |
+| 67 | `/api/factors/stats` | GET | factors.ts:78/207 | ✅ |
+| 68 | `/api/factors` | GET | factors.ts:202 | ✅ |
+| 69 | `/api/factors/{name}` | GET | factors.ts:61 | ✅ |
+| 70 | `/api/factors/{name}/report` | GET | factors.ts:223 | ✅ |
+| 71 | `/api/factors/{name}/archive` | POST | factors.ts:293 | ✅ |
 | 72 | `/api/health` | GET | — | ❌ |
 | 73 | `/api/health/checks` | GET | — | ❌ |
 | 74 | `/api/health/qmt` | GET | system.ts:200 | ✅ |
@@ -698,7 +702,6 @@ snapshot.
 | 34 | `/api/backtest/{run_id}/sensitivity` | Explicitly deferred/backlog; rows 26-32 and 35 are now consumed by BacktestResults (§23) |
 | 44–46 | `/api/execution/pending-orders`, `/log`, `/algo-config` | `execution.py` router has 3 endpoints, none consumed |
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
-| 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
 | 92–93 | `/api/paper-trading/status`, `/api/paper-trading/graduation` | Legacy PT status/criteria endpoints not wrapped by current frontend API layer |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
@@ -720,8 +723,8 @@ snapshot.
 | O6 | pipeline.ts:130 | POST | `/pipeline/hold/{id}` | Uses old hold path — backend uses `/approval/queue/{item_id}/hold` |
 | O7 | pipeline.ts:134 | GET | `/pipeline/{runId}/logs` | **RESOLVED 2026-05-28** — backend HTTP backfill now exists; see §10 |
 | O8 | pipeline.ts:139 | PUT | `/pipeline/automation-level` | **RESOLVED** — see §6.1 / PN-001 |
-| O9 | factors.ts:200 | POST | `/factors/health` | Backend has GET `/api/factors/health` (factors.py:57) — method mismatch |
-| O10 | factors.ts:204 | POST | `/factors/correlation-prune` | **RESOLVED** — see §6.1 / PN-002 |
+| O9 | factors.ts:300 | POST | `/factors/health-check` | **RESOLVED** — current wrapper targets backend `POST /api/factors/health-check`; see §25 |
+| O10 | factors.ts:304 | POST | `/factors/correlation-prune` | **RESOLVED** — see §6.1 / PN-002 |
 
 **Historical 2026-05-20 finding**: `pipeline.ts` was the highest-risk file, with
 7 of 13 calls targeting non-existent or stale backend paths. This is no longer the
@@ -1831,3 +1834,54 @@ Fresh evidence:
 ### §24.4 Remaining Work
 
 Commit/push and GitHub checks remain pending for Batch 23.
+
+## §25 Fresh verify — 2026-06-01 (Factor `{name}` coverage drift)
+
+### §25.1 Finding
+
+Row 69 `GET /api/factors/{name}` was marked backend-only in §4/§5D, but current
+frontend code already consumes it through `fetchFactorIcSeries()` for the
+IcMonitoring S1 chart. This was coverage documentation drift, not an
+implementation gap.
+
+Fresh evidence:
+- `backend/app/api/factors.py:477` / §single factor detail endpoint — route
+  returns factor metadata, stats, and `ic_series`; fresh verify 2026-06-01
+  17:45 +08.
+- `frontend/src/api/factors.ts:56` and `:61` / §factor API wrappers —
+  `fetchFactorIcSeries()` calls `/factors/{factorName}` with date params; fresh
+  verify 2026-06-01 17:45 +08.
+- `frontend/src/pages/IcMonitoring.tsx:25`, `:76`, and `:82` /
+  §IcMonitoring S1 — page query uses `fetchFactorIcSeries()` for the selected
+  factor; fresh verify 2026-06-01 17:45 +08.
+- `frontend/src/__tests__/factors-api.test.ts:29` and `:56` /
+  §factor API contracts — test now locks wrapper endpoint mapping and page
+  consumption; fresh verify 2026-06-01 17:45 +08.
+
+### §25.2 Closure
+
+- Added contract coverage for `fetchFactorIcSeries()`.
+- Updated the factor API inventory to current call sites, including
+  `health-check` and `correlation-prune`.
+- Marked row 69 consumed and removed it from §5D.
+- Updated historical O9 to reflect the already-repaired `POST
+  /factors/health-check` wrapper.
+
+### §25.3 Verification
+
+- Contract:
+  `npx vitest --run src/__tests__/factors-api.test.ts` -> 4 passed.
+- Frontend regression:
+  `npx tsc -b --pretty false` -> exit 0;
+  `python scripts/audit/check_frontend_api_discipline.py` -> PASS;
+  `npx vitest --run` -> 146 passed;
+  `npm run build` -> exit 0 with the existing Vite vendor-echarts chunk-size
+  warning.
+- Backend smoke/pre-push:
+  `pytest -m "smoke and not live_tushare"` -> 90 passed, 2 skipped, 7020
+  deselected; `bash config/hooks/pre-push` -> X10 clean, LLM import guard
+  clean, smoke 91 passed, 2 skipped, 6976 deselected.
+
+### §25.4 Remaining Work
+
+Commit/push and GitHub checks remain pending for Batch 24.
