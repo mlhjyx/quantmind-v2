@@ -584,9 +584,9 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 91 | `/api/notifications/test` | POST | — | ❌ |
 | 92 | `/api/paper-trading/status` | GET | — | ❌ |
 | 93 | `/api/paper-trading/graduation` | GET | — | ❌ |
-| 94 | `/api/paper-trading/graduation-status` | GET | — | ❌ |
-| 95 | `/api/paper-trading/positions` | GET | — | ❌ |
-| 96 | `/api/paper-trading/trades` | GET | — | ❌ |
+| 94 | `/api/paper-trading/graduation-status` | GET | dashboard.ts:99 | ✅ |
+| 95 | `/api/paper-trading/positions` | GET | dashboard.ts:109 | ✅ |
+| 96 | `/api/paper-trading/trades` | GET | dashboard.ts:67 | ✅ |
 | 97 | `/api/params` | GET | system.ts:72 | ✅ |
 | 98 | `/api/params/changelog` | GET | — | ❌ |
 | 99 | `/api/params/{key}` | GET | — | ❌ |
@@ -683,7 +683,7 @@ snapshot.
 | 62 | `/api/execution/alert-config` PUT | Alert config mutation not wired |
 | 69 | `/api/factors/{name}` GET | Factor detail page not using factor detail endpoint |
 | 88–89 | `/api/notifications/unread-count`, `/api/notifications/{notification_id}` | list response supplies `unread_count`; no notification detail view yet |
-| 92–96 | `/api/paper-trading/*` | Paper trading status not wired to frontend |
+| 92–93 | `/api/paper-trading/status`, `/api/paper-trading/graduation` | Legacy PT status/criteria endpoints not wrapped by current frontend API layer |
 | 134–136, 140–141 | `/api/strategies/{id}/versions`, `/rollback`, `/factors`, `/backtest` | Strategy management partially wired |
 | 144 | `/api/system/streams` | Streams viewer not wired |
 
@@ -1393,6 +1393,70 @@ Fresh evidence:
 
 ### §18.4 Remaining API Governance Backlog
 
-- Remaining direct page/component import after this batch: `PTGraduation.tsx`.
+- Superseded by §19: `PTGraduation.tsx` direct API usage is closed.
 - Since `QMTStatusBadge` is not mounted by current routes, browser smoke should
   remain an app-load smoke unless a route starts rendering the badge.
+
+## §19 Fresh verify — 2026-06-01 (PTGraduation paper-trading API-layer closure)
+
+### §19.1 Finding
+
+`frontend/src/pages/PTGraduation.tsx` directly called
+`/paper-trading/graduation-status`, while rows 94-96 in this matrix still
+classified the paper-trading page data as backend-only. Fresh code review showed
+`/paper-trading/trades` and the `/paper-trading/positions` fallback were already
+owned by `frontend/src/api/dashboard.ts`; the remaining page bypass was the
+graduation-status request.
+
+Fresh evidence:
+- `backend/app/api/paper_trading.py:101` / §paper_trading router — GET
+  `/graduation-status`; fresh verify 2026-06-01 16:14 +08.
+- `backend/app/api/paper_trading.py:224` and `:243` / §paper_trading router —
+  GET `/positions` and GET `/trades`; fresh verify 2026-06-01 16:14 +08.
+- `frontend/src/api/dashboard.ts:67`, `:99`, and `:109` / §Dashboard API
+  wrappers — paper trades, graduation status, and positions wrappers; fresh
+  verify 2026-06-01 16:14 +08.
+- `frontend/src/pages/PTGraduation.tsx:264` / §PTGraduation effect — page now
+  calls `fetchPaperGraduationStatus("live")`; fresh verify 2026-06-01
+  16:14 +08.
+
+### §19.2 Closure
+
+- Added `PaperGraduationCriterion`, `PaperGraduationStatus`, and
+  `fetchPaperGraduationStatus()` to `frontend/src/api/dashboard.ts`.
+- Removed direct `apiClient` usage from `PTGraduation.tsx`.
+- Added `frontend/src/__tests__/pt-graduation-api-contract.test.ts` to lock the
+  wrapper endpoint and page boundary.
+- Updated rows 94-96 and narrowed §5D to the two unwrapped legacy PT endpoints:
+  `/api/paper-trading/status` and `/api/paper-trading/graduation`.
+
+### §19.3 Verification
+
+- RED: `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts`
+  first failed because `fetchPaperGraduationStatus()` was missing and
+  `PTGraduation.tsx` imported `apiClient` directly.
+- GREEN targeted contract + trade panel:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts src/__tests__/TradeLogPanel.test.tsx`
+  -> 5 passed.
+- Focused frontend/API pack:
+  `npx vitest --run src/__tests__/pt-graduation-api-contract.test.ts src/__tests__/TradeLogPanel.test.tsx src/__tests__/dashboard-api-contract.test.ts src/__tests__/health-api-contract.test.ts src/__tests__/risk-management-api-contract.test.ts`
+  -> 23 passed.
+- TypeScript/build:
+  `npx tsc -b --pretty false` -> exit 0;
+  `npm run build` -> exit 0 with the existing Vite vendor chunk-size warning.
+- Full frontend suite: `npx vitest --run` -> 130 tests passed across 25 files.
+- API discipline guard: `python scripts/audit/check_frontend_api_discipline.py`
+  -> PASS, and production page/component grep for direct `apiClient` imports
+  returned no matches.
+- Browser smoke: in-app browser opened
+  `http://127.0.0.1:5173/pt-graduation`; `PT 毕业评估` was visible with backend
+  data loaded and console errors empty.
+- Backend smoke: `pytest -m "smoke and not live_tushare"` -> 90 passed, 2
+  skipped, 7013 deselected.
+
+### §19.4 Remaining API Governance Backlog
+
+- Direct `apiClient` imports in production pages/components: none found by the
+  current audit scan.
+- Rows 92-93 remain as a low-risk paper-trading API backlog until a current
+  frontend workflow needs the legacy status/criteria endpoints.

@@ -71,6 +71,41 @@ export async function fetchPaperTrades(limit = 50): Promise<Trade[]> {
   return data;
 }
 
+export type PaperTradingExecutionMode = "paper" | "live" | string;
+
+export interface PaperGraduationCriterion {
+  id?: string;
+  name: string;
+  target: string;
+  actual: string;
+  passed: boolean;
+  current?: number | string;
+  progress?: number;
+  status?: "pass" | "warn" | "fail" | "observe";
+  unit?: string;
+  description?: string;
+}
+
+export interface PaperGraduationStatus {
+  days_running: number;
+  sharpe: number;
+  mdd: number;
+  slippage_deviation: number;
+  graduate_ready: boolean;
+  overall_status?: "on_track" | "at_risk" | "failing";
+  criteria: PaperGraduationCriterion[];
+}
+
+export async function fetchPaperGraduationStatus(
+  executionMode: PaperTradingExecutionMode = "live",
+): Promise<PaperGraduationStatus> {
+  const { data } = await api.get<PaperGraduationStatus>(
+    "/paper-trading/graduation-status",
+    { params: { execution_mode: executionMode } },
+  );
+  return data;
+}
+
 export async function fetchPositions(): Promise<Position[]> {
   // 优先使用realtime API（QMT实时持仓），fallback到paper-trading
   try {
